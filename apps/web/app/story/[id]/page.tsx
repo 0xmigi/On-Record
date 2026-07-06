@@ -114,7 +114,8 @@ export default async function StoryPage({
           <p className="empty-body">No underlying entries attached to this story.</p>
         </div>
       ) : (
-        <div className="table-scroll">
+        <div className="record-frame">
+          <div className="table-scroll">
           <table className="record-table">
             <thead>
               <tr>
@@ -164,6 +165,7 @@ export default async function StoryPage({
               ))}
             </tbody>
           </table>
+          </div>
         </div>
       )}
     </article>

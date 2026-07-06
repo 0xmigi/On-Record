@@ -26,12 +26,24 @@ export default function RootLayout({
         <header className="topbar">
           <div className="topbar-inner">
             <Link className="wordmark" href="/">
-              <Mark size={18} />
-              <span>ON RECORD</span>
+              <Mark size={20} />
+              <span>on record</span>
             </Link>
+            <form className="search-form" action="/" role="search">
+              <span className="search-icon" aria-hidden="true">
+                ⌕
+              </span>
+              <input
+                className="search-input"
+                type="search"
+                name="q"
+                placeholder="Search a project, key, or story…"
+                aria-label="Search the record"
+              />
+            </form>
             <nav className="topnav" aria-label="Main">
-              <Link href="/">FEED</Link>
-              <Link href="/lab">THE LAB</Link>
+              <Link href="/">Feed</Link>
+              <Link href="/lab">The Lab</Link>
               <a href={RSS_URL} target="_blank" rel="noopener noreferrer">
                 RSS
               </a>
