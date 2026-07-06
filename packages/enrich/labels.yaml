@@ -1,0 +1,61 @@
+# Curated program → entity labels, seeded into the entities table.
+# This is intentionally small: DeFiLlama mappings and operator naming do the
+# rest. slugs must be unique.
+entities:
+  - name: Jupiter
+    slug: jupiter
+    category: dex-aggregator
+    website: https://jup.ag
+    llamaSlug: jupiter-aggregator
+    programIds:
+      - JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4
+  - name: Raydium
+    slug: raydium
+    category: dex
+    website: https://raydium.io
+    llamaSlug: raydium
+    programIds:
+      - 675kPX9MHTjS2zt1qfr1NYHuzeLXfQM9H24wFSUt1Mp8
+      - CAMMCzo5YL8w4VFF8KVHrK22GGUsp5VTaW7grrKgrWqK
+  - name: pump.fun
+    slug: pump-fun
+    category: launchpad
+    website: https://pump.fun
+    llamaSlug: pump.fun
+    programIds:
+      - 6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P
+  - name: Marinade
+    slug: marinade
+    category: liquid-staking
+    website: https://marinade.finance
+    llamaSlug: marinade-finance
+    programIds:
+      - MarBmsSgKXdrN1egZf5sqe1TMai9K1rChYNDJgjq7aD
+  - name: Kamino
+    slug: kamino
+    category: lending
+    website: https://kamino.finance
+    llamaSlug: kamino-lend
+    programIds:
+      - KLend2g3cP87fffoy8q1mQqGKjrxjC8boSyAYavgmjD
+  - name: Drift
+    slug: drift
+    category: perps
+    website: https://drift.trade
+    llamaSlug: drift
+    programIds:
+      - dRiftyHA39MWEi3m9aunc5MzRF1JYuBsbn6VPcn33UH
+  - name: Metaplex
+    slug: metaplex
+    category: nft-infra
+    website: https://metaplex.com
+    programIds:
+      - metaqbxxUerdq28cj1RbAWkYQm3ybzjb6a8bt518x1s
+      - CoREENxT6tW1HoK8ypY1SxRMZTcVPm7R94rH4PZNhX7d
+  - name: Squads
+    slug: squads
+    category: multisig
+    website: https://squads.so
+    programIds:
+      - SQDS4ep65T869zMMBKyuUq6aD6EgTu8psMjkvj52pCf
+      - SMPLecH534NA9acpos4G6x7uf3LWbCAwZQE9e8ZekMu

@@ -1,0 +1,21 @@
+{
+  "name": "onrecord",
+  "private": true,
+  "version": "0.1.0",
+  "description": "An agentic newsroom for Solana. Announcements are claims, deployments are facts.",
+  "scripts": {
+    "build": "pnpm -r build",
+    "typecheck": "pnpm -r typecheck",
+    "dev:ingest": "pnpm --filter @onrecord/ingest dev",
+    "dev:worker": "pnpm --filter @onrecord/ingest dev:worker",
+    "dev:web": "pnpm --filter @onrecord/web dev",
+    "db:push": "pnpm --filter @onrecord/core db:push",
+    "db:generate": "pnpm --filter @onrecord/core db:generate",
+    "db:migrate": "pnpm --filter @onrecord/core db:migrate",
+    "seed": "pnpm --filter @onrecord/enrich seed"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "packageManager": "pnpm@10.0.0"
+}

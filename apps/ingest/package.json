@@ -1,0 +1,29 @@
+{
+  "name": "@onrecord/ingest",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "dev": "tsx watch src/server.ts",
+    "dev:worker": "tsx watch src/worker.ts",
+    "start": "node dist/server.js",
+    "start:worker": "node dist/worker.js"
+  },
+  "dependencies": {
+    "@fastify/basic-auth": "^6.0.1",
+    "@onrecord/core": "workspace:*",
+    "@onrecord/enrich": "workspace:*",
+    "@onrecord/newsroom": "workspace:*",
+    "bs58": "^6.0.0",
+    "bullmq": "^5.34.0",
+    "drizzle-orm": "^0.38.3",
+    "fastify": "^5.2.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.5",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2"
+  }
+}
