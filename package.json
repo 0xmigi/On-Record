@@ -9,6 +9,8 @@
     "dev:ingest": "pnpm --filter @onrecord/ingest dev",
     "dev:worker": "pnpm --filter @onrecord/ingest dev:worker",
     "dev:web": "pnpm --filter @onrecord/web dev",
+    "dev:mock": "node scripts/mock-api.mjs",
+    "dev:design": "node scripts/mock-api.mjs & API_URL=http://localhost:3001 pnpm --filter @onrecord/web dev",
     "db:push": "pnpm --filter @onrecord/core db:push",
     "db:generate": "pnpm --filter @onrecord/core db:generate",
     "db:migrate": "pnpm --filter @onrecord/core db:migrate",

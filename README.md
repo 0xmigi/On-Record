@@ -121,6 +121,22 @@ pnpm dev:web              # site on :3000
 
 Full-stack containers: `docker compose up --build` (the worker image includes git for update diffs and the reference TLSH CLI).
 
+### Iterating on the UI (no database needed)
+
+For design work you don't need the pipeline. A zero-dependency mock API serves
+one seeded "demo day" (every story type, subject pages, the lab) so the site
+runs on its own:
+
+```
+pnpm install
+pnpm dev:mock             # fake API on :3001 (scripts/mock-api.mjs, no Postgres/Redis)
+pnpm dev:web              # site on :3000 — Next.js fast-refresh on every save
+```
+
+Open http://localhost:3000. Editing anything under `apps/web` hot-reloads
+instantly. To change the sample content, edit the data at the top of
+`scripts/mock-api.mjs`.
+
 Point two Helius webhooks (enhanced transactions, watching the loader program id) at:
 
 ```
