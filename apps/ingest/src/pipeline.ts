@@ -15,6 +15,7 @@ import {
   getFundingSource,
   getEarlyActivity,
   profileProgram,
+  deriveBytecodeIdentity,
   type Category,
   type EventEnrichment,
   type Fingerprint,
@@ -136,6 +137,10 @@ export async function fingerprintStage(eventId: string): Promise<void> {
     idlInstructions: fp.idl?.instructions,
   });
 
+  // recovered identity from the binary: name (Rust panic paths / security.txt),
+  // repo, socials, website — de-opaques ~half of anonymous programs.
+  enrichment.bytecodeIdentity = deriveBytecodeIdentity(parsed.bytecode);
+
   await db
     .update(schema.events)
     .set({
@@ -215,14 +220,17 @@ export async function identifyStage(eventId: string): Promise<void> {
 async function upsertSubject(event: EventRow, enrichment: EventEnrichment): Promise<void> {
   const fp = enrichment.fingerprint;
   const id = enrichment.identity;
+  const bi = enrichment.bytecodeIdentity;
   const when = event.blockTime ?? new Date();
   const values = {
     kind: "program" as const,
     network: event.network,
-    name: id?.entityName ?? null,
+    // registry/entity name wins; else the name recovered from the binary
+    name: id?.entityName ?? bi?.name ?? null,
     entityKey: id?.entityId ?? null,
     verified: id?.verified ?? false,
-    repoUrl: id?.repoUrl ?? null,
+    // verified-build repo wins; else a repo URL found in the binary
+    repoUrl: id?.repoUrl ?? bi?.repoUrl ?? null,
     repoCommit: id?.repoCommit ?? null,
     authorityClass: id?.authorityClass ?? null,
     authority: event.authorityAfter,
@@ -230,6 +238,9 @@ async function upsertSubject(event: EventRow, enrichment: EventEnrichment): Prom
     tlsh: fp?.tlsh ?? null,
     sizeBytes: fp?.sizeBytes ?? null,
     profile: enrichment.profile ?? null,
+    facts: bi
+      ? { social: bi.social, website: bi.website, hasSecurityTxt: bi.hasSecurityTxt, anchor: bi.anchor }
+      : {},
     tvl: id?.tvl ?? null,
     lastEventAt: when,
     updatedAt: new Date(),

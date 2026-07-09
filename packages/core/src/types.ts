@@ -74,9 +74,21 @@ export interface ScoreResult {
   components: Record<string, number>;
 }
 
+/** Identity recovered directly from the SBF bytecode (Rust panic paths, Neodyme
+ *  security.txt, embedded URLs) — the de-opaquing edge (~half of anonymous programs). */
+export interface BytecodeIdentity {
+  name: string | null;
+  repoUrl: string | null;
+  social: string | null;
+  website: string | null;
+  hasSecurityTxt: boolean;
+  anchor: boolean;
+}
+
 export interface EventEnrichment {
   fingerprint?: Fingerprint;
   profile?: ProgramProfile;
+  bytecodeIdentity?: BytecodeIdentity;
   identity?: Identity;
   classification?: Classification;
   score?: ScoreResult;
@@ -166,6 +178,11 @@ export interface ApiProgram {
   capabilities: string[];
   integrations: string[];
   syscallCount: number | null;
+  // --- recovered identity (de-opaquing) ---
+  repoUrl: string | null;
+  social: string | null;
+  website: string | null;
+  hasSecurityTxt: boolean;
 }
 
 export interface ApiProgramDetail extends ApiProgram {
