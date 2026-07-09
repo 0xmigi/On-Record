@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { IBM_Plex_Mono, IBM_Plex_Sans } from "next/font/google";
 import Link from "next/link";
+import { Analytics } from "@vercel/analytics/next";
 import { Mark } from "@/components/Mark";
 import { SearchBox } from "@/components/SearchBox";
 import "./globals.css";
@@ -69,6 +70,8 @@ export default function RootLayout({
             <span className="footer-helius">HELIUS</span>
           </a>
         </footer>
+
+        <Analytics />
       </body>
     </html>
   );
