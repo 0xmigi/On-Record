@@ -2,9 +2,12 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { CopyAddress } from "@/components/CopyAddress";
+import { ProgramAvatar } from "@/components/ProgramAvatar";
+import { IdlViewer } from "@/components/IdlViewer";
 import { SectionHeader } from "@/components/SectionHeader";
 import {
   CATEGORY_LABELS,
+  fetchIdl,
   fetchProgram,
   orbAddress,
   orbTx,
@@ -59,6 +62,9 @@ export default async function ProgramDossierPage({
   const program = await fetchProgram(id);
   if (!program) notFound();
 
+  // the human-readable interface — fetched only when the program ships an IDL
+  const idl = program.idlPresent ? await fetchIdl(id) : null;
+
   const mutability =
     program.authorityClass === "none"
       ? "immutable (frozen)"
@@ -82,15 +88,18 @@ export default async function ProgramDossierPage({
               <span className="fw-chip">{program.framework}</span>
             ) : null}
             {program.deployType === "upgrade" && program.upgradeCount > 0 ? (
-              <span className="fw-chip">upgraded ×{program.upgradeCount}</span>
+              <span className="cluster-note">upgraded ×{program.upgradeCount}</span>
             ) : null}
           </div>
 
-          <h1 className="dossier-title">
-            {program.name ?? (
-              <span className="dossier-title-unknown">Unidentified program</span>
-            )}
-          </h1>
+          <div className="dossier-title-row">
+            <ProgramAvatar program={program} size={38} />
+            <h1 className="dossier-title">
+              {program.name ?? (
+                <span className="dossier-title-unknown">Unidentified program</span>
+              )}
+            </h1>
+          </div>
 
           <div className="dossier-sub">
             <CopyAddress value={program.id} display={program.id} className="dossier-id" />
@@ -206,6 +215,17 @@ export default async function ProgramDossierPage({
         <Row label="Syscalls imported">{program.syscallCount ?? "—"}</Row>
         <Row label="Image size">{formatBytes(program.sizeBytes)}</Row>
       </div>
+
+      {/* INTERFACE · IDL — how you actually call the program */}
+      {idl ? (
+        <>
+          <SectionHeader
+            title="Interface"
+            info="The Anchor IDL — the program's public instruction set: how you call it, what accounts and arguments each instruction takes."
+          />
+          <IdlViewer idl={idl} />
+        </>
+      ) : null}
 
       {/* 4 · CONTROL */}
       <SectionHeader

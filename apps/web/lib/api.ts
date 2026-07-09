@@ -185,6 +185,51 @@ export async function fetchProgram(
   return getJson<ApiProgramDetail>(`/api/programs/${encodeURIComponent(id)}`);
 }
 
+// --- Anchor IDL (the program's human-readable interface) -------------------
+export interface IdlField {
+  name?: string;
+  type?: unknown; // string | { defined } | { vec } | { option } | { array } | ...
+  docs?: string[];
+}
+export interface IdlAccountRef {
+  name?: string;
+  writable?: boolean;
+  signer?: boolean;
+  optional?: boolean;
+  isMut?: boolean; // legacy anchor <0.30
+  isSigner?: boolean;
+  docs?: string[];
+}
+export interface IdlInstruction {
+  name?: string;
+  docs?: string[];
+  accounts?: IdlAccountRef[];
+  args?: IdlField[];
+}
+export interface IdlTypeDef {
+  name?: string;
+  docs?: string[];
+  type?: { kind?: string; fields?: IdlField[]; variants?: { name?: string }[] };
+}
+export interface AnchorIdl {
+  address?: string;
+  metadata?: { name?: string; version?: string; spec?: string; description?: string };
+  name?: string; // legacy anchor <0.30
+  version?: string;
+  instructions?: IdlInstruction[];
+  accounts?: IdlTypeDef[];
+  types?: IdlTypeDef[];
+  events?: { name?: string; fields?: IdlField[] }[];
+  errors?: { code?: number; name?: string; msg?: string }[];
+}
+
+export async function fetchIdl(id: string): Promise<AnchorIdl | null> {
+  const res = await getJson<{ idl: AnchorIdl | null }>(
+    `/api/programs/${encodeURIComponent(id)}/idl`
+  );
+  return res?.idl ?? null;
+}
+
 export async function fetchFunnel(window?: string): Promise<ApiFunnel | null> {
   const qs = window ? `?window=${encodeURIComponent(window)}` : "";
   return getJson<ApiFunnel>(`/api/funnel${qs}`);

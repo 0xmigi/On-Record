@@ -5,6 +5,7 @@ import {
   schema,
   env,
   tlshDistance,
+  fetchAnchorIdl,
   type ApiCluster,
   type ApiCursorPage,
   type ApiProgram,
@@ -160,6 +161,17 @@ export function registerPublicRoutes(app: FastifyInstance): void {
       ? ((await clusterSizes([row.bucketId])).get(row.bucketId) ?? null)
       : null;
     return serializeProgramDetail(row, events, neighbors, clusterSize);
+  });
+
+  // --- a program's full Anchor IDL (the human-readable interface) ----------
+  app.get<{ Params: { id: string } }>("/api/programs/:id/idl", async (req) => {
+    const rows = await db
+      .select({ network: schema.subjects.network })
+      .from(schema.subjects)
+      .where(eq(schema.subjects.id, req.params.id));
+    const network = (rows[0]?.network as "mainnet" | "devnet") ?? "mainnet";
+    const idl = await fetchAnchorIdl(network, req.params.id);
+    return { idl };
   });
 
   // --- the funnel / program stats (windowed) -------------------------------

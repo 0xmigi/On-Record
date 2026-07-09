@@ -13,6 +13,7 @@ export {
   tlshDistance,
   extractStrings,
   probeAnchorIdl,
+  fetchAnchorIdl,
   anchorIdlAddress,
   isOnCurve,
   findProgramAddress,

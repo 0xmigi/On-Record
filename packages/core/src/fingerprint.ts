@@ -225,5 +225,22 @@ export async function probeAnchorIdl(network: Network, programId: string): Promi
   }
 }
 
+/** Fetch and decompress the FULL on-chain Anchor IDL JSON (instructions, args,
+ *  accounts, types, events, errors) — the program's human-readable interface.
+ *  Returns the parsed IDL object as-is, or null if there is none. */
+export async function fetchAnchorIdl(network: Network, programId: string): Promise<unknown | null> {
+  try {
+    const address = anchorIdlAddress(programId);
+    const data = await getAccountBytes(network, address);
+    if (!data || data.length < 44) return null;
+    const len = data.readUInt32LE(40);
+    if (len === 0 || 44 + len > data.length) return null;
+    const json = zlib.inflateSync(data.subarray(44, 44 + len)).toString("utf8");
+    return JSON.parse(json);
+  } catch {
+    return null;
+  }
+}
+
 // re-export so callers only need one import for loader constants
 export { LOADER_PROGRAM_ID };

@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { CopyAddress } from "@/components/CopyAddress";
+import { ProgramAvatar } from "@/components/ProgramAvatar";
 import { CATEGORY_LABELS, orbAddress, type ApiProgram } from "@/lib/api";
 import { formatBytes, relativeTime, truncateAddress } from "@/lib/format";
 
@@ -12,18 +13,6 @@ const AUTHORITY_LABELS: Record<NonNullable<ApiProgram["authorityClass"]>, string
 
 function authorityLabel(cls: ApiProgram["authorityClass"]): string {
   return cls ? AUTHORITY_LABELS[cls] : "unknown authority";
-}
-
-/** Best URL to source a favicon from: an explicit website, else a github/x link. */
-function faviconUrl(program: ApiProgram): string | null {
-  const src = program.website ?? program.social ?? program.repoUrl;
-  if (!src) return null;
-  try {
-    const host = new URL(src).hostname;
-    return `https://www.google.com/s2/favicons?domain=${host}&sz=64`;
-  } catch {
-    return null;
-  }
 }
 
 /** One fact chip in the compact facts row — label muted, value inked. */
@@ -43,7 +32,6 @@ function Fact({ label, value }: { label: string; value: string }) {
  */
 export function ProgramRow({ program }: { program: ApiProgram }) {
   const inCluster = (program.clusterSize ?? 0) > 1;
-  const favicon = faviconUrl(program);
 
   return (
     <article className="radar-row">
@@ -54,14 +42,7 @@ export function ProgramRow({ program }: { program: ApiProgram }) {
       />
       <div className="radar-main">
         <div className={`radar-id-line${program.name ? " has-name" : ""}`}>
-          {favicon ? (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img className="radar-favicon" src={favicon} alt="" width={18} height={18} loading="lazy" />
-          ) : (
-            <span className="radar-favicon radar-avatar" aria-hidden="true">
-              {program.id.slice(0, 2)}
-            </span>
-          )}
+          <ProgramAvatar program={program} />
           {program.name ? (
             <span className="radar-name">{program.name}</span>
           ) : null}
