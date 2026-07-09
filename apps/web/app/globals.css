@@ -1254,11 +1254,21 @@ a.copy-addr-text:hover {
   font-weight: 600;
 }
 
+/* the recovered name is the title */
 .radar-name {
   font-family: var(--font-head);
-  font-size: 14px;
+  font-size: 15.5px;
   font-weight: 700;
+  letter-spacing: -0.01em;
   color: var(--ink);
+}
+
+/* when a program is named, the id drops to a quiet mono subtitle so the two
+   read as title + address, not two equal-weight labels */
+.radar-id-line.has-name .radar-addr .copy-addr-text {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--ink-faint);
 }
 
 .verified-check {

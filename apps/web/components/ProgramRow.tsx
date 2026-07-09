@@ -48,7 +48,7 @@ export function ProgramRow({ program }: { program: ApiProgram }) {
   return (
     <article className="radar-row">
       <div className="radar-main">
-        <div className="radar-id-line">
+        <div className={`radar-id-line${program.name ? " has-name" : ""}`}>
           {favicon ? (
             // eslint-disable-next-line @next/next/no-img-element
             <img className="radar-favicon" src={favicon} alt="" width={16} height={16} loading="lazy" />
