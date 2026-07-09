@@ -33,6 +33,7 @@ type SubjectLite = {
   entityKey: string | null;
   deployerFundingSource: string | null;
   profile: ProgramProfile | null;
+  deployType: string | null;
   firstSeenAt: Date | null;
 };
 
@@ -51,25 +52,10 @@ export async function computeWindowFunnel(
   const eventTime = sql`coalesce(${schema.events.blockTime}, ${schema.events.createdAt})`;
   const eventTimeGte = (d: Date) => sql`${eventTime} >= ${d.toISOString()}::timestamptz`;
 
-  // raw + deploy/upgrade split
-  const evRows = await db
-    .select({ type: schema.events.type, n: sql<number>`count(*)` })
-    .from(schema.events)
-    .where(
-      and(
-        eq(schema.events.network, network),
-        inArray(schema.events.type, ["deploy", "upgrade"]),
-        eventTimeGte(start),
-      ),
-    )
-    .groupBy(schema.events.type);
+  // programs active in the window, split into new deploys vs upgrades by the
+  // per-program classification (deployType), so the funnel matches the radar.
   let deploys = 0;
   let upgrades = 0;
-  for (const r of evRows) {
-    if (r.type === "deploy") deploys = Number(r.n);
-    else if (r.type === "upgrade") upgrades = Number(r.n);
-  }
-  const raw = deploys + upgrades;
 
   // new-program subjects in the window carry everything the breakdowns need
   const subs = (await db
@@ -84,6 +70,7 @@ export async function computeWindowFunnel(
       entityKey: schema.subjects.entityKey,
       deployerFundingSource: schema.subjects.deployerFundingSource,
       profile: schema.subjects.profile,
+      deployType: schema.subjects.deployType,
       firstSeenAt: schema.subjects.firstSeenAt,
     })
     .from(schema.subjects)
@@ -114,6 +101,8 @@ export async function computeWindowFunnel(
 
   for (const s of subs) {
     if (s.sha256) uniqueSha.add(s.sha256);
+    if (s.deployType === "upgrade") upgrades++;
+    else deploys++;
     if (s.noveltyBand === "novel") {
       novel++;
       lineage.novel++;
@@ -189,6 +178,8 @@ export async function computeWindowFunnel(
     t: Math.floor(new Date(r.bucket).getTime() / 1000),
     count: Number(r.n),
   }));
+
+  const raw = deploys + upgrades;
 
   return {
     date: todayKey(),

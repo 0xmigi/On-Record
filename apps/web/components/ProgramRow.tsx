@@ -13,6 +13,18 @@ function authorityLabel(cls: ApiProgram["authorityClass"]): string {
   return cls ? AUTHORITY_LABELS[cls] : "unknown authority";
 }
 
+/** Best URL to source a favicon from: an explicit website, else a github/x link. */
+function faviconUrl(program: ApiProgram): string | null {
+  const src = program.website ?? program.social ?? program.repoUrl;
+  if (!src) return null;
+  try {
+    const host = new URL(src).hostname;
+    return `https://www.google.com/s2/favicons?domain=${host}&sz=64`;
+  } catch {
+    return null;
+  }
+}
+
 /** One fact chip in the compact facts row — label muted, value inked. */
 function Fact({ label, value }: { label: string; value: string }) {
   return (
@@ -31,19 +43,35 @@ function Fact({ label, value }: { label: string; value: string }) {
 export function ProgramRow({ program }: { program: ApiProgram }) {
   const gauge = noveltyGauge(program.noveltyScore);
   const inCluster = (program.clusterSize ?? 0) > 1;
+  const favicon = faviconUrl(program);
 
   return (
     <article className="radar-row">
       <div className="radar-main">
         <div className="radar-id-line">
+          {favicon ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img className="radar-favicon" src={favicon} alt="" width={16} height={16} loading="lazy" />
+          ) : null}
+          {program.name ? (
+            <span className="radar-name">{program.name}</span>
+          ) : null}
           <CopyAddress
             value={program.id}
             display={truncateAddress(program.id)}
             href={`/p/${program.id}`}
             className="radar-addr"
           />
-          {program.name ? (
-            <span className="radar-name">{program.name}</span>
+          {program.website ? (
+            <a
+              className="id-link"
+              href={program.website}
+              target="_blank"
+              rel="noopener noreferrer"
+              title={program.website}
+            >
+              site ↗
+            </a>
           ) : null}
           {program.repoUrl ? (
             <a
@@ -66,6 +94,11 @@ export function ProgramRow({ program }: { program: ApiProgram }) {
             >
               x ↗
             </a>
+          ) : null}
+          {program.upgradeCount > 0 ? (
+            <span className="cluster-note" title="Times this program has been re-deployed">
+              upgraded ×{program.upgradeCount}
+            </span>
           ) : null}
           {program.hasSecurityTxt ? (
             <span className="sec-badge" title="Embeds a security.txt in its binary">

@@ -43,6 +43,8 @@ export interface ApiProgram {
   bucketId: string | null;
   clusterSize: number | null; // members in its clone cluster, if any
   deployType: RadarType; // "deploy" = new program id, "upgrade" = existing program changed
+  firstDeployAt: string | null; // ISO — the ORIGINAL deploy (deployedAt is the latest)
+  upgradeCount: number; // times re-deployed after the original
   // identity recovered from the program binary (the de-opaquer)
   repoUrl: string | null;
   social: string | null; // x.com / twitter

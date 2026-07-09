@@ -1240,6 +1240,15 @@ a.copy-addr-text:hover {
   gap: 8px 10px;
 }
 
+.radar-favicon {
+  width: 16px;
+  height: 16px;
+  border-radius: 4px;
+  flex: none;
+  object-fit: cover;
+  background: var(--surface-2, rgba(0, 0, 0, 0.04));
+}
+
 .radar-addr .copy-addr-text {
   font-size: 14px;
   font-weight: 600;

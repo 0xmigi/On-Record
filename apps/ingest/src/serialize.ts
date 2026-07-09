@@ -30,7 +30,12 @@ export function serializeEvent(row: EventRow): ApiRawEvent {
 
 export function serializeProgram(row: SubjectRow, clusterSize: number | null = null): ApiProgram {
   const profile = row.profile ?? null;
-  const facts = (row.facts ?? {}) as { social?: string; website?: string; hasSecurityTxt?: boolean };
+  const facts = (row.facts ?? {}) as {
+    social?: string;
+    website?: string;
+    hasSecurityTxt?: boolean;
+    upgradeCount?: number;
+  };
   return {
     id: row.id,
     network: row.network as Network,
@@ -58,6 +63,9 @@ export function serializeProgram(row: SubjectRow, clusterSize: number | null = n
     social: facts.social ?? null,
     website: facts.website ?? null,
     hasSecurityTxt: Boolean(facts.hasSecurityTxt),
+    deployType: (row.deployType as "deploy" | "upgrade") ?? "deploy",
+    firstDeployAt: row.firstDeployAt?.toISOString() ?? null,
+    upgradeCount: facts.upgradeCount ?? 0,
   };
 }
 

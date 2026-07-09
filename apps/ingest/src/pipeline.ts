@@ -14,6 +14,7 @@ import {
   getConfig,
   getFundingSource,
   getEarlyActivity,
+  getDeployHistory,
   profileProgram,
   deriveBytecodeIdentity,
   type Category,
@@ -199,6 +200,18 @@ export async function identifyStage(eventId: string): Promise<void> {
 
   const authorityClass = await classifyAuthority(network, event.authorityAfter);
 
+  // deploy vs upgrade: read the ProgramData deploy history (its signatures are
+  // deploy/upgrade txns only). >1 tx ⇒ the program existed and was re-deployed.
+  if (event.programDataAddress) {
+    const dh = await getDeployHistory(network, event.programDataAddress);
+    const upgradeCount = Math.max(0, dh.txCount - 1);
+    enrichment.deploy = {
+      firstDeployAt: dh.firstDeployAt?.toISOString() ?? null,
+      deployType: upgradeCount > 0 ? "upgrade" : "deploy",
+      upgradeCount,
+    };
+  }
+
   enrichment.identity = {
     entityId: entity?.id ?? entityByAuthority?.id ?? null,
     entityName: entity?.name ?? entityByAuthority?.name ?? null,
@@ -221,6 +234,7 @@ async function upsertSubject(event: EventRow, enrichment: EventEnrichment): Prom
   const fp = enrichment.fingerprint;
   const id = enrichment.identity;
   const bi = enrichment.bytecodeIdentity;
+  const dep = enrichment.deploy;
   const when = event.blockTime ?? new Date();
   const values = {
     kind: "program" as const,
@@ -238,9 +252,12 @@ async function upsertSubject(event: EventRow, enrichment: EventEnrichment): Prom
     tlsh: fp?.tlsh ?? null,
     sizeBytes: fp?.sizeBytes ?? null,
     profile: enrichment.profile ?? null,
-    facts: bi
-      ? { social: bi.social, website: bi.website, hasSecurityTxt: bi.hasSecurityTxt, anchor: bi.anchor }
-      : {},
+    firstDeployAt: dep?.firstDeployAt ? new Date(dep.firstDeployAt) : null,
+    deployType: dep?.deployType ?? null,
+    facts: {
+      ...(bi ? { social: bi.social, website: bi.website, hasSecurityTxt: bi.hasSecurityTxt, anchor: bi.anchor } : {}),
+      ...(dep ? { upgradeCount: dep.upgradeCount } : {}),
+    },
     tvl: id?.tvl ?? null,
     lastEventAt: when,
     updatedAt: new Date(),

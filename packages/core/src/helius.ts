@@ -223,6 +223,44 @@ export async function getSignaturesForAddress(
   ]);
 }
 
+export interface DeployHistory {
+  firstDeployAt: Date | null;
+  firstDeploySlot: number | null;
+  lastDeploySlot: number | null;
+  /** deploy + upgrade + set-authority txns on the ProgramData; upgrades ≈ count-1 */
+  txCount: number;
+}
+
+/** A program's ProgramData account only appears in deploy / upgrade / set-authority
+ *  / close transactions — never in program invocations — so its signature history
+ *  IS the program's deploy history. Oldest signature = the original deploy; a count
+ *  above 1 means the program has been upgraded. Cheap and exact, unlike walking the
+ *  program id's (usage-flooded) history. */
+export async function getDeployHistory(
+  network: Network,
+  programDataAddress: string,
+): Promise<DeployHistory> {
+  const all: SignatureInfo[] = [];
+  let before: string | undefined;
+  for (let page = 0; page < 5; page++) {
+    const sigs = await getSignaturesForAddress(network, programDataAddress, { limit: 1000, before });
+    if (!sigs.length) break;
+    all.push(...sigs);
+    if (sigs.length < 1000) break;
+    before = sigs[sigs.length - 1]!.signature;
+  }
+  if (!all.length) {
+    return { firstDeployAt: null, firstDeploySlot: null, lastDeploySlot: null, txCount: 0 };
+  }
+  const oldest = all[all.length - 1]!;
+  return {
+    firstDeployAt: oldest.blockTime ? new Date(oldest.blockTime * 1000) : null,
+    firstDeploySlot: oldest.slot,
+    lastDeploySlot: all[0]!.slot,
+    txCount: all.length,
+  };
+}
+
 /** Early-usage proxy: how many transactions hit the program in its first
  *  `windowHours`. (Distinct-signer counting needs per-tx fetches; signature
  *  count is the cheap, honest proxy the score treats as "early activity".) */

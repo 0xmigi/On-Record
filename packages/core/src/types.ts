@@ -89,6 +89,7 @@ export interface EventEnrichment {
   fingerprint?: Fingerprint;
   profile?: ProgramProfile;
   bytecodeIdentity?: BytecodeIdentity;
+  deploy?: { firstDeployAt: string | null; deployType: "deploy" | "upgrade"; upgradeCount: number };
   identity?: Identity;
   classification?: Classification;
   score?: ScoreResult;
@@ -183,6 +184,10 @@ export interface ApiProgram {
   social: string | null;
   website: string | null;
   hasSecurityTxt: boolean;
+  // --- deploy vs upgrade (from ProgramData history) ---
+  deployType: "deploy" | "upgrade";
+  firstDeployAt: string | null; // ISO — the ORIGINAL deploy (deployedAt is the latest)
+  upgradeCount: number; // times re-deployed after the original
 }
 
 export interface ApiProgramDetail extends ApiProgram {

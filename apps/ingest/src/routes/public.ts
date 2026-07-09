@@ -1,5 +1,5 @@
 import type { FastifyInstance } from "fastify";
-import { and, desc, eq, gte, inArray, lt, lte, ne, or, sql } from "drizzle-orm";
+import { and, desc, eq, gte, inArray, isNull, lt, lte, ne, or, sql } from "drizzle-orm";
 import {
   db,
   schema,
@@ -54,11 +54,12 @@ async function clusterSizes(bucketIds: (string | null)[]): Promise<Map<string, n
 
 export function registerPublicRoutes(app: FastifyInstance): void {
   // --- the radar: ranked programs -----------------------------------------
-  app.get<{ Querystring: { window?: string; band?: string; cursor?: string; limit?: string } }>(
+  app.get<{ Querystring: { window?: string; band?: string; type?: string; cursor?: string; limit?: string } }>(
     "/api/radar",
     async (req): Promise<ApiCursorPage<ApiProgram>> => {
       const limit = Math.min(Number(req.query.limit ?? 30) || 30, 100);
       const band = req.query.band && BANDS.has(req.query.band as NoveltyBand) ? req.query.band : "novel";
+      const type = req.query.type === "upgrade" ? "upgrade" : "deploy";
       const start = windowStart(req.query.window);
 
       const conditions = [
@@ -66,6 +67,15 @@ export function registerPublicRoutes(app: FastifyInstance): void {
         eq(schema.subjects.kind, "program"),
         eq(schema.subjects.noveltyBand, band),
       ];
+      // deploy vs upgrade stream. Unclassified (null) rows read as new deploys so
+      // nothing silently disappears before the classifier has run.
+      if (type === "upgrade") {
+        conditions.push(eq(schema.subjects.deployType, "upgrade"));
+      } else {
+        conditions.push(
+          or(eq(schema.subjects.deployType, "deploy"), isNull(schema.subjects.deployType))!,
+        );
+      }
       if (start) conditions.push(gte(schema.subjects.firstSeenAt, start));
 
       const cur = req.query.cursor ? decodeCursor(req.query.cursor) : null;

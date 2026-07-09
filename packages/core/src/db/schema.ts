@@ -76,6 +76,10 @@ export const subjects = pgTable(
     idlPresent: boolean("idl_present").default(false).notNull(),
     // structured profile from the SBF bytecode (framework, syscalls, caps, integrations)
     profile: jsonb("profile").$type<import("../profile.js").ProgramProfile>(),
+    // deploy vs upgrade: firstDeployAt = the ORIGINAL deploy (from ProgramData history);
+    // deployType 'upgrade' = the program existed and was re-deployed (not new).
+    firstDeployAt: timestamp("first_deploy_at", { withTimezone: true }),
+    deployType: text("deploy_type"), // 'deploy' | 'upgrade'
     deployerFundingSource: text("deployer_funding_source"),
     earlySigners: integer("early_signers"),
     tvl: doublePrecision("tvl"),

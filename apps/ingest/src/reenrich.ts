@@ -4,6 +4,7 @@ import {
   schema,
   logger,
   getAccountBytes,
+  getDeployHistory,
   parseProgramDataAccount,
   deriveBytecodeIdentity,
   type Network,
@@ -26,6 +27,7 @@ async function run(network: Network): Promise<void> {
   logger.info({ subjects: subs.length, network }, "reenrich: start");
 
   let named = 0;
+  let upgraded = 0;
   let done = 0;
   for (const s of subs) {
     try {
@@ -42,27 +44,36 @@ async function run(network: Network): Promise<void> {
       if (!parsed) continue;
       const bi = deriveBytecodeIdentity(parsed.bytecode);
 
+      // deploy vs upgrade from the ProgramData signature history
+      const dh = await getDeployHistory(s.network as Network, pd);
+      const upgradeCount = Math.max(0, dh.txCount - 1);
+      const deployType = upgradeCount > 0 ? "upgrade" : "deploy";
+
       await db
         .update(schema.subjects)
         .set({
           name: sql`coalesce(${schema.subjects.name}, ${bi.name})`,
           repoUrl: sql`coalesce(${schema.subjects.repoUrl}, ${bi.repoUrl})`,
+          firstDeployAt: dh.firstDeployAt,
+          deployType,
           facts: {
             social: bi.social,
             website: bi.website,
             hasSecurityTxt: bi.hasSecurityTxt,
             anchor: bi.anchor,
+            upgradeCount,
           },
           updatedAt: new Date(),
         })
         .where(eq(schema.subjects.id, s.id));
       if (bi.name) named++;
+      if (deployType === "upgrade") upgraded++;
     } catch (err) {
       logger.warn({ id: s.id, err: String(err) }, "reenrich: subject failed");
     }
-    if (++done % 25 === 0) logger.info({ done, of: subs.length, named }, "reenrich: progress");
+    if (++done % 25 === 0) logger.info({ done, of: subs.length, named, upgraded }, "reenrich: progress");
   }
-  logger.info({ done, named, of: subs.length }, "reenrich: complete");
+  logger.info({ done, named, upgraded, of: subs.length }, "reenrich: complete");
 }
 
 const argv = process.argv.slice(2);
