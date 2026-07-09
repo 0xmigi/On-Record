@@ -179,13 +179,33 @@ export interface ApiProgramDetail extends ApiProgram {
 }
 
 export interface ApiFunnel {
-  date: string; // YYYY-MM-DD
-  raw: number; // total deploy + upgrade events
-  unique: number; // unique bytecode (Y)
-  novel: number; // Z
+  date: string; // YYYY-MM-DD (the window's end day)
+  raw: number; // total deploy + upgrade events in the window
+  unique: number; // unique bytecode among new programs
+  novel: number;
   clones: number;
   variants: number;
-  byCategory: Record<string, number>; // among novel
+  deploys: number; // new program ids
+  upgrades: number; // upgrades of existing programs
+  windowHours?: number;
+  aggregateWindowHours?: number;
+  capped?: boolean;
+  byCategory: Record<string, number>; // category -> count among new programs
+  byFramework?: Record<string, number>;
+  byIntegration?: Record<string, number>;
+  byCapability?: Record<string, number>;
+  volume?: { t: number; count: number }[]; // 30-day hourly deploy/upgrade volume
+  identity?: { named: number; withRepo: number; opaque: number };
+  lineage?: { novel: number; variant: number; fork: number };
+  control?: { mutable: number; frozen: number; verified: number };
+  conviction?: { knownEntity: number; funderTraced: number; untraced: number };
+  frameworkTrend?: {
+    framework: string;
+    current: number;
+    earlyShare: number;
+    lateShare: number;
+    delta: number;
+  }[];
   updatedAt: string; // ISO
 }
 

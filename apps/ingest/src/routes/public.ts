@@ -12,7 +12,7 @@ import {
   type NoveltyBand,
 } from "@onrecord/core";
 import { serializeEvent, serializeProgram, serializeProgramDetail } from "../serialize.js";
-import { readFunnel, todayKey } from "../funnel.js";
+import { computeWindowFunnel, windowHoursFor, todayKey } from "../funnel.js";
 
 // ---------------------------------------------------------------------------
 // Public read API (SPEC §7). Self-contained JSON, stable ids, cursor paging.
@@ -150,10 +150,9 @@ export function registerPublicRoutes(app: FastifyInstance): void {
     return serializeProgramDetail(row, events, neighbors, clusterSize);
   });
 
-  // --- the funnel ----------------------------------------------------------
-  app.get<{ Querystring: { date?: string } }>("/api/funnel", async (req) => {
-    const date = /^\d{4}-\d{2}-\d{2}$/.test(req.query.date ?? "") ? req.query.date! : todayKey();
-    return readFunnel(date);
+  // --- the funnel / program stats (windowed) -------------------------------
+  app.get<{ Querystring: { window?: string } }>("/api/funnel", async (req) => {
+    return computeWindowFunnel(windowHoursFor(req.query.window), "mainnet");
   });
 
   // --- a clone cluster -----------------------------------------------------
