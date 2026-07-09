@@ -1,27 +1,13 @@
 import { Worker } from "bullmq";
-import {
-  makeRedis,
-  logger,
-  QUEUES,
-  type EventJob,
-  type QueueName,
-  type VerifyJob,
-  type WriteJob,
-} from "@onrecord/core";
-import {
-  classifyStage,
-  fingerprintStage,
-  identifyStage,
-  rankStage,
-  verifyStage,
-  writeStage,
-} from "./pipeline.js";
+import { makeRedis, logger, QUEUES, type EventJob, type QueueName } from "@onrecord/core";
+import { classifyStage, fingerprintStage, identifyStage, scoreStage } from "./pipeline.js";
 import { startCron } from "./cron.js";
 
 // ---------------------------------------------------------------------------
-// The newsroom's back office: one BullMQ worker per pipeline stage (spec §4).
-// Fingerprint is capped at 8 concurrent bytecode fetches; the LLM stages run
-// serially so the daily budget check can't race itself into overspending.
+// One BullMQ worker per pipeline stage (SPEC §3). Fingerprint is capped at 8
+// concurrent bytecode fetches; score does the funding/usage RPC walks so it
+// runs a little wider.
+//   fingerprint → identify → classify → score
 // ---------------------------------------------------------------------------
 
 function stageWorker<T>(
@@ -45,10 +31,8 @@ function stageWorker<T>(
 stageWorker<EventJob>(QUEUES.fingerprint, 8, ({ eventId }) => fingerprintStage(eventId));
 stageWorker<EventJob>(QUEUES.identify, 4, ({ eventId }) => identifyStage(eventId));
 stageWorker<EventJob>(QUEUES.classify, 2, ({ eventId }) => classifyStage(eventId));
-stageWorker<EventJob>(QUEUES.rank, 2, ({ eventId }) => rankStage(eventId));
-stageWorker<WriteJob>(QUEUES.write, 1, (job) => writeStage(job));
-stageWorker<VerifyJob>(QUEUES.verify, 1, (job) => verifyStage(job));
+stageWorker<EventJob>(QUEUES.score, 4, ({ eventId }) => scoreStage(eventId));
 
 startCron();
 
-logger.info("onrecord workers running: fingerprint → identify → classify → rank → write → verify");
+logger.info("onrecord workers running: fingerprint → identify → classify → score");

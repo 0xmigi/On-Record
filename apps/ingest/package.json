@@ -8,14 +8,17 @@
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "dev": "tsx watch src/server.ts",
     "dev:worker": "tsx watch src/worker.ts",
+    "backfill": "INLINE_PIPELINE=1 tsx src/backfill.ts",
+    "poll": "INLINE_PIPELINE=1 tsx src/poller.ts",
+    "dev:live": "tsx watch src/live.ts",
     "start": "node dist/server.js",
-    "start:worker": "node dist/worker.js"
+    "start:worker": "node dist/worker.js",
+    "start:live": "node dist/live.js"
   },
   "dependencies": {
     "@fastify/basic-auth": "^6.0.1",
     "@onrecord/core": "workspace:*",
     "@onrecord/enrich": "workspace:*",
-    "@onrecord/newsroom": "workspace:*",
     "bs58": "^6.0.0",
     "bullmq": "^5.34.0",
     "drizzle-orm": "^0.38.3",

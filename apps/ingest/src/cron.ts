@@ -1,20 +1,19 @@
 import { and, eq, gte } from "drizzle-orm";
 import { db, schema, logger, tlshDistance } from "@onrecord/core";
 import { expireWatchlist, refreshTvl } from "@onrecord/enrich";
-import { generateDigest } from "@onrecord/newsroom";
-import { copyWaveSweep } from "./pipeline.js";
+import { snapshotFunnel, todayKey } from "./funnel.js";
 
 // ---------------------------------------------------------------------------
-// Scheduled work (spec §8): TVL refresh (6h), copy-wave sweep (30m), and the
-// daily 9am-ET batch — digest, watchlist expiry, corpus stats, threshold
-// drift report. Plain timers; the process is long-lived and single-instance.
+// Scheduled work (SPEC §10): TVL refresh (6h), a live funnel snapshot (15m),
+// and a daily batch — watchlist expiry, corpus stats, threshold drift report,
+// and finalizing yesterday's funnel. Plain timers; the process is long-lived
+// and single-instance.
 // ---------------------------------------------------------------------------
 
 export function startCron(): void {
   every(6 * 3_600_000, "tvl-refresh", refreshTvl);
-  every(30 * 60_000, "copy-wave-sweep", async () => {
-    const n = await copyWaveSweep();
-    if (n) logger.info({ enqueued: n }, "copy-wave stories enqueued");
+  every(15 * 60_000, "funnel-snapshot", async () => {
+    await snapshotFunnel(todayKey());
   });
   every(3_600_000, "daily-batch", maybeRunDaily);
 }
@@ -28,7 +27,7 @@ function every(ms: number, name: string, fn: () => Promise<unknown>): void {
 
 let lastDailyDate = "";
 
-/** Fires once per day at/after 9am America/New_York (spec §11 default). */
+/** Fires once per day at/after 9am America/New_York (SPEC §10 default). */
 async function maybeRunDaily(): Promise<void> {
   const now = new Date();
   const et = new Intl.DateTimeFormat("en-CA", {
@@ -41,10 +40,9 @@ async function maybeRunDaily(): Promise<void> {
   if (hourEt < 9 || lastDailyDate === dateEt) return;
   lastDailyDate = dateEt;
 
-  // digest covers the previous ET day
-  const prev = new Date(now.getTime() - 86_400_000);
-  const prevDate = new Intl.DateTimeFormat("en-CA", { timeZone: "America/New_York" }).format(prev);
-  await generateDigest(prevDate);
+  // finalize yesterday's funnel snapshot
+  const prev = new Date(now.getTime() - 86_400_000).toISOString().slice(0, 10);
+  await snapshotFunnel(prev);
   await expireWatchlist();
   await corpusStats();
   await thresholdDriftReport();

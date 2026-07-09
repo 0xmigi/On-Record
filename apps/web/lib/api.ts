@@ -4,46 +4,67 @@
 
 const API_BASE = process.env.API_URL ?? "http://localhost:3001";
 
-export type StoryType =
-  | "update"
-  | "launch"
-  | "radar"
-  | "became_real"
-  | "corroboration"
-  | "control_change"
-  | "copy_wave";
+export type Network = "mainnet" | "devnet";
+export type Band = "clone" | "variant" | "novel";
+export type Category =
+  | "defi"
+  | "gaming"
+  | "payments"
+  | "token"
+  | "nft"
+  | "infra"
+  | "governance"
+  | "unknown";
+export type AuthorityClass = "none" | "squads" | "program" | "hot_wallet" | null;
 
-export interface Receipt {
-  kind: "tx" | "account" | "repo";
-  ref: string;
-}
+export type RadarWindow = "today" | "week" | "all";
+export type RadarType = "deploy" | "upgrade";
 
-export interface StoryFact {
-  text: string;
-  receipt: Receipt;
-}
-
-export interface StoryInference {
-  text: string;
-  confidence: "low" | "med" | "high";
-}
-
-export interface ApiStory {
-  id: string;
-  type: StoryType;
-  headline: string;
-  body: string;
-  facts: StoryFact[];
-  inference: StoryInference | null;
-  subjects: { id: string; name: string | null }[];
-  status: "published" | "killed" | "pinned" | "dead_letter";
-  pinned: boolean;
-  publishedAt: string;
+/** A radar row / program summary. */
+export interface ApiProgram {
+  id: string; // programId (base58)
+  network: Network;
+  name: string | null; // set only if identified
+  deployedSlot: number | null;
+  deployedAt: string | null; // ISO
+  lastEventAt: string | null; // ISO
+  band: Band;
+  noveltyScore: number; // 0..1
+  category: Category;
+  sizeBytes: number | null;
+  instructionCount: number | null;
+  idlPresent: boolean;
+  authorityClass: AuthorityClass;
+  deployerFundingSource: string | null; // known entity label (e.g. "Coinbase"), else null
+  funderAddress: string | null; // the wallet that funded the deployer (traced)
+  fundingAmountSol: number | null;
+  earlySigners: number | null;
+  verified: boolean;
+  bucketId: string | null;
+  clusterSize: number | null; // members in its clone cluster, if any
+  deployType: RadarType; // "deploy" = new program id, "upgrade" = existing program changed
+  // identity recovered from the program binary (the de-opaquer)
+  repoUrl: string | null;
+  social: string | null; // x.com / twitter
+  website: string | null;
+  hasSecurityTxt: boolean;
+  // structured program profile (ELF-parsed)
+  framework: "anchor" | "pinocchio" | "native" | "unknown" | null;
+  capabilities: string[];
+  integrations: string[];
+  syscallCount: number | null;
+  // fuzzy lineage — nearest known program by code similarity
+  nearest: {
+    name: string | null;
+    id: string | null;
+    similarity: number; // 0..1
+    isReference: boolean; // true = a famous protocol, false = a peer deploy
+  } | null;
 }
 
 export interface ApiRawEvent {
   id: string;
-  network: "mainnet" | "devnet";
+  network: Network;
   type: "deploy" | "upgrade" | "set_authority" | "close";
   signature: string;
   slot: number;
@@ -52,52 +73,70 @@ export interface ApiRawEvent {
   authorityBefore: string | null;
   authorityAfter: string | null;
   sha256After: string | null;
-  enrichment: Record<string, unknown>;
 }
 
-export interface ApiStoryDetail extends ApiStory {
-  events: ApiRawEvent[];
-}
-
-export interface ApiSubject {
-  id: string;
-  kind: "program" | "entity";
+export interface ApiNeighbor {
+  programId: string;
+  distance: number;
   name: string | null;
-  network: "mainnet" | "devnet";
-  verified: boolean;
-  repoUrl: string | null;
-  authorityClass: "none" | "squads" | "program" | "hot_wallet" | null;
-  tvl: number | null;
-  noveltyScore: number | null;
-  bucketId: string | null;
-  stories: ApiStory[];
 }
 
-export interface ApiDigest {
-  date: string;
-  stories: ApiStory[];
-  counts: Record<string, number>;
-}
-
-export interface ApiWatchlistItem {
-  id: string;
-  kind: "fingerprint" | "authority";
-  programId: string | null;
+export interface ApiProgramDetail extends ApiProgram {
   authority: string | null;
-  source: "devnet_novel" | "manual";
-  note: string | null;
-  firstSeenAt: string;
-  lastSeenAt: string;
-  deployCount: number;
-  expiresAt: string;
-  status: "active" | "matched" | "expired";
+  sha256: string | null;
+  events: ApiRawEvent[]; // deploy/upgrade/authority timeline, newest first
+  neighbors: ApiNeighbor[]; // nearest bytecode fingerprints
+  idlInstructions: string[];
+  strings: string[]; // notable printable strings from bytecode
 }
 
-export interface ApiStats {
-  launchesToday: number;
-  updatesToday: number;
-  copyPercentToday: number;
-  radarThisWeek: number;
+export interface ApiFunnel {
+  date: string; // YYYY-MM-DD
+  raw: number; // total deploy+upgrade events
+  unique: number; // unique bytecode (Y)
+  novel: number; // Z
+  clones: number;
+  variants: number;
+  deploys: number; // new programs (new program id)
+  upgrades: number; // upgrades of existing programs
+  windowHours?: number; // requested window (drives the chart)
+  aggregateWindowHours?: number; // window the bar aggregates actually cover
+  capped?: boolean; // true when the requested window exceeds enriched data (48h)
+  byCategory: Record<string, number>; // category -> count among new deploys
+  byFramework?: Record<string, number>; // framework -> count among new deploys
+  byIntegration?: Record<string, number>; // referenced known program -> count
+  byCapability?: Record<string, number>;
+  volume?: { t: number; count: number }[]; // 30-day hourly deploy/upgrade volume
+  // per-vector aggregates across the window's new deploys
+  identity?: { named: number; withRepo: number; opaque: number };
+  lineage?: { novel: number; variant: number; fork: number };
+  control?: { mutable: number; frozen: number; verified: number };
+  conviction?: { knownEntity: number; funderTraced: number; untraced: number };
+  // time series over the window — the stream, bucketed
+  series?: {
+    hoursAgo: number;
+    deploys: number;
+    framework: Record<string, number>;
+    category: Record<string, number>;
+  }[];
+  // per-framework share change (first half vs second half of the window)
+  frameworkTrend?: {
+    framework: string;
+    current: number;
+    earlyShare: number;
+    lateShare: number;
+    delta: number;
+  }[];
+  updatedAt: string; // ISO
+}
+
+export interface ApiCluster {
+  id: string;
+  label: string | null;
+  canonicalSha256: string;
+  memberCount: number;
+  velocity6h: number;
+  members: { programId: string; deployedAt: string | null }[];
 }
 
 export interface ApiCursorPage<T> {
@@ -119,36 +158,46 @@ async function getJson<T>(path: string): Promise<T | null> {
   }
 }
 
-export async function fetchStories(
-  opts: { type?: StoryType; cursor?: string; limit?: number } = {}
-): Promise<ApiCursorPage<ApiStory>> {
+export async function fetchRadar(
+  opts: {
+    window?: RadarWindow;
+    type?: RadarType;
+    cursor?: string;
+    limit?: number;
+  } = {}
+): Promise<ApiCursorPage<ApiProgram>> {
   const params = new URLSearchParams();
-  if (opts.type) params.set("type", opts.type);
+  params.set("window", opts.window ?? "today");
+  params.set("type", opts.type ?? "deploy");
   if (opts.cursor) params.set("cursor", opts.cursor);
-  params.set("limit", String(opts.limit ?? 30));
-  const page = await getJson<ApiCursorPage<ApiStory>>(
-    `/api/stories?${params.toString()}`
+  params.set("limit", String(opts.limit ?? 50));
+  const page = await getJson<ApiCursorPage<ApiProgram>>(
+    `/api/radar?${params.toString()}`
   );
   return page ?? { ...EMPTY_PAGE };
 }
 
-export async function fetchStory(id: string): Promise<ApiStoryDetail | null> {
-  return getJson<ApiStoryDetail>(`/api/stories/${encodeURIComponent(id)}`);
+export async function fetchProgram(
+  id: string
+): Promise<ApiProgramDetail | null> {
+  return getJson<ApiProgramDetail>(`/api/programs/${encodeURIComponent(id)}`);
 }
 
-export async function fetchDigest(date: string): Promise<ApiDigest | null> {
-  return getJson<ApiDigest>(`/api/digest/${encodeURIComponent(date)}`);
+export async function fetchFunnel(window?: string): Promise<ApiFunnel | null> {
+  const qs = window ? `?window=${encodeURIComponent(window)}` : "";
+  return getJson<ApiFunnel>(`/api/funnel${qs}`);
 }
 
-export async function fetchSubject(id: string): Promise<ApiSubject | null> {
-  return getJson<ApiSubject>(`/api/subjects/${encodeURIComponent(id)}`);
+export async function fetchCluster(id: string): Promise<ApiCluster | null> {
+  return getJson<ApiCluster>(`/api/clusters/${encodeURIComponent(id)}`);
 }
 
 export async function fetchRawEvents(
-  opts: { cursor?: string; limit?: number } = {}
+  opts: { cursor?: string; limit?: number; network?: Network } = {}
 ): Promise<ApiCursorPage<ApiRawEvent>> {
   const params = new URLSearchParams();
   if (opts.cursor) params.set("cursor", opts.cursor);
+  if (opts.network) params.set("network", opts.network);
   params.set("limit", String(opts.limit ?? 50));
   const page = await getJson<ApiCursorPage<ApiRawEvent>>(
     `/api/raw/events?${params.toString()}`
@@ -156,50 +205,46 @@ export async function fetchRawEvents(
   return page ?? { ...EMPTY_PAGE };
 }
 
-export async function fetchStats(): Promise<ApiStats | null> {
-  return getJson<ApiStats>("/api/stats");
+// Orb explorer deep links: every address and signature is a live receipt.
+export function orbAddress(id: string): string {
+  return `https://orb.helius.dev/address/${id}`;
 }
 
-export async function fetchLab(): Promise<ApiWatchlistItem[]> {
-  const items = await getJson<ApiWatchlistItem[]>("/api/lab");
-  return Array.isArray(items) ? items : [];
+export function orbTx(signature: string): string {
+  return `https://orb.helius.dev/tx/${signature}`;
 }
 
-export const RSS_URL = `${API_BASE}/rss.xml`;
-
-// Receipt link targets: transactions and accounts open in the Orb explorer,
-// repo receipts are already full URLs.
-export function receiptHref(receipt: Receipt): string {
-  switch (receipt.kind) {
-    case "tx":
-      return `https://orb.helius.dev/tx/${receipt.ref}`;
-    case "account":
-      return `https://orb.helius.dev/address/${receipt.ref}`;
-    case "repo":
-      return receipt.ref;
-  }
-}
-
-export const STORY_TYPE_LABELS: Record<StoryType, string> = {
-  update: "UPDATE",
-  launch: "LAUNCH",
-  radar: "RADAR",
-  became_real: "NOW LIVE",
-  corroboration: "ON RECORD",
-  control_change: "CONTROL",
-  copy_wave: "COPIES",
+export const BAND_LABELS: Record<Band, string> = {
+  clone: "CLONE",
+  variant: "VARIANT",
+  novel: "NOVEL",
 };
 
-const STORY_TYPES: StoryType[] = [
-  "update",
-  "launch",
-  "radar",
-  "became_real",
-  "corroboration",
-  "control_change",
-  "copy_wave",
-];
+export const CATEGORY_LABELS: Record<Category, string> = {
+  defi: "DEFI",
+  gaming: "GAMING",
+  payments: "PAY",
+  token: "TOKEN",
+  nft: "NFT",
+  infra: "INFRA",
+  governance: "GOV",
+  unknown: "UNKNOWN",
+};
 
-export function isStoryType(value: string | undefined): value is StoryType {
-  return value !== undefined && (STORY_TYPES as string[]).includes(value);
+const BANDS: Band[] = ["clone", "variant", "novel"];
+
+export function isBand(value: string | undefined): value is Band {
+  return value !== undefined && (BANDS as string[]).includes(value);
+}
+
+const WINDOWS: RadarWindow[] = ["today", "week", "all"];
+
+export function isWindow(value: string | undefined): value is RadarWindow {
+  return value !== undefined && (WINDOWS as string[]).includes(value);
+}
+
+const RADAR_TYPES: RadarType[] = ["deploy", "upgrade"];
+
+export function isRadarType(value: string | undefined): value is RadarType {
+  return value !== undefined && (RADAR_TYPES as string[]).includes(value);
 }

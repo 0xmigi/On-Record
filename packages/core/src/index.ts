@@ -3,8 +3,9 @@ export * from "./config.js";
 export * from "./ids.js";
 export * from "./logger.js";
 export * from "./queue.js";
-export * from "./vocab.js";
 export * from "./helius.js";
+export * from "./profile.js";
+export * from "./minhash.js";
 export {
   sha256Hex,
   tlshHash,

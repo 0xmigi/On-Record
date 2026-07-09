@@ -1,50 +1,24 @@
 // ---------------------------------------------------------------------------
 // Shared domain types. The API returns these shapes verbatim — the website is
-// just one consumer (spec §2), so treat them as the public contract.
+// just one consumer (SPEC §7), so treat them as the public contract.
+//
+// v2 (the radar): no stories, no LLM prose. The pipeline turns loader events
+// into scored, deduped, categorized *programs*. Fact only.
 // ---------------------------------------------------------------------------
+
+import type { Framework, ProgramProfile } from "./profile.js";
 
 export type Network = "mainnet" | "devnet";
 
 export type ChainEventType = "deploy" | "upgrade" | "set_authority" | "close";
 
-export type StoryType =
-  | "update"
-  | "launch"
-  | "radar"
-  | "became_real"
-  | "corroboration"
-  | "control_change"
-  | "copy_wave";
-
 export type AuthorityClass = "none" | "squads" | "program" | "hot_wallet";
 
-export type StoryStatus = "published" | "killed" | "pinned" | "dead_letter";
+/** Novelty band, from the dedup gate (SPEC §2). */
+export type NoveltyBand = "clone" | "variant" | "novel";
 
-/** A receipt is a pointer at the chain (or a repo) that proves a fact. */
-export interface Receipt {
-  kind: "tx" | "account" | "repo";
-  ref: string;
-}
-
-export interface StoryFact {
-  text: string;
-  receipt: Receipt;
-}
-
-export interface StoryInference {
-  text: string;
-  confidence: "low" | "med" | "high";
-}
-
-/** What the writer LLM must produce — structured, never prose (spec §4.5). */
-export interface StoryDraft {
-  type: StoryType;
-  headline: string; // ≤ 90 chars
-  body: string; // ≤ 280 chars target, 320 hard limit, plain language
-  facts: StoryFact[];
-  inference: StoryInference | null;
-  subjects: string[]; // programIds or entity ids
-}
+/** Rule-based category tag (SPEC §4). `unknown` is honest, not a failure. */
+export type Category = "defi" | "token" | "nft" | "infra" | "governance" | "unknown";
 
 // ---------------------------------------------------------------------------
 // Event enrichment — accumulated by pipeline stages inside events.enrichment
@@ -70,96 +44,89 @@ export interface Identity {
 }
 
 export interface Classification {
+  /** raw disposition from the corpus scan */
   disposition: "copy" | "near_copy" | "novel" | "data_only";
+  /** collapsed 3-way band shown on the radar */
+  band: NoveltyBand;
   bucketId: string | null;
   nearestDistance: number | null;
-  noveltyScore: number; // clamp((minDist − NOVEL_THRESHOLD) / 300, 0, 1)
+  /** structural novelty from bytecode distance: clamp((minDist − NOVEL) / 300, 0, 1) */
+  structuralNovelty: number;
   watchlistHit: { watchlistId: string; matchedOn: "sha256" | "tlsh" | "authority" } | null;
 }
 
-export interface RankResult {
-  score: number;
-  storyType: StoryType | null; // null = stays data
+/** Deployer funding trail — where the deploy authority's SOL came from. */
+export type FundingSource =
+  | "cex" // funded from a known exchange
+  | "bridge" // bridged in
+  | "known_multisig"
+  | "fresh" // freshly funded wallet, single hop, no known source
+  | "unknown";
+
+/** Composite novelty score + its inputs (SPEC §2). Written by the score stage. */
+export interface ScoreResult {
+  score: number; // 0..1 composite
+  category: Category;
+  instructionCount: number | null;
+  idlPresent: boolean;
+  fundingSource: FundingSource | null;
+  earlySigners: number | null;
   components: Record<string, number>;
 }
 
 export interface EventEnrichment {
   fingerprint?: Fingerprint;
+  profile?: ProgramProfile;
   identity?: Identity;
   classification?: Classification;
-  rank?: RankResult;
+  score?: ScoreResult;
   skippedSpamWave?: boolean;
-  diffSummary?: string; // verified updates: truncated code diff summary
-  announcementUrl?: string; // corroboration lever input
   error?: string;
 }
 
 // ---------------------------------------------------------------------------
-// Runtime config (config table) with defaults from spec §7 / §11
+// Runtime config (config table) with defaults from SPEC §2
 // ---------------------------------------------------------------------------
 
 export interface RuntimeConfig {
+  /** TLSH distance below which a deploy is a near-copy (variant) of a neighbor */
   CLONE_THRESHOLD: number;
+  /** TLSH distance at/above which a deploy counts as novel */
   NOVEL_THRESHOLD: number;
-  MAJOR_VALUE_MIN: number;
-  DAILY_STORY_BUDGET: number;
   DEVNET_MAX_REDEPLOYS_PER_DAY: number;
   WATCHLIST_TTL_DAYS: number;
-  MONTHLY_TOKEN_CAP: number;
-  toneNotes: string;
-  rankWeights: {
-    valueHeld: number;
-    verified: number;
-    novelty: number;
-    authorityRisk: number;
-    watchlistHit: number;
-    entityKnown: number;
-    copyWaveVelocity: number;
+  /** how many hours after deploy still counts as "early" usage */
+  EARLY_USAGE_WINDOW_HOURS: number;
+  /** weights for the composite novelty score */
+  noveltyWeights: {
+    structural: number; // bytecode uniqueness
+    instructionSurface: number; // IDL/ELF instruction count
+    fundingTrail: number; // credible deployer funding
+    authority: number; // multisig / immutable
+    earlyUsage: number; // unique signers early
+    verified: number; // open-source boost
   };
-  perTypeFloors: Partial<Record<StoryType, number>>;
 }
 
 export const DEFAULT_CONFIG: RuntimeConfig = {
   CLONE_THRESHOLD: 50,
   NOVEL_THRESHOLD: 150,
-  MAJOR_VALUE_MIN: 10_000_000,
-  DAILY_STORY_BUDGET: 15,
   DEVNET_MAX_REDEPLOYS_PER_DAY: 10,
   WATCHLIST_TTL_DAYS: 60,
-  MONTHLY_TOKEN_CAP: 20_000_000,
-  toneNotes: "",
-  rankWeights: {
-    valueHeld: 1.0,
+  EARLY_USAGE_WINDOW_HOURS: 24,
+  noveltyWeights: {
+    structural: 1.0,
+    instructionSurface: 0.7,
+    fundingTrail: 0.6,
+    authority: 0.5,
+    earlyUsage: 0.6,
     verified: 0.5,
-    novelty: 1.0,
-    authorityRisk: 1.2,
-    watchlistHit: 1.5,
-    entityKnown: 0.8,
-    copyWaveVelocity: 0.6,
   },
-  perTypeFloors: { radar: 1 },
 };
 
 // ---------------------------------------------------------------------------
-// Public API response shapes (spec §2)
+// Public API response shapes (SPEC §7)
 // ---------------------------------------------------------------------------
-
-export interface ApiStory {
-  id: string;
-  type: StoryType;
-  headline: string;
-  body: string;
-  facts: StoryFact[];
-  inference: StoryInference | null;
-  subjects: { id: string; name: string | null }[];
-  status: StoryStatus;
-  pinned: boolean;
-  publishedAt: string; // ISO
-}
-
-export interface ApiStoryDetail extends ApiStory {
-  events: ApiRawEvent[];
-}
 
 export interface ApiRawEvent {
   id: string;
@@ -172,27 +139,63 @@ export interface ApiRawEvent {
   authorityBefore: string | null;
   authorityAfter: string | null;
   sha256After: string | null;
-  enrichment: EventEnrichment;
 }
 
-export interface ApiSubject {
-  id: string;
-  kind: "program" | "entity";
-  name: string | null;
+/** A radar row / program summary. */
+export interface ApiProgram {
+  id: string; // programId
   network: Network;
-  verified: boolean;
-  repoUrl: string | null;
+  name: string | null;
+  deployedSlot: number | null;
+  deployedAt: string | null; // ISO
+  lastEventAt: string | null; // ISO
+  band: NoveltyBand;
+  noveltyScore: number; // 0..1
+  category: Category;
+  sizeBytes: number | null;
+  instructionCount: number | null;
+  idlPresent: boolean;
   authorityClass: AuthorityClass | null;
-  tvl: number | null;
-  noveltyScore: number | null;
+  deployerFundingSource: string | null;
+  earlySigners: number | null;
+  verified: boolean;
   bucketId: string | null;
-  stories: ApiStory[];
+  clusterSize: number | null;
+  // --- program profile (docs/GRADING.md §5): from the SBF bytecode ---
+  framework: Framework | null;
+  capabilities: string[];
+  integrations: string[];
+  syscallCount: number | null;
 }
 
-export interface ApiDigest {
-  date: string;
-  stories: ApiStory[];
-  counts: Record<string, number>;
+export interface ApiProgramDetail extends ApiProgram {
+  repoUrl: string | null;
+  authority: string | null;
+  sha256: string | null;
+  events: ApiRawEvent[];
+  neighbors: { programId: string; distance: number; name: string | null }[];
+  idlInstructions: string[];
+  strings: string[];
+}
+
+export interface ApiFunnel {
+  date: string; // YYYY-MM-DD
+  raw: number; // total deploy + upgrade events
+  unique: number; // unique bytecode (Y)
+  novel: number; // Z
+  clones: number;
+  variants: number;
+  byCategory: Record<string, number>; // among novel
+  updatedAt: string; // ISO
+}
+
+export interface ApiCluster {
+  id: string;
+  label: string | null;
+  canonicalSha256: string;
+  memberCount: number;
+  velocity6h: number;
+  members: { programId: string; deployedAt: string | null }[];
 }
 
 export interface ApiCursorPage<T> {
@@ -212,11 +215,4 @@ export interface ApiWatchlistItem {
   deployCount: number;
   expiresAt: string;
   status: "active" | "matched" | "expired";
-}
-
-export interface ApiStats {
-  launchesToday: number;
-  updatesToday: number;
-  copyPercentToday: number;
-  radarThisWeek: number;
 }

@@ -13,15 +13,7 @@ CREATE TABLE "copy_buckets" (
 	"member_count" integer DEFAULT 1 NOT NULL,
 	"first_seen_at" timestamp with time zone DEFAULT now() NOT NULL,
 	"last_seen_at" timestamp with time zone DEFAULT now() NOT NULL,
-	"velocity" jsonb DEFAULT '{}'::jsonb NOT NULL,
-	"last_story_at" timestamp with time zone
-);
---> statement-breakpoint
-CREATE TABLE "digests" (
-	"date" text PRIMARY KEY NOT NULL,
-	"story_ids" jsonb DEFAULT '[]'::jsonb NOT NULL,
-	"counts" jsonb DEFAULT '{}'::jsonb NOT NULL,
-	"created_at" timestamp with time zone DEFAULT now() NOT NULL
+	"velocity" jsonb DEFAULT '{}'::jsonb NOT NULL
 );
 --> statement-breakpoint
 CREATE TABLE "entities" (
@@ -53,7 +45,6 @@ CREATE TABLE "events" (
 	"authority_after" text,
 	"sha256_before" text,
 	"sha256_after" text,
-	"tvl_at_event" double precision,
 	"enrichment" jsonb DEFAULT '{}'::jsonb NOT NULL,
 	"pipeline_stage" text DEFAULT 'ingested' NOT NULL,
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL
@@ -69,6 +60,18 @@ CREATE TABLE "fingerprint_corpus" (
 	"seen_at" timestamp with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
+CREATE TABLE "funnel_daily" (
+	"date" text PRIMARY KEY NOT NULL,
+	"network" text DEFAULT 'mainnet' NOT NULL,
+	"raw" integer DEFAULT 0 NOT NULL,
+	"unique" integer DEFAULT 0 NOT NULL,
+	"novel" integer DEFAULT 0 NOT NULL,
+	"clones" integer DEFAULT 0 NOT NULL,
+	"variants" integer DEFAULT 0 NOT NULL,
+	"by_category" jsonb DEFAULT '{}'::jsonb NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL
+);
+--> statement-breakpoint
 CREATE TABLE "operator_log" (
 	"id" text PRIMARY KEY NOT NULL,
 	"actor" text NOT NULL,
@@ -77,22 +80,6 @@ CREATE TABLE "operator_log" (
 	"before" jsonb,
 	"after" jsonb,
 	"at" timestamp with time zone DEFAULT now() NOT NULL
-);
---> statement-breakpoint
-CREATE TABLE "stories" (
-	"id" text PRIMARY KEY NOT NULL,
-	"type" text NOT NULL,
-	"headline" text NOT NULL,
-	"body" text NOT NULL,
-	"facts" jsonb DEFAULT '[]'::jsonb NOT NULL,
-	"inference" jsonb,
-	"subjects" jsonb DEFAULT '[]'::jsonb NOT NULL,
-	"event_ids" jsonb DEFAULT '[]'::jsonb NOT NULL,
-	"rank_score" double precision DEFAULT 0 NOT NULL,
-	"status" text DEFAULT 'published' NOT NULL,
-	"dead_letter_reason" text,
-	"published_at" timestamp with time zone,
-	"created_at" timestamp with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
 CREATE TABLE "subjects" (
@@ -110,9 +97,17 @@ CREATE TABLE "subjects" (
 	"tlsh" text,
 	"size_bytes" integer,
 	"bucket_id" text,
+	"novelty_band" text,
 	"novelty_score" double precision,
+	"category" text,
+	"instruction_count" integer,
+	"idl_present" boolean DEFAULT false NOT NULL,
+	"deployer_funding_source" text,
+	"early_signers" integer,
 	"tvl" double precision,
 	"first_seen_slot" bigint,
+	"first_seen_at" timestamp with time zone,
+	"last_event_at" timestamp with time zone,
 	"facts" jsonb DEFAULT '{}'::jsonb NOT NULL,
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
 	"updated_at" timestamp with time zone DEFAULT now() NOT NULL
@@ -142,9 +137,9 @@ CREATE INDEX "events_program_idx" ON "events" USING btree ("program_id");--> sta
 CREATE INDEX "events_network_slot_idx" ON "events" USING btree ("network","slot");--> statement-breakpoint
 CREATE INDEX "corpus_sha_idx" ON "fingerprint_corpus" USING btree ("sha256");--> statement-breakpoint
 CREATE INDEX "corpus_network_size_idx" ON "fingerprint_corpus" USING btree ("network","size_bytes");--> statement-breakpoint
-CREATE INDEX "stories_status_published_idx" ON "stories" USING btree ("status","published_at");--> statement-breakpoint
-CREATE INDEX "stories_type_idx" ON "stories" USING btree ("type");--> statement-breakpoint
 CREATE INDEX "subjects_entity_key_idx" ON "subjects" USING btree ("entity_key");--> statement-breakpoint
 CREATE INDEX "subjects_bucket_idx" ON "subjects" USING btree ("bucket_id");--> statement-breakpoint
+CREATE INDEX "subjects_radar_idx" ON "subjects" USING btree ("network","novelty_band","novelty_score");--> statement-breakpoint
+CREATE INDEX "subjects_first_seen_idx" ON "subjects" USING btree ("first_seen_at");--> statement-breakpoint
 CREATE INDEX "watchlist_status_idx" ON "watchlist" USING btree ("status");--> statement-breakpoint
 CREATE INDEX "watchlist_authority_idx" ON "watchlist" USING btree ("authority");

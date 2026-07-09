@@ -1,9 +1,9 @@
 import { logger } from "@onrecord/core";
 
 // ---------------------------------------------------------------------------
-// Verified-builds check via the OtterSec API (spec §4.2). "Verified" means the
-// on-chain bytecode was reproduced from a public repo at a known commit —
-// which is what lets a story say "the code is public and matches".
+// Verified-builds check via the OtterSec API (SPEC §2). "Verified" means the
+// on-chain bytecode was reproduced from a public repo at a known commit — an
+// open-source boost to the novelty score and a "verified" badge on the radar.
 // 24h in-process cache; identify always busts it on a fresh upgrade.
 // ---------------------------------------------------------------------------
 

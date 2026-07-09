@@ -65,6 +65,26 @@ export function truncateAddress(value: string): string {
   return `${value.slice(0, 4)}…${value.slice(-4)}`;
 }
 
+/** "12.4 KB", "980 B" — program image size for the facts row. */
+export function formatBytes(bytes: number | null | undefined): string {
+  if (bytes === null || bytes === undefined) return "—";
+  if (bytes < 1024) return `${bytes} B`;
+  const kb = bytes / 1024;
+  if (kb < 1024) return `${kb.toFixed(kb < 10 ? 1 : 0)} KB`;
+  return `${(kb / 1024).toFixed(1)} MB`;
+}
+
+/** "1,974", "612" — grouped integers for the funnel and counters. */
+export function groupNum(n: number | null | undefined): string {
+  if (n === null || n === undefined || Number.isNaN(n)) return "—";
+  return n.toLocaleString("en-US");
+}
+
+/** 0.94 → "94" — novelty score rendered as an instrument gauge (0–100). */
+export function noveltyGauge(score: number): number {
+  return Math.round(Math.max(0, Math.min(1, score)) * 100);
+}
+
 /** "github.com/org/repo" — a URL stripped down to something readable. */
 export function shortUrl(value: string): string {
   try {

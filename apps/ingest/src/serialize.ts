@@ -1,43 +1,22 @@
-import { inArray } from "drizzle-orm";
 import {
-  db,
   schema,
+  type ApiProgram,
+  type ApiProgramDetail,
   type ApiRawEvent,
-  type ApiStory,
+  type AuthorityClass,
+  type Category,
   type EventEnrichment,
-  type StoryFact,
-  type StoryInference,
+  type Network,
+  type NoveltyBand,
 } from "@onrecord/core";
 
-type StoryRow = typeof schema.stories.$inferSelect;
+type SubjectRow = typeof schema.subjects.$inferSelect;
 type EventRow = typeof schema.events.$inferSelect;
-
-export async function serializeStories(rows: StoryRow[]): Promise<ApiStory[]> {
-  // resolve subject display names in one query
-  const subjectIds = [...new Set(rows.flatMap((r) => r.subjects))];
-  const subjectRows = subjectIds.length
-    ? await db.select().from(schema.subjects).where(inArray(schema.subjects.id, subjectIds))
-    : [];
-  const names = new Map(subjectRows.map((s) => [s.id, s.name]));
-
-  return rows.map((row) => ({
-    id: row.id,
-    type: row.type as ApiStory["type"],
-    headline: row.headline,
-    body: row.body,
-    facts: row.facts as StoryFact[],
-    inference: (row.inference as StoryInference | null) ?? null,
-    subjects: row.subjects.map((id) => ({ id, name: names.get(id) ?? null })),
-    status: row.status as ApiStory["status"],
-    pinned: row.status === "pinned",
-    publishedAt: (row.publishedAt ?? row.createdAt).toISOString(),
-  }));
-}
 
 export function serializeEvent(row: EventRow): ApiRawEvent {
   return {
     id: row.id,
-    network: row.network as ApiRawEvent["network"],
+    network: row.network as Network,
     type: row.type as ApiRawEvent["type"],
     signature: row.signature,
     slot: row.slot,
@@ -46,6 +25,62 @@ export function serializeEvent(row: EventRow): ApiRawEvent {
     authorityBefore: row.authorityBefore,
     authorityAfter: row.authorityAfter,
     sha256After: row.sha256After,
-    enrichment: row.enrichment as EventEnrichment,
+  };
+}
+
+export function serializeProgram(row: SubjectRow, clusterSize: number | null = null): ApiProgram {
+  const profile = row.profile ?? null;
+  return {
+    id: row.id,
+    network: row.network as Network,
+    name: row.name,
+    deployedSlot: row.firstSeenSlot,
+    deployedAt: row.firstSeenAt?.toISOString() ?? null,
+    lastEventAt: row.lastEventAt?.toISOString() ?? null,
+    band: (row.noveltyBand as NoveltyBand) ?? "variant",
+    noveltyScore: row.noveltyScore ?? 0,
+    category: (row.category as Category) ?? "unknown",
+    sizeBytes: row.sizeBytes,
+    instructionCount: row.instructionCount,
+    idlPresent: row.idlPresent,
+    authorityClass: (row.authorityClass as AuthorityClass) ?? null,
+    deployerFundingSource: row.deployerFundingSource,
+    earlySigners: row.earlySigners,
+    verified: row.verified,
+    bucketId: row.bucketId,
+    clusterSize,
+    framework: profile?.framework ?? null,
+    capabilities: profile?.capabilities ?? [],
+    integrations: profile?.integrations ?? [],
+    syscallCount: profile?.syscalls.length ?? null,
+  };
+}
+
+export function serializeProgramDetail(
+  row: SubjectRow,
+  events: EventRow[],
+  neighbors: ApiProgramDetail["neighbors"],
+  clusterSize: number | null,
+): ApiProgramDetail {
+  // pull IDL instructions + notable strings from the most recent fingerprint
+  let idlInstructions: string[] = [];
+  let strings: string[] = [];
+  for (const e of events) {
+    const fp = (e.enrichment as EventEnrichment).fingerprint;
+    if (fp) {
+      idlInstructions = fp.idl?.instructions ?? [];
+      strings = (fp.strings ?? []).slice(0, 40);
+      break; // events are newest-first
+    }
+  }
+  return {
+    ...serializeProgram(row, clusterSize),
+    repoUrl: row.repoUrl,
+    authority: row.authority,
+    sha256: row.sha256,
+    events: events.map(serializeEvent),
+    neighbors,
+    idlInstructions,
+    strings,
   };
 }

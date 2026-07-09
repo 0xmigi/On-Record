@@ -1,0 +1,15 @@
+**/node_modules
+**/dist
+**/.next
+**/.turbo
+.git
+.env
+.env.*
+!.env.example
+data
+docs
+scripts
+*.log
+.claude
+apps/web
+Dockerfile.web

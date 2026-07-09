@@ -1,26 +1,40 @@
 import type { Metadata } from "next";
+import { IBM_Plex_Mono, IBM_Plex_Sans } from "next/font/google";
 import Link from "next/link";
 import { Mark } from "@/components/Mark";
-import { RSS_URL } from "@/lib/api";
+import { SearchBox } from "@/components/SearchBox";
 import "./globals.css";
+
+const plexSans = IBM_Plex_Sans({
+  subsets: ["latin"],
+  weight: ["400", "500", "600", "700"],
+  variable: "--font-plex-sans",
+  display: "swap",
+});
+const plexMono = IBM_Plex_Mono({
+  subsets: ["latin"],
+  weight: ["400", "500", "600"],
+  variable: "--font-plex-mono",
+  display: "swap",
+});
 
 export const metadata: Metadata = {
   title: {
-    default: "On Record — announcements are claims, deployments are facts",
+    default: "On Record — the novel-program radar for Solana",
     template: "%s — On Record",
   },
   description:
-    "An agentic newsroom for Solana. It watches what actually ships on chain and puts it on the record.",
+    "On Record watches every program deployed or upgraded on Solana mainnet, strips out the copy-paste clones, and ranks what's left by a novelty score.",
 };
 
 export default function RootLayout({
   children,
 }: Readonly<{ children: React.ReactNode }>) {
   return (
-    <html lang="en">
+    <html lang="en" className={`${plexSans.variable} ${plexMono.variable}`}>
       <body>
         <a className="skip-link" href="#main">
-          Skip to stories
+          Skip to the radar
         </a>
 
         <header className="topbar">
@@ -29,24 +43,10 @@ export default function RootLayout({
               <Mark size={20} />
               <span>on record</span>
             </Link>
-            <form className="search-form" action="/" role="search">
-              <span className="search-icon" aria-hidden="true">
-                ⌕
-              </span>
-              <input
-                className="search-input"
-                type="search"
-                name="q"
-                placeholder="Search a project, key, or story…"
-                aria-label="Search the record"
-              />
-            </form>
+            <SearchBox />
             <nav className="topnav" aria-label="Main">
-              <Link href="/">Feed</Link>
-              <Link href="/lab">The Lab</Link>
-              <a href={RSS_URL} target="_blank" rel="noopener noreferrer">
-                RSS
-              </a>
+              <Link href="/">Radar</Link>
+              <Link href="/funnel">Stats</Link>
             </nav>
           </div>
         </header>
@@ -56,14 +56,17 @@ export default function RootLayout({
         </main>
 
         <footer className="footer">
-          <p className="footer-motto">Announcements are claims. Deployments are facts.</p>
+          <p className="footer-motto">
+            Strip the copy-paste. Rank what&apos;s new.
+          </p>
           <a
             className="footer-credit"
             href="https://www.helius.dev"
             target="_blank"
             rel="noopener noreferrer"
           >
-            Powered by <Mark size={13} /> <span className="footer-helius">HELIUS</span>
+            Powered by <Mark size={13} />{" "}
+            <span className="footer-helius">HELIUS</span>
           </a>
         </footer>
       </body>

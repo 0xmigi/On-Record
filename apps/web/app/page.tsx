@@ -1,90 +1,147 @@
 import Link from "next/link";
 import { Mark } from "@/components/Mark";
+import { ProgramRow } from "@/components/ProgramRow";
 import { SectionHeader } from "@/components/SectionHeader";
-import { StatStrip } from "@/components/StatStrip";
-import { StoryCard } from "@/components/StoryCard";
 import {
-  fetchStats,
-  fetchStories,
-  isStoryType,
-  type StoryType,
+  fetchFunnel,
+  fetchRadar,
+  isRadarType,
+  isWindow,
+  type RadarType,
+  type RadarWindow,
 } from "@/lib/api";
+import { groupNum } from "@/lib/format";
 
-const FILTERS: { label: string; value: StoryType | null }[] = [
-  { label: "ALL", value: null },
-  { label: "UPDATE", value: "update" },
-  { label: "LAUNCH", value: "launch" },
-  { label: "RADAR", value: "radar" },
-  { label: "NOW LIVE", value: "became_real" },
-  { label: "CONTROL", value: "control_change" },
-  { label: "COPIES", value: "copy_wave" },
-  { label: "ON RECORD", value: "corroboration" },
+const STREAM_FILTERS: { label: string; value: RadarType }[] = [
+  { label: "NEW DEPLOYS", value: "deploy" },
+  { label: "UPGRADES", value: "upgrade" },
 ];
 
-function feedHref(type: StoryType | null, cursor?: string): string {
+const WINDOW_FILTERS: { label: string; value: RadarWindow }[] = [
+  { label: "TODAY", value: "today" },
+  { label: "THIS WEEK", value: "week" },
+  { label: "ALL", value: "all" },
+];
+
+function radarHref(type: RadarType, window: RadarWindow, cursor?: string): string {
   const params = new URLSearchParams();
-  if (type) params.set("type", type);
+  if (type !== "deploy") params.set("type", type);
+  if (window !== "today") params.set("window", window);
   if (cursor) params.set("cursor", cursor);
   const qs = params.toString();
   return qs ? `/?${qs}` : "/";
 }
 
-export default async function FeedPage({
+/** Header strip: today's split of new programs vs upgrades. */
+function FunnelStrip({
+  deploys,
+  upgrades,
+}: {
+  deploys: number | null;
+  upgrades: number | null;
+}) {
+  return (
+    <Link className="funnel-strip" href="/funnel" aria-label="Open the funnel">
+      <span className="funnel-cell">
+        <span className="funnel-num funnel-num-accent">{groupNum(deploys)}</span>
+        <span className="funnel-lbl">new programs today</span>
+      </span>
+      <span className="funnel-arrow" aria-hidden="true">
+        ·
+      </span>
+      <span className="funnel-cell">
+        <span className="funnel-num">{groupNum(upgrades)}</span>
+        <span className="funnel-lbl">upgrades</span>
+      </span>
+      <span className="funnel-arrow" aria-hidden="true">
+        →
+      </span>
+      <span className="funnel-cell funnel-cell-end">
+        <span className="funnel-lbl">see the funnel</span>
+      </span>
+    </Link>
+  );
+}
+
+export default async function RadarPage({
   searchParams,
 }: {
-  searchParams: Promise<{ type?: string; cursor?: string }>;
+  searchParams: Promise<{ type?: string; window?: string; cursor?: string }>;
 }) {
   const sp = await searchParams;
-  const type = isStoryType(sp.type) ? sp.type : null;
+  const type: RadarType = isRadarType(sp.type) ? sp.type : "deploy";
+  const window: RadarWindow = isWindow(sp.window) ? sp.window : "today";
   const cursor = sp.cursor;
 
-  const [page, stats] = await Promise.all([
-    fetchStories({ type: type ?? undefined, cursor }),
-    fetchStats(),
+  const [page, funnel] = await Promise.all([
+    fetchRadar({ type, window, cursor }),
+    fetchFunnel(),
   ]);
 
-  // Pinned stories float to the top; within each group, API order
-  // (newest first) is preserved.
-  const stories = [...page.items].sort(
-    (a, b) => Number(b.pinned) - Number(a.pinned)
-  );
+  const programs = page.items;
 
   return (
     <>
-      <StatStrip stats={stats} />
-
-      <nav className="filter-row" aria-label="Filter stories by type">
-        {FILTERS.map((filter) => (
-          <Link
-            key={filter.label}
-            className="filter-link"
-            href={feedHref(filter.value)}
-            aria-current={type === filter.value ? "page" : undefined}
-          >
-            {filter.label}
-          </Link>
-        ))}
-      </nav>
-
-      <SectionHeader
-        title="Recent stories"
-        info="Every story here is backed by something that actually happened on chain. Open PROOF to see the receipts."
+      <FunnelStrip
+        deploys={funnel?.deploys ?? null}
+        upgrades={funnel?.upgrades ?? null}
       />
 
-      {stories.length === 0 ? (
+      <div className="radar-controls">
+        <nav className="filter-row" aria-label="New deploys or upgrades">
+          {STREAM_FILTERS.map((f) => (
+            <Link
+              key={f.value}
+              className="filter-link"
+              href={radarHref(f.value, window)}
+              aria-current={type === f.value ? "page" : undefined}
+            >
+              {f.label}
+            </Link>
+          ))}
+        </nav>
+        <nav className="filter-row filter-row-end" aria-label="Filter by window">
+          {WINDOW_FILTERS.map((f) => (
+            <Link
+              key={f.value}
+              className="filter-link"
+              href={radarHref(type, f.value)}
+              aria-current={window === f.value ? "page" : undefined}
+            >
+              {f.label}
+            </Link>
+          ))}
+        </nav>
+      </div>
+
+      <SectionHeader
+        title={
+          type === "deploy"
+            ? "New deployments — trust from zero"
+            : "Upgrades — existing programs changed"
+        }
+        info={
+          type === "deploy"
+            ? "Brand-new program ids, deployed in this window. A new id means trust starts from scratch. Ranked by signal; open one for its full on-chain record."
+            : "Existing programs whose code changed in this window. Trust already exists — what matters is the magnitude of what was changed."
+        }
+      />
+
+      {programs.length === 0 ? (
         <div className="empty-state">
           <Mark size={22} />
-          <p className="empty-title">The record is warming up</p>
+          <p className="empty-title">The radar is quiet</p>
           <p className="empty-body">
-            Stories appear as things actually happen on chain.
-            {type ? " Nothing under this filter yet — try ALL." : ""}
+            {type === "deploy"
+              ? "No new programs in this window yet. Fresh deploys land here as the loader sees them."
+              : "No upgrades in this window yet."}
           </p>
         </div>
       ) : (
-        <ol className="story-list">
-          {stories.map((story) => (
-            <li key={story.id}>
-              <StoryCard story={story} />
+        <ol className="radar-list">
+          {programs.map((program) => (
+            <li key={program.id}>
+              <ProgramRow program={program} />
             </li>
           ))}
         </ol>
@@ -92,8 +149,11 @@ export default async function FeedPage({
 
       {page.nextCursor ? (
         <nav className="pager" aria-label="Pagination">
-          <Link className="older-link" href={feedHref(type, page.nextCursor)}>
-            Older →
+          <Link
+            className="older-link"
+            href={radarHref(type, window, page.nextCursor)}
+          >
+            More →
           </Link>
         </nav>
       ) : null}

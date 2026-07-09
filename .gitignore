@@ -6,3 +6,8 @@ dist/
 *.tsbuildinfo
 .DS_Store
 coverage/
+.vercel
+.env*
+
+# large regenerable data snapshots (via scripts/snapshot.mjs)
+data/

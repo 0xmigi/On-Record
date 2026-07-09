@@ -10,20 +10,20 @@ import {
   tlshHash,
   extractStrings,
   probeAnchorIdl,
-  newId,
   stageLogger,
   getConfig,
+  getFundingSource,
+  getEarlyActivity,
+  profileProgram,
+  type Category,
   type EventEnrichment,
   type Fingerprint,
   type Network,
-  type StoryDraft,
-  type StoryType,
-  type VerifyJob,
-  type WriteJob,
+  type ScoreResult,
 } from "@onrecord/core";
 import {
   appendToCorpus,
-  bucketVelocity,
+  categorize,
   checkVerification,
   classifyAuthority,
   classifyFingerprint,
@@ -32,14 +32,6 @@ import {
   markWatchlistMatched,
   watchDevnetNovel,
 } from "@onrecord/enrich";
-import {
-  checkBudget,
-  getDiffSummary,
-  rankEvent,
-  verifyStory,
-  writeStory,
-  type FactPack,
-} from "@onrecord/newsroom";
 
 type EventRow = typeof schema.events.$inferSelect;
 
@@ -61,7 +53,7 @@ function enrichmentOf(event: EventRow): EventEnrichment {
 }
 
 // ---------------------------------------------------------------------------
-// Stage 1 — fingerprint (spec §4.1)
+// Stage 1 — fingerprint (SPEC §3): pull ProgramData bytes, hash + TLSH + IDL.
 // ---------------------------------------------------------------------------
 
 export async function fingerprintStage(eventId: string): Promise<void> {
@@ -88,7 +80,7 @@ export async function fingerprintStage(eventId: string): Promise<void> {
     return;
   }
 
-  // Spam defense (spec §8): under backlog, authorities spraying deploys are
+  // Spam defense (SPEC §10): under backlog, authorities spraying deploys are
   // bucketed by authority without fetching bytes.
   const backlog = await getQueue("fingerprint").getWaitingCount();
   if (backlog > 200 && event.authorityAfter) {
@@ -136,6 +128,14 @@ export async function fingerprintStage(eventId: string): Promise<void> {
   };
   enrichment.fingerprint = fp;
 
+  // structured profile from the SBF bytecode: framework, syscalls, capabilities,
+  // integrations (docs/GRADING.md §5). Feeds the radar's framework chip + the
+  // eventual grading axes.
+  enrichment.profile = profileProgram(parsed.bytecode, {
+    strings: fp.strings,
+    idlInstructions: fp.idl?.instructions,
+  });
+
   await db
     .update(schema.events)
     .set({
@@ -168,7 +168,7 @@ async function resolveProgramId(network: Network, programDataAddress: string): P
 }
 
 // ---------------------------------------------------------------------------
-// Stage 2 — identify (spec §4.2)
+// Stage 2 — identify (SPEC §3): entity registry, verified builds, authority.
 // ---------------------------------------------------------------------------
 
 export async function identifyStage(eventId: string): Promise<void> {
@@ -187,7 +187,6 @@ export async function identifyStage(eventId: string): Promise<void> {
     ? await checkVerification(programId, { bustCache: event.type === "upgrade" })
     : { verified: false, repoUrl: null, commit: null };
 
-  // previous commit for the diff: whatever the subject row knew before this event
   const subjectRows = programId
     ? await db.select().from(schema.subjects).where(eq(schema.subjects.id, programId))
     : [];
@@ -206,15 +205,7 @@ export async function identifyStage(eventId: string): Promise<void> {
     tvl: entity?.tvl ?? null,
   };
 
-  await db
-    .update(schema.events)
-    .set({
-      enrichment: enrichment as Record<string, unknown>,
-      pipelineStage: "identified",
-      tvlAtEvent: entity?.tvl ?? null,
-    })
-    .where(eq(schema.events.id, eventId));
-
+  await saveEnrichment(eventId, enrichment, "identified");
   if (programId) await upsertSubject(event, enrichment);
 
   await enqueue("classify", { eventId });
@@ -224,6 +215,7 @@ export async function identifyStage(eventId: string): Promise<void> {
 async function upsertSubject(event: EventRow, enrichment: EventEnrichment): Promise<void> {
   const fp = enrichment.fingerprint;
   const id = enrichment.identity;
+  const when = event.blockTime ?? new Date();
   const values = {
     kind: "program" as const,
     network: event.network,
@@ -237,12 +229,14 @@ async function upsertSubject(event: EventRow, enrichment: EventEnrichment): Prom
     sha256: fp?.sha256 ?? null,
     tlsh: fp?.tlsh ?? null,
     sizeBytes: fp?.sizeBytes ?? null,
+    profile: enrichment.profile ?? null,
     tvl: id?.tvl ?? null,
+    lastEventAt: when,
     updatedAt: new Date(),
   };
   await db
     .insert(schema.subjects)
-    .values({ id: event.programId, firstSeenSlot: event.slot, ...values })
+    .values({ id: event.programId, firstSeenSlot: event.slot, firstSeenAt: when, ...values })
     .onConflictDoUpdate({
       target: schema.subjects.id,
       set: {
@@ -254,7 +248,7 @@ async function upsertSubject(event: EventRow, enrichment: EventEnrichment): Prom
 }
 
 // ---------------------------------------------------------------------------
-// Stage 3 — classify (spec §4.3)
+// Stage 3 — classify (SPEC §2, the gate): dedup → band + bucket.
 // ---------------------------------------------------------------------------
 
 export async function classifyStage(eventId: string): Promise<void> {
@@ -269,26 +263,19 @@ export async function classifyStage(eventId: string): Promise<void> {
     const classification = await classifyFingerprint(network, event.programId, fp);
     enrichment.classification = classification;
 
-    if (classification.bucketId) {
-      await db
-        .update(schema.subjects)
-        .set({ bucketId: classification.bucketId, noveltyScore: classification.noveltyScore })
-        .where(eq(schema.subjects.id, event.programId));
-    } else {
-      await db
-        .update(schema.subjects)
-        .set({ noveltyScore: classification.noveltyScore })
-        .where(eq(schema.subjects.id, event.programId));
-    }
+    await db
+      .update(schema.subjects)
+      .set({ bucketId: classification.bucketId, noveltyBand: classification.band })
+      .where(eq(schema.subjects.id, event.programId));
 
     if (classification.watchlistHit) {
       await markWatchlistMatched(classification.watchlistHit.watchlistId, eventId);
     }
 
-    // Devnet is input only (spec §3): novel devnet fingerprints go to the
+    // Devnet is input only (SPEC §3): novel devnet fingerprints go to the
     // watchlist and the pipeline stops here.
     if (network === "devnet") {
-      if (classification.disposition === "novel") {
+      if (classification.band === "novel") {
         await watchDevnetNovel(event.programId, fp, event.authorityAfter);
       }
       await appendToCorpus(network, event.programId, fp);
@@ -303,304 +290,120 @@ export async function classifyStage(eventId: string): Promise<void> {
 
   if (network === "devnet") {
     log.info({ eventId, outcome: "devnet_recorded" }, "done");
-    return; // devnet never publishes on its own
+    return; // devnet never surfaces on the mainnet radar
   }
 
-  await enqueue("rank", { eventId });
-  log.info({ eventId, ms: Date.now() - start, outcome: "ok" }, "done");
+  await enqueue("score", { eventId });
+  log.info({ eventId, ms: Date.now() - start, band: enrichment.classification?.band, outcome: "ok" }, "done");
 }
 
 // ---------------------------------------------------------------------------
-// Stage 4 — rank (spec §4.4)
+// Stage 4 — score (SPEC §2): composite novelty. The radar ranks on this.
 // ---------------------------------------------------------------------------
 
-export async function rankStage(eventId: string): Promise<void> {
-  const log = stageLogger("rank");
+export async function scoreStage(eventId: string): Promise<void> {
+  const log = stageLogger("score");
   const start = Date.now();
   const event = await loadEvent(eventId);
   const enrichment = enrichmentOf(event);
-
-  const rank = await rankEvent({
-    eventType: event.type as "deploy" | "upgrade" | "set_authority" | "close",
-    enrichment,
-    hasAnnouncement: Boolean(enrichment.announcementUrl),
-  });
-  enrichment.rank = rank;
-
-  if (!rank.storyType) {
-    await saveEnrichment(eventId, enrichment, "ranked_data_only");
-    log.info({ eventId, score: rank.score, outcome: "data_only" }, "done");
-    return;
-  }
-
-  const budget = await checkBudget(rank.storyType, rank.score);
-  if (!budget.allowed) {
-    await saveEnrichment(eventId, enrichment, `ranked_below_line:${budget.reason}`);
-    log.info({ eventId, score: rank.score, outcome: budget.reason }, "done");
-    return;
-  }
-
-  // Verified update: fetch the code diff so the writer can say what changed.
-  const id = enrichment.identity;
-  if (
-    rank.storyType === "update" &&
-    id?.verified &&
-    id.repoUrl &&
-    id.repoCommit &&
-    id.previousCommit &&
-    id.repoCommit !== id.previousCommit
-  ) {
-    enrichment.diffSummary =
-      (await getDiffSummary(id.repoUrl, id.previousCommit, id.repoCommit)) ?? undefined;
-  }
-
-  await saveEnrichment(eventId, enrichment, "ranked_story");
-  await enqueue("write", { eventId, storyType: rank.storyType } satisfies WriteJob);
-  log.info({ eventId, score: rank.score, storyType: rank.storyType, outcome: "story_job" }, "done");
-}
-
-// ---------------------------------------------------------------------------
-// Stage 5 — write (spec §4.5)
-// ---------------------------------------------------------------------------
-
-export async function writeStage(job: WriteJob): Promise<void> {
-  const log = stageLogger("write");
-  const start = Date.now();
-  const pack = await buildFactPack(job);
-  const draft = await writeStory(pack, job.rewriteErrors);
-  await enqueue("verify", {
-    eventId: job.eventId,
-    storyType: job.storyType,
-    draft,
-    attempt: job.rewriteErrors ? 2 : 1,
-    bucketId: job.bucketId,
-    announcementUrl: job.announcementUrl,
-    programId: job.programId,
-  } satisfies VerifyJob);
-  log.info({ eventId: job.eventId, ms: Date.now() - start, attempt: job.rewriteErrors ? 2 : 1 }, "done");
-}
-
-export async function buildFactPack(job: WriteJob): Promise<FactPack> {
-  const event = job.eventId ? await loadEvent(job.eventId) : null;
-  const enrichment = event ? enrichmentOf(event) : {};
-  const id = enrichment.identity;
-  const fp = enrichment.fingerprint;
-  const cls = enrichment.classification;
-  const programId = job.programId ?? event?.programId ?? null;
-
-  const receipts: FactPack["candidateReceipts"] = [];
-  if (event) {
-    receipts.push({
-      kind: "tx",
-      ref: event.signature,
-      describes: `the transaction where this ${event.type === "deploy" ? "launch" : event.type === "upgrade" ? "update" : "change"} happened`,
-    });
-  }
-  if (programId) {
-    receipts.push({ kind: "account", ref: programId, describes: "the app itself on chain" });
-  }
-  if (id?.verified && id.repoUrl) {
-    const commitUrl = id.repoCommit ? `${id.repoUrl.replace(/\/$/, "")}/commit/${id.repoCommit}` : id.repoUrl;
-    receipts.push({ kind: "repo", ref: commitUrl, describes: "the public code this matches" });
-  }
-  const announcementUrl = job.announcementUrl ?? enrichment.announcementUrl ?? null;
-  if (announcementUrl) {
-    receipts.push({ kind: "repo", ref: announcementUrl, describes: "the announcement being checked" });
-  }
-
-  // became_real: pull the watchlist history for the lifecycle framing
-  let watchlistInfo: FactPack["watchlist"] = null;
-  if (cls?.watchlistHit) {
-    const rows = await db
-      .select()
-      .from(schema.watchlist)
-      .where(eq(schema.watchlist.id, cls.watchlistHit.watchlistId));
-    if (rows[0]) {
-      watchlistInfo = {
-        firstSeenAt: rows[0].firstSeenAt.toISOString(),
-        lastSeenAt: rows[0].lastSeenAt.toISOString(),
-        deployCount: rows[0].deployCount,
-      };
-    }
-  }
-
-  // copy_wave: bucket stats instead of single-event facts
-  let copyWave: FactPack["copyWave"] = null;
-  if (job.bucketId) {
-    const rows = await db.select().from(schema.copyBuckets).where(eq(schema.copyBuckets.id, job.bucketId));
-    if (rows[0]) {
-      copyWave = {
-        count6h: bucketVelocity(rows[0].velocity, 6),
-        bucketLabel: rows[0].label,
-        memberCount: rows[0].memberCount,
-      };
-    }
-  }
-
-  const subjectIds = [programId ?? job.bucketId ?? "the-record"];
-
-  return {
-    storyType: job.storyType,
-    network: event?.network ?? "mainnet",
-    eventType: event?.type ?? "deploy",
-    when: event?.blockTime?.toISOString() ?? null,
-    subjectIds,
-    subjectName: id?.entityName ?? null,
-    entityName: id?.entityName ?? null,
-    verified: id?.verified ?? false,
-    repoUrl: id?.repoUrl ?? null,
-    authorityClassBefore: null,
-    authorityClass: id?.authorityClass ?? null,
-    tvl: id?.tvl ?? null,
-    noveltyScore: cls?.noveltyScore ?? null,
-    idlInstructions: fp?.idl?.instructions ?? [],
-    topStrings: (fp?.strings ?? []).slice(0, 25),
-    diffSummary: enrichment.diffSummary ?? null,
-    watchlist: watchlistInfo,
-    copyWave,
-    announcementUrl,
-    candidateReceipts: receipts,
-  };
-}
-
-// ---------------------------------------------------------------------------
-// Stage 6 — verify (spec §4.6)
-// ---------------------------------------------------------------------------
-
-export async function verifyStage(job: VerifyJob): Promise<void> {
-  const log = stageLogger("verify");
-  const start = Date.now();
-  const draft = job.draft as StoryDraft;
-  const event = job.eventId ? await loadEvent(job.eventId) : null;
-  const enrichment = event ? enrichmentOf(event) : {};
-
-  const pack = await buildFactPack({
-    eventId: job.eventId,
-    storyType: job.storyType,
-    bucketId: job.bucketId,
-    announcementUrl: job.announcementUrl,
-    programId: job.programId,
-  });
-
-  const knownNumbers: number[] = [];
-  if (enrichment.identity?.tvl) knownNumbers.push(enrichment.identity.tvl);
-  if (pack.copyWave) knownNumbers.push(pack.copyWave.count6h, pack.copyWave.memberCount);
-  if (pack.watchlist) {
-    knownNumbers.push(pack.watchlist.deployCount);
-    knownNumbers.push((Date.now() - Date.parse(pack.watchlist.firstSeenAt)) / 86_400_000); // days in the lab
-  }
-
-  const result = await verifyStory(draft, {
-    network: (event?.network as "mainnet" | "devnet") ?? "mainnet",
-    allowedReceipts: pack.candidateReceipts,
-    knownNumbers,
-  });
-
-  if (result.ok) {
-    await publishStory(draft, job, event?.id ?? null, enrichment.rank?.score ?? 0);
-    log.info({ eventId: job.eventId, ms: Date.now() - start, outcome: "published" }, "done");
-    return;
-  }
-
-  if (job.attempt < 2) {
-    // one rewrite attempt with the errors fed back (spec §4.6)
-    await enqueue("write", {
-      eventId: job.eventId,
-      storyType: job.storyType,
-      bucketId: job.bucketId,
-      announcementUrl: job.announcementUrl,
-      programId: job.programId,
-      rewriteErrors: result.errors,
-    } satisfies WriteJob);
-    log.warn({ eventId: job.eventId, errors: result.errors, outcome: "rewrite" }, "done");
-    return;
-  }
-
-  // second failure → dead-letter for the operator
-  await db.insert(schema.stories).values({
-    id: newId("sty"),
-    type: draft.type,
-    headline: draft.headline,
-    body: draft.body,
-    facts: draft.facts,
-    inference: draft.inference,
-    subjects: draft.subjects,
-    eventIds: event ? [event.id] : [],
-    rankScore: enrichment.rank?.score ?? 0,
-    status: "dead_letter",
-    deadLetterReason: result.errors.join("; "),
-    publishedAt: null,
-  });
-  log.error({ eventId: job.eventId, errors: result.errors, outcome: "dead_letter" }, "done");
-}
-
-async function publishStory(
-  draft: StoryDraft,
-  job: VerifyJob,
-  eventId: string | null,
-  rankScore: number,
-): Promise<void> {
-  await db.insert(schema.stories).values({
-    id: newId("sty"),
-    type: draft.type,
-    headline: draft.headline,
-    body: draft.body,
-    facts: draft.facts,
-    inference: draft.inference,
-    subjects: draft.subjects,
-    eventIds: eventId ? [eventId] : [],
-    rankScore,
-    status: "published",
-    publishedAt: new Date(),
-  });
-  if (job.bucketId) {
-    await db
-      .update(schema.copyBuckets)
-      .set({ lastStoryAt: new Date() })
-      .where(eq(schema.copyBuckets.id, job.bucketId));
-  }
-}
-
-// ---------------------------------------------------------------------------
-// Copy-wave sweep (spec §1.4): aggregate stories only. Called by cron; finds
-// buckets moving fast enough and enqueues one story job per bucket.
-// ---------------------------------------------------------------------------
-
-export async function copyWaveSweep(): Promise<number> {
+  const network = event.network as Network;
   const cfg = await getConfig();
-  const buckets = await db
-    .select()
-    .from(schema.copyBuckets)
-    .where(eq(schema.copyBuckets.network, "mainnet"));
+  const w = cfg.noveltyWeights;
 
-  let enqueued = 0;
-  for (const bucket of buckets) {
-    const v6 = bucketVelocity(bucket.velocity, 6);
-    if (v6 < 20) continue; // needs a real wave, not a trickle
-    if (bucket.lastStoryAt && Date.now() - bucket.lastStoryAt.getTime() < 6 * 3_600_000) continue;
+  const fp = enrichment.fingerprint;
+  const id = enrichment.identity;
+  const cls = enrichment.classification;
 
-    const budget = await checkBudget("copy_wave", 1);
-    if (!budget.allowed) break;
+  const band = cls?.band ?? "variant";
+  const structural = cls?.structuralNovelty ?? 0;
+  const idlPresent = Boolean(fp?.idl);
+  const instructionCount = fp?.idl?.instructions.length ?? null;
+  const category: Category = categorize(fp, id);
 
-    // anchor the story on the bucket's most recent member event
-    const recent = await db
-      .select()
-      .from(schema.events)
-      .where(and(eq(schema.events.network, "mainnet"), eq(schema.events.type, "deploy")))
-      .orderBy(desc(schema.events.createdAt))
-      .limit(200);
-    const member = recent.find(
-      (e) => (enrichmentOf(e).classification?.bucketId ?? null) === bucket.id,
-    );
-    if (!member) continue;
+  // funding trail is an RPC walk — only worth it for novel candidates
+  const fundingSource =
+    band === "novel" ? await getFundingSource(network, event.authorityAfter) : null;
 
-    await enqueue("write", {
-      eventId: member.id,
-      storyType: "copy_wave",
-      bucketId: bucket.id,
-    } satisfies WriteJob);
-    enqueued++;
+  // early usage is lagging; measured now (may be ~0 fresh off the deploy) and
+  // refreshed by the cron re-rank as traffic arrives.
+  const deployedAtMs = (event.blockTime ?? new Date()).getTime();
+  const earlySigners =
+    band === "novel"
+      ? await getEarlyActivity(network, event.programId, deployedAtMs, cfg.EARLY_USAGE_WINDOW_HOURS)
+      : null;
+
+  const components = {
+    structural: structural * w.structural,
+    instructionSurface: Math.min(1, (instructionCount ?? 0) / 30) * w.instructionSurface,
+    fundingTrail: fundingScore(fundingSource) * w.fundingTrail,
+    authority: authorityScore(id?.authorityClass ?? null) * w.authority,
+    earlyUsage: Math.min(1, (earlySigners ?? 0) / 50) * w.earlyUsage,
+    verified: (id?.verified ? 1 : 0) * w.verified,
+  };
+  const weightSum = Object.values(w).reduce((a, b) => a + b, 0) || 1;
+  const score = Object.values(components).reduce((a, b) => a + b, 0) / weightSum;
+
+  const result: ScoreResult = {
+    score,
+    category,
+    instructionCount,
+    idlPresent,
+    fundingSource,
+    earlySigners,
+    components,
+  };
+  enrichment.score = result;
+
+  await db
+    .update(schema.subjects)
+    .set({
+      noveltyBand: band,
+      noveltyScore: score,
+      category,
+      instructionCount,
+      idlPresent,
+      deployerFundingSource: fundingSource,
+      earlySigners,
+      lastEventAt: event.blockTime ?? new Date(),
+      updatedAt: new Date(),
+    })
+    .where(eq(schema.subjects.id, event.programId));
+
+  await saveEnrichment(eventId, enrichment, "scored");
+  log.info(
+    { eventId, ms: Date.now() - start, band, score: score.toFixed(3), category, outcome: "ok" },
+    "done",
+  );
+}
+
+/** Deploy authority funding → credibility signal. */
+function fundingScore(source: ScoreResult["fundingSource"]): number {
+  switch (source) {
+    case "known_multisig":
+      return 1;
+    case "cex":
+      return 0.8;
+    case "bridge":
+      return 0.7;
+    case "fresh":
+      return 0.25;
+    default:
+      return 0; // unknown / null
   }
-  void cfg;
-  return enqueued;
+}
+
+/** Authority structure → intent signal. */
+function authorityScore(authorityClass: string | null): number {
+  switch (authorityClass) {
+    case "squads":
+      return 1; // multisig
+    case "none":
+      return 0.8; // immutable / frozen
+    case "program":
+      return 0.6; // controlled by another program (governance-ish)
+    case "hot_wallet":
+      return 0.2;
+    default:
+      return 0;
+  }
 }

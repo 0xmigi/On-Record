@@ -32,8 +32,7 @@ export const events = pgTable(
     authorityAfter: text("authority_after"),
     sha256Before: text("sha256_before"),
     sha256After: text("sha256_after"),
-    tvlAtEvent: doublePrecision("tvl_at_event"),
-    // pipeline output: fingerprint, identity, classification, rank — see
+    // pipeline output: fingerprint, identity, classification, score — see
     // EventEnrichment in types.ts
     enrichment: jsonb("enrichment").$type<Record<string, unknown>>().default({}).notNull(),
     pipelineStage: text("pipeline_stage").default("ingested").notNull(),
@@ -47,9 +46,10 @@ export const events = pgTable(
 );
 
 // ---------------------------------------------------------------------------
-// subjects — programs and named entities, unified. A subject is what a story
-// is about. Unknown programs get a subject row keyed by program id; named
+// subjects — programs and named entities, unified. A subject is what the radar
+// ranks. Unknown programs get a subject row keyed by program id; named
 // entities can span several programs (subjects.entityKey groups them).
+// The radar reads directly off this table.
 // ---------------------------------------------------------------------------
 export const subjects = pgTable(
   "subjects",
@@ -68,19 +68,35 @@ export const subjects = pgTable(
     tlsh: text("tlsh"),
     sizeBytes: integer("size_bytes"),
     bucketId: text("bucket_id"),
-    noveltyScore: doublePrecision("novelty_score"),
+    // --- novelty / radar fields (SPEC §2, §4) ---
+    noveltyBand: text("novelty_band"), // 'clone' | 'variant' | 'novel'
+    noveltyScore: doublePrecision("novelty_score"), // 0..1 composite
+    category: text("category"), // 'defi' | 'token' | 'nft' | 'infra' | 'governance' | 'unknown'
+    instructionCount: integer("instruction_count"),
+    idlPresent: boolean("idl_present").default(false).notNull(),
+    // structured profile from the SBF bytecode (framework, syscalls, caps, integrations)
+    profile: jsonb("profile").$type<import("../profile.js").ProgramProfile>(),
+    deployerFundingSource: text("deployer_funding_source"),
+    earlySigners: integer("early_signers"),
     tvl: doublePrecision("tvl"),
     firstSeenSlot: bigint("first_seen_slot", { mode: "number" }),
+    firstSeenAt: timestamp("first_seen_at", { withTimezone: true }),
+    lastEventAt: timestamp("last_event_at", { withTimezone: true }),
     facts: jsonb("facts").$type<Record<string, unknown>>().default({}).notNull(),
     createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
   },
-  (t) => [index("subjects_entity_key_idx").on(t.entityKey), index("subjects_bucket_idx").on(t.bucketId)],
+  (t) => [
+    index("subjects_entity_key_idx").on(t.entityKey),
+    index("subjects_bucket_idx").on(t.bucketId),
+    index("subjects_radar_idx").on(t.network, t.noveltyBand, t.noveltyScore),
+    index("subjects_first_seen_idx").on(t.firstSeenAt),
+  ],
 );
 
 // ---------------------------------------------------------------------------
-// copy_buckets — clusters of near-identical bytecode. Individual members never
-// get stories; the bucket's velocity feeds copy-wave stories.
+// copy_buckets — clusters of near-identical bytecode. Individual members are
+// folded into the cluster; the bucket's velocity feeds the funnel's clone rate.
 // ---------------------------------------------------------------------------
 export const copyBuckets = pgTable("copy_buckets", {
   id: text("id").primaryKey(),
@@ -93,12 +109,11 @@ export const copyBuckets = pgTable("copy_buckets", {
   lastSeenAt: timestamp("last_seen_at", { withTimezone: true }).defaultNow().notNull(),
   // rolling velocity stats: counts per window, updated by classify stage
   velocity: jsonb("velocity").$type<Record<string, unknown>>().default({}).notNull(),
-  lastStoryAt: timestamp("last_story_at", { withTimezone: true }),
 });
 
 // ---------------------------------------------------------------------------
-// watchlist — devnet sightings + manual watches. A mainnet match fires a
-// "became real" story.
+// watchlist — devnet sightings + manual watches. A mainnet fingerprint/authority
+// match flags a program that "became real" (tested in the lab, now live).
 // ---------------------------------------------------------------------------
 export const watchlist = pgTable(
   "watchlist",
@@ -123,41 +138,24 @@ export const watchlist = pgTable(
 );
 
 // ---------------------------------------------------------------------------
-// stories — the product. Body/facts/inference are the writer's structured
-// output after passing programmatic verification.
+// funnel_daily — one row per day: the 2000 → unique → novel counts and the
+// category breakdown. Powers the Funnel surface (SPEC §6).
 // ---------------------------------------------------------------------------
-export const stories = pgTable(
-  "stories",
-  {
-    id: text("id").primaryKey(),
-    type: text("type").notNull(), // 'update' | 'launch' | 'radar' | 'became_real' | 'corroboration' | 'control_change' | 'copy_wave'
-    headline: text("headline").notNull(),
-    body: text("body").notNull(),
-    facts: jsonb("facts").$type<unknown[]>().default([]).notNull(),
-    inference: jsonb("inference").$type<{ text: string; confidence: "low" | "med" | "high" } | null>(),
-    subjects: jsonb("subjects").$type<string[]>().default([]).notNull(),
-    eventIds: jsonb("event_ids").$type<string[]>().default([]).notNull(),
-    rankScore: doublePrecision("rank_score").default(0).notNull(),
-    status: text("status").default("published").notNull(), // 'published' | 'killed' | 'pinned' | 'dead_letter'
-    deadLetterReason: text("dead_letter_reason"),
-    publishedAt: timestamp("published_at", { withTimezone: true }),
-    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
-  },
-  (t) => [index("stories_status_published_idx").on(t.status, t.publishedAt), index("stories_type_idx").on(t.type)],
-);
-
-// ---------------------------------------------------------------------------
-// digests — one per day: top stories + counts.
-// ---------------------------------------------------------------------------
-export const digests = pgTable("digests", {
-  date: text("date").primaryKey(), // YYYY-MM-DD (ET per spec default)
-  storyIds: jsonb("story_ids").$type<string[]>().default([]).notNull(),
-  counts: jsonb("counts").$type<Record<string, number>>().default({}).notNull(),
-  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+export const funnelDaily = pgTable("funnel_daily", {
+  date: text("date").primaryKey(), // YYYY-MM-DD (ET)
+  network: text("network").default("mainnet").notNull(),
+  raw: integer("raw").default(0).notNull(), // total deploy + upgrade events
+  unique: integer("unique").default(0).notNull(), // unique bytecode (Y)
+  novel: integer("novel").default(0).notNull(), // Z
+  clones: integer("clones").default(0).notNull(),
+  variants: integer("variants").default(0).notNull(),
+  byCategory: jsonb("by_category").$type<Record<string, number>>().default({}).notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
 });
 
 // ---------------------------------------------------------------------------
-// operator_log — every lever pull. Edits are part of the record.
+// operator_log — every lever pull (naming, tuning, watching). Edits are part
+// of the record.
 // ---------------------------------------------------------------------------
 export const operatorLog = pgTable("operator_log", {
   id: text("id").primaryKey(),
@@ -170,8 +168,7 @@ export const operatorLog = pgTable("operator_log", {
 });
 
 // ---------------------------------------------------------------------------
-// config — runtime-tunable thresholds, weights, budgets, tone notes.
-// Single-row-per-key string/json store.
+// config — runtime-tunable thresholds, weights, windows. Single-row-per-key.
 // ---------------------------------------------------------------------------
 export const config = pgTable("config", {
   key: text("key").primaryKey(),

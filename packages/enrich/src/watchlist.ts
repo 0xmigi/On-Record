@@ -2,9 +2,9 @@ import { and, eq, lt, sql } from "drizzle-orm";
 import { db, schema, newId, getConfig, logger, type Fingerprint } from "@onrecord/core";
 
 // ---------------------------------------------------------------------------
-// Devnet watchlist management (spec §3). Devnet never publishes stories on its
-// own — novel devnet fingerprints and their controlling keys go here, and a
-// mainnet match later fires a "became real" story.
+// Devnet watchlist management (SPEC §5). Devnet never surfaces on the mainnet
+// radar on its own — novel devnet fingerprints and their controlling keys go
+// here, and a later mainnet match flags a program that "became real".
 // ---------------------------------------------------------------------------
 
 /** Record a novel devnet sighting. Noise controls: a fingerprint redeployed

@@ -22,37 +22,22 @@ services:
     volumes:
       - redisdata:/data
 
-  ingest:
+  # Single-process live path: API + poller + cron, pipeline inline (matches the
+  # Railway deploy). For the queued alternative, run `server.js` + `worker.js`
+  # as two services against redis instead.
+  live:
     build:
       context: .
       dockerfile: Dockerfile
-    command: node apps/ingest/dist/server.js
+    command: node apps/ingest/dist/live.js
     env_file: .env
     environment:
       DATABASE_URL: postgres://onrecord:onrecord@postgres:5432/onrecord
-      REDIS_URL: redis://redis:6379
     ports:
       - "3001:3001"
     depends_on:
       postgres:
         condition: service_healthy
-      redis:
-        condition: service_started
-
-  worker:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    command: node apps/ingest/dist/worker.js
-    env_file: .env
-    environment:
-      DATABASE_URL: postgres://onrecord:onrecord@postgres:5432/onrecord
-      REDIS_URL: redis://redis:6379
-    depends_on:
-      postgres:
-        condition: service_healthy
-      redis:
-        condition: service_started
 
   web:
     build:
@@ -60,12 +45,12 @@ services:
       dockerfile: Dockerfile.web
     env_file: .env
     environment:
-      API_URL: http://ingest:3001
+      API_URL: http://live:3001
       NEXT_PUBLIC_API_URL: http://localhost:3001
     ports:
       - "3000:3000"
     depends_on:
-      - ingest
+      - live
 
 volumes:
   pgdata:

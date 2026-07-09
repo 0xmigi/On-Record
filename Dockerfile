@@ -6,7 +6,6 @@ WORKDIR /app
 COPY pnpm-workspace.yaml package.json ./
 COPY packages/core/package.json packages/core/
 COPY packages/enrich/package.json packages/enrich/
-COPY packages/newsroom/package.json packages/newsroom/
 COPY apps/ingest/package.json apps/ingest/
 RUN pnpm install --frozen-lockfile=false --filter '!@onrecord/web'
 COPY tsconfig.base.json ./
@@ -26,4 +25,5 @@ RUN curl -fsSL https://github.com/trendmicro/tlsh/archive/refs/tags/4.12.0.tar.g
 WORKDIR /app
 COPY --from=build /app ./
 ENV NODE_ENV=production
-CMD ["node", "apps/ingest/dist/server.js"]
+# Single-process live deployment: API + poller + cron, pipeline inline (no Redis).
+CMD ["node", "apps/ingest/dist/live.js"]

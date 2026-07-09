@@ -1,197 +1,507 @@
-// Zero-dependency mock of the On Record read API, for fast UI iteration
-// without Postgres/Redis/Docker. Serves one seeded "demo day" covering every
-// story type. Run: node scripts/mock-api.mjs  (listens on :3001)
+// Zero-dependency mock of the On Record v2 read API (the radar), for fast UI
+// iteration without Postgres/Redis/Docker. Serves a seeded "demo day" of novel
+// Solana programs, clone clusters, and a consistent funnel snapshot.
+// Run: node scripts/mock-api.mjs   (listens on :3001)
 //
 // The web app (apps/web) reads from API_URL — point it here:
 //   API_URL=http://localhost:3001 pnpm --filter @onrecord/web dev
 import { createServer } from "node:http";
 
 const PORT = Number(process.env.PORT ?? 3001);
-const iso = (hoursAgo) => new Date(Date.now() - hoursAgo * 3_600_000).toISOString();
+const NOW = Date.now();
+const iso = (hoursAgo) => new Date(NOW - hoursAgo * 3_600_000).toISOString();
+const today = new Date(NOW).toISOString().slice(0, 10);
 
-// --- subjects -------------------------------------------------------------
-const SUBJECTS = {
-  JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4: {
-    kind: "program", name: "Jupiter", network: "mainnet", verified: true,
-    repoUrl: "https://github.com/jup-ag/jupiter-core", authorityClass: "squads",
-    tvl: 2_410_000_000, noveltyScore: 0, bucketId: null,
+// --- deterministic pseudo-random address / hash generation -----------------
+// Seeded so ids/hashes are stable across restarts (the UI keeps working).
+function mulberry32(seed) {
+  let a = seed >>> 0;
+  return () => {
+    a |= 0;
+    a = (a + 0x6d2b79f5) | 0;
+    let t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+const B58 = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
+const HEX = "0123456789abcdef";
+function pick(rng, alphabet, len) {
+  let out = "";
+  for (let i = 0; i < len; i++) out += alphabet[Math.floor(rng() * alphabet.length)];
+  return out;
+}
+let seedCounter = 1;
+function addr(prefix = "") {
+  const rng = mulberry32(0x9e37 * seedCounter++ + 17);
+  const body = pick(rng, B58, 44 - prefix.length);
+  return (prefix + body).slice(0, 44);
+}
+function sha256() {
+  const rng = mulberry32(0x1f83 * seedCounter++ + 3);
+  return pick(rng, HEX, 64);
+}
+function sig() {
+  const rng = mulberry32(0x2c1b * seedCounter++ + 7);
+  return pick(rng, B58, 88);
+}
+
+const BASE_SLOT = 334_900_000;
+
+// --- clone / variant clusters ---------------------------------------------
+const CLUSTERS = {
+  clu_photon: {
+    id: "clu_photon",
+    label: "Photon launcher fork",
+    canonicalSha256: sha256(),
+    memberCount: 34,
+    velocity6h: 11,
+    category: "token",
   },
-  KLend2g3cP87fffoy8q1mQqGKjrxjC8boSyAYavgmjD: {
-    kind: "program", name: "Kamino", network: "mainnet", verified: true,
-    repoUrl: "https://github.com/Kamino-Finance/klend", authorityClass: "squads",
-    tvl: 1_870_000_000, noveltyScore: 0.1, bucketId: null,
+  clu_dlmm: {
+    id: "clu_dlmm",
+    label: "Meteora DLMM variant",
+    canonicalSha256: sha256(),
+    memberCount: 7,
+    velocity6h: 2,
+    category: "defi",
   },
-  dRiftyHA39MWEi3m9aunc5MzRF1JYuBsbn6VPcn33UH: {
-    kind: "program", name: "Drift", network: "mainnet", verified: true,
-    repoUrl: "https://github.com/drift-labs/protocol-v2", authorityClass: "program",
-    tvl: 950_000_000, noveltyScore: 0, bucketId: null,
-  },
-  "7vXqKvB2mYzXhBpTn4NxFhWcJqEeUkPnLxAvGrDhTk3q": {
-    kind: "program", name: null, network: "mainnet", verified: false,
-    repoUrl: null, authorityClass: "hot_wallet", tvl: 4_200_000, noveltyScore: 0.94, bucketId: null,
-  },
-  "9aRwFkq3sVtDmZePnB5cWuXhYgJqTdKvNbMxUwErA2Ls": {
-    kind: "program", name: "MarginFi", network: "mainnet", verified: false,
-    repoUrl: null, authorityClass: "none", tvl: 95_000_000, noveltyScore: 0.2, bucketId: null,
-  },
-  "4kTpNvWyBmZcQhXsAeR2dFuJgLbVwMrEnUqYxKa3Pz8t": {
-    kind: "program", name: null, network: "mainnet", verified: false,
-    repoUrl: null, authorityClass: "hot_wallet", tvl: 12_800_000, noveltyScore: 0.81, bucketId: null,
+  clu_spltoken: {
+    id: "clu_spltoken",
+    label: "SPL token clone",
+    canonicalSha256: sha256(),
+    memberCount: 118,
+    velocity6h: 40,
+    category: "token",
   },
 };
-const subjectRef = (id) => ({ id, name: SUBJECTS[id]?.name ?? null });
 
-// --- underlying events (THE RECORD tables) --------------------------------
-const EVENTS = {
-  evt_demo06: { network: "mainnet", type: "upgrade", signature: "7EqtTzAcFqYgUlBwEiV6hJyNkPfZaQvIrYuCbOe7Td3x8pXtRzAcFqYgUlBwEiV6hJyNkPfZaQvIrYuCbOe7T", slot: 334494800, blockTime: iso(7), programId: "dRiftyHA39MWEi3m9aunc5MzRF1JYuBsbn6VPcn33UH", authorityBefore: null, authorityAfter: "GovnrDemo", sha256After: "d7e8f9a0", enrichment: {} },
-  evt_demo05: { network: "mainnet", type: "set_authority", signature: "6DpsSyZbEpXfTkAvDhU5gIxMjOeYzPuHqXtBaNd6Sc2w7oWsQyZbEpXfTkAvDhU5gIxMjOeYzPuHqXtBaNd6S", slot: 334515600, blockTime: iso(1.5), programId: "9aRwFkq3sVtDmZePnB5cWuXhYgJqTdKvNbMxUwErA2Ls", authorityBefore: "TeamKey", authorityAfter: null, sha256After: null, enrichment: {} },
-  evt_demo01: { network: "mainnet", type: "upgrade", signature: "2ZkoWgqLtRfE8mYzXhBpTn4NxFhWcJqEeUkPnLxAvGrDhTk3qKvB2mYzXhBpTn4NxFhWcJqEeUkPnLxAvGrDh", slot: 334512890, blockTime: iso(3), programId: "JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4", authorityBefore: "GZctH", authorityAfter: "GZctH", sha256After: "a1b2c3d4", enrichment: {} },
-  evt_demo03: { network: "mainnet", type: "deploy", signature: "4BnqQwXzCnAdRiYtBfS3eGvKhMcWxNsFoVrZyLb4Qa9u5mUqOwXzCnAdRiYtBfS3eGvKhMcWxNsFoVrZyLb4Q", slot: 334509455, blockTime: iso(4), programId: "7vXqKvB2mYzXhBpTn4NxFhWcJqEeUkPnLxAvGrDhTk3q", authorityBefore: null, authorityAfter: "Fh8Vm", sha256After: "c9d0e1f2", enrichment: {} },
-  evt_demo04: { network: "mainnet", type: "deploy", signature: "5CorRxYaDoWeSjZuCgT4fHwLiNdXyOtGpWsAzMc5Rb1v6nVrPxYaDoWeSjZuCgT4fHwLiNdXyOtGpWsAzMc5R", slot: 334501200, blockTime: iso(5), programId: "4kTpNvWyBmZcQhXsAeR2dFuJgLbVwMrEnUqYxKa3Pz8t", authorityBefore: null, authorityAfter: "AuthKeyDemo", sha256After: "b3c4d5e6", enrichment: {} },
-  evt_demo02: { network: "mainnet", type: "deploy", signature: "3AmnPvWyBmZcQhXsAeR2dFuJgLbVwMrEnUqYxKa3Pz8t4kTpNvWyBmZcQhXsAeR2dFuJgLbVwMrEnUqYxKa3P", slot: 334498120, blockTime: iso(6), programId: "KLend2g3cP87fffoy8q1mQqGKjrxjC8boSyAYavgmjD", authorityBefore: null, authorityAfter: "7hPqS", sha256After: "e5f6a7b8", enrichment: {} },
+// --- programs --------------------------------------------------------------
+// meta -> full ApiProgram (id + sha256 generated). instructionCount defaults
+// to idl length when an IDL is published.
+function program(meta) {
+  const id = meta.id ?? addr();
+  const idl = meta.idl ?? [];
+  const idlPresent = idl.length > 0;
+  const instructionCount =
+    meta.instructionCount !== undefined
+      ? meta.instructionCount
+      : idlPresent
+        ? idl.length
+        : null;
+  return {
+    id,
+    network: "mainnet",
+    name: meta.name ?? null,
+    deployedSlot: BASE_SLOT - Math.round(meta.hoursAgo * 150),
+    deployedAt: iso(meta.hoursAgo),
+    lastEventAt: iso(meta.lastAgo ?? meta.hoursAgo),
+    band: meta.band,
+    noveltyScore: meta.score,
+    category: meta.category,
+    sizeBytes: meta.sizeBytes ?? null,
+    instructionCount,
+    idlPresent,
+    authorityClass: meta.authorityClass,
+    deployerFundingSource: meta.funding ?? null,
+    earlySigners: meta.signers ?? null,
+    verified: meta.verified ?? false,
+    bucketId: meta.bucketId ?? null,
+    clusterSize: meta.clusterSize ?? null,
+    // extras kept for detail assembly (stripped from radar rows):
+    _sha256: meta.sha256 ?? sha256(),
+    _idl: idl,
+    _repoUrl: meta.repoUrl ?? null,
+    _authority: meta.authorityClass === "none" ? null : meta.authority ?? addr(),
+    _neighbors: meta.neighbors ?? [],
+    _strings: meta.strings ?? [],
+    _events: meta.events ?? null,
+  };
+}
+
+const NOVEL = [
+  program({
+    name: null,
+    band: "novel",
+    score: 0.96,
+    category: "infra",
+    hoursAgo: 2.1,
+    lastAgo: 0.4,
+    sizeBytes: 251_400,
+    idl: ["initialize", "register_oracle", "submit_price", "aggregate", "slash", "withdraw"],
+    authorityClass: "squads",
+    funding: "coinbase",
+    signers: 342,
+    verified: true,
+    strings: [
+      "oracle_v1::submit_price",
+      "median aggregation window exceeded",
+      "https://github.com/example/onchain-oracle",
+      "stake account under-collateralized",
+      "Anchor program built with anchor-lang 0.30.1",
+    ],
+    neighbors: [],
+    repoUrl: "https://github.com/example/onchain-oracle",
+    fullDossier: true,
+  }),
+  program({
+    name: null,
+    band: "novel",
+    score: 0.93,
+    category: "defi",
+    hoursAgo: 3.4,
+    sizeBytes: 198_720,
+    idl: ["swap", "add_liquidity", "remove_liquidity", "create_pool", "collect_fees"],
+    authorityClass: "squads",
+    funding: "bridge",
+    signers: 214,
+    strings: ["concentrated_liquidity", "tick spacing invalid", "pool::swap_exact_in"],
+    neighbors: [],
+  }),
+  program({
+    name: null,
+    band: "novel",
+    score: 0.88,
+    category: "defi",
+    hoursAgo: 4.8,
+    sizeBytes: 143_360,
+    instructionCount: 28,
+    authorityClass: "none",
+    funding: "kraken",
+    signers: 96,
+    strings: ["perp::open_position", "funding rate clamp", "liquidation engine tick"],
+  }),
+  program({
+    name: null,
+    band: "novel",
+    score: 0.84,
+    category: "token",
+    hoursAgo: 5.6,
+    sizeBytes: 88_064,
+    idl: ["mint", "burn", "transfer_hook", "freeze"],
+    authorityClass: "hot_wallet",
+    funding: "unknown",
+    signers: 44,
+    strings: ["token-2022 transfer hook", "royalty bps out of range"],
+  }),
+  program({
+    name: null,
+    band: "novel",
+    score: 0.81,
+    category: "nft",
+    hoursAgo: 6.9,
+    sizeBytes: 121_900,
+    idl: ["mint_nft", "update_metadata", "verify_collection", "burn_edition"],
+    authorityClass: "squads",
+    funding: "coinbase",
+    signers: 33,
+    strings: ["metaplex core adjacent", "collection not verified"],
+  }),
+  program({
+    name: null,
+    band: "novel",
+    score: 0.79,
+    category: "governance",
+    hoursAgo: 7.7,
+    sizeBytes: 176_128,
+    idl: ["create_proposal", "cast_vote", "execute", "cancel", "set_quorum"],
+    authorityClass: "squads",
+    funding: "bridge",
+    signers: 61,
+    verified: true,
+    strings: ["realm governance", "quorum not reached", "proposal in cooldown"],
+  }),
+  program({
+    name: null,
+    band: "novel",
+    score: 0.77,
+    category: "infra",
+    hoursAgo: 9.2,
+    sizeBytes: 64_512,
+    instructionCount: 15,
+    authorityClass: "program",
+    funding: "unknown",
+    signers: 12,
+    strings: ["cross-program message relay", "invalid attestation"],
+  }),
+  program({
+    name: null,
+    band: "novel",
+    score: 0.74,
+    category: "defi",
+    hoursAgo: 11.5,
+    sizeBytes: 210_000,
+    instructionCount: 41,
+    authorityClass: "hot_wallet",
+    funding: "okx",
+    signers: 88,
+    strings: ["lending market init", "health factor below 1"],
+  }),
+  program({
+    name: null,
+    band: "novel",
+    score: 0.72,
+    category: "unknown",
+    hoursAgo: 14.0,
+    sizeBytes: 37_888,
+    instructionCount: null,
+    authorityClass: "hot_wallet",
+    funding: "unknown",
+    signers: 3,
+    strings: ["process_instruction", "0x1771"],
+  }),
+  program({
+    name: null,
+    band: "novel",
+    score: 0.7,
+    category: "token",
+    hoursAgo: 18.3,
+    sizeBytes: 45_056,
+    idl: ["initialize_mint", "mint_to", "set_metadata"],
+    authorityClass: "none",
+    funding: "coinbase",
+    signers: 20,
+    strings: ["fixed supply mint", "mint authority frozen"],
+  }),
+  program({
+    name: null,
+    band: "novel",
+    score: 0.68,
+    category: "nft",
+    hoursAgo: 20.6,
+    sizeBytes: 52_224,
+    instructionCount: 9,
+    authorityClass: "hot_wallet",
+    funding: "unknown",
+    signers: 5,
+    strings: ["compressed nft mint", "merkle proof invalid"],
+  }),
+  program({
+    name: null,
+    band: "novel",
+    score: 0.66,
+    category: "infra",
+    hoursAgo: 22.4,
+    sizeBytes: 71_680,
+    idl: ["heartbeat", "report", "rotate_key"],
+    authorityClass: "squads",
+    funding: "bridge",
+    signers: 27,
+    verified: true,
+    strings: ["keeper network heartbeat", "stale report rejected"],
+  }),
+];
+
+// A couple of older novel programs so week / all windows show more.
+const NOVEL_OLDER = [
+  program({
+    name: null,
+    band: "novel",
+    score: 0.82,
+    category: "defi",
+    hoursAgo: 52,
+    sizeBytes: 160_000,
+    idl: ["deposit", "withdraw", "rebalance", "harvest"],
+    authorityClass: "squads",
+    funding: "coinbase",
+    signers: 130,
+    verified: true,
+    strings: ["yield vault strategy", "slippage exceeded"],
+  }),
+  program({
+    name: null,
+    band: "novel",
+    score: 0.75,
+    category: "governance",
+    hoursAgo: 120,
+    sizeBytes: 140_000,
+    instructionCount: 22,
+    authorityClass: "squads",
+    funding: "bridge",
+    signers: 58,
+    strings: ["staking governance", "unstake cooldown active"],
+  }),
+];
+
+// Variant-band cluster members (fold into cluster rows).
+const VARIANTS = [
+  program({ band: "variant", score: 0.22, category: "token", hoursAgo: 1.2, sizeBytes: 41_000, authorityClass: "hot_wallet", funding: "unknown", signers: 6, bucketId: "clu_photon", clusterSize: 34, strings: ["pump curve bonding", "graduation threshold"] }),
+  program({ band: "variant", score: 0.2, category: "token", hoursAgo: 2.9, sizeBytes: 41_120, authorityClass: "hot_wallet", funding: "unknown", signers: 2, bucketId: "clu_photon", clusterSize: 34 }),
+  program({ band: "variant", score: 0.19, category: "token", hoursAgo: 4.1, sizeBytes: 40_960, authorityClass: "hot_wallet", funding: "unknown", signers: 1, bucketId: "clu_photon", clusterSize: 34 }),
+  program({ band: "variant", score: 0.31, category: "defi", hoursAgo: 5.5, sizeBytes: 182_000, authorityClass: "squads", funding: "bridge", signers: 40, bucketId: "clu_dlmm", clusterSize: 7, strings: ["dlmm bin array", "active bin drift"] }),
+  program({ band: "variant", score: 0.29, category: "defi", hoursAgo: 8.2, sizeBytes: 181_500, authorityClass: "squads", funding: "unknown", signers: 18, bucketId: "clu_dlmm", clusterSize: 7 }),
+];
+
+// Clone-band rows (exact bytecode matches, dropped from the radar but counted).
+const CLONES = [
+  program({ band: "clone", score: 0.03, category: "token", hoursAgo: 0.6, sizeBytes: 22_000, authorityClass: "hot_wallet", funding: "unknown", signers: 0, bucketId: "clu_spltoken", clusterSize: 118 }),
+  program({ band: "clone", score: 0.03, category: "token", hoursAgo: 1.8, sizeBytes: 22_000, authorityClass: "hot_wallet", funding: "unknown", signers: 0, bucketId: "clu_spltoken", clusterSize: 118 }),
+  program({ band: "clone", score: 0.02, category: "token", hoursAgo: 3.3, sizeBytes: 22_000, authorityClass: "hot_wallet", funding: "unknown", signers: 0, bucketId: "clu_spltoken", clusterSize: 118 }),
+  program({ band: "clone", score: 0.02, category: "token", hoursAgo: 6.0, sizeBytes: 41_000, authorityClass: "hot_wallet", funding: "unknown", signers: 0, bucketId: "clu_photon", clusterSize: 34 }),
+];
+
+const ALL = [...NOVEL, ...NOVEL_OLDER, ...VARIANTS, ...CLONES];
+const BY_ID = new Map(ALL.map((p) => [p.id, p]));
+
+// Wire cluster members from the seeded programs + a couple synthetic tails.
+for (const clu of Object.values(CLUSTERS)) {
+  const seeded = ALL.filter((p) => p.bucketId === clu.id).map((p) => ({
+    programId: p.id,
+    deployedAt: p.deployedAt,
+  }));
+  const synthetic = Array.from({ length: Math.max(0, Math.min(6, clu.memberCount - seeded.length)) }, (_, i) => ({
+    programId: addr(),
+    deployedAt: iso(2 + i * 3),
+  }));
+  clu.members = [...seeded, ...synthetic];
+}
+
+// Give the flagship novel program some fingerprint neighbors (into a cluster).
+NOVEL[7]._neighbors = [{ programId: VARIANTS[3].id, distance: 41, name: null }];
+
+// --- funnel (consistent with the seeded bands) -----------------------------
+const novelToday = NOVEL.filter((p) => hoursOf(p) <= 24);
+function hoursOf(p) {
+  return (NOW - Date.parse(p.deployedAt)) / 3_600_000;
+}
+const byCategory = {};
+for (const p of novelToday) byCategory[p.category] = (byCategory[p.category] ?? 0) + 1;
+
+const RAW = 1974;
+const UNIQUE = 612;
+const NOVEL_COUNT = novelToday.length; // radar's "today · novel" count
+const FUNNEL = {
+  date: today,
+  raw: RAW,
+  unique: UNIQUE,
+  novel: NOVEL_COUNT,
+  clones: RAW - UNIQUE, // exact-bytecode dupes dropped raw -> unique
+  variants: UNIQUE - NOVEL_COUNT, // near-dupes dropped unique -> novel
+  byCategory,
+  updatedAt: iso(0.05),
 };
-const withId = (id) => ({ id, ...EVENTS[id] });
 
-// --- stories (newest first) ----------------------------------------------
-const STORIES = [
-  {
-    id: "sty_d07", type: "corroboration", pinned: true, status: "pinned", publishedAt: iso(0.9),
-    headline: "Drift said v3 is live — it is, and the code matches",
-    body: "Drift announced v3 this morning. The record agrees: the update went live seven hours ago and the running code matches the public v3 release.",
-    facts: [
-      { text: "The update went live at 08:41 UTC.", receipt: { kind: "tx", ref: EVENTS.evt_demo06.signature } },
-      { text: "The code is public and matches what is running.", receipt: { kind: "repo", ref: "https://github.com/drift-labs/protocol-v2/commit/9f31c2a" } },
-      { text: "This is the announcement being checked.", receipt: { kind: "repo", ref: "https://x.com/DriftProtocol/status/example" } },
-    ],
-    inference: null,
-    subjects: [subjectRef("dRiftyHA39MWEi3m9aunc5MzRF1JYuBsbn6VPcn33UH")],
-    eventIds: ["evt_demo06"],
-  },
-  {
-    id: "sty_d06", type: "control_change", pinned: false, status: "published", publishedAt: iso(1.4),
-    headline: "A $95M lending app just froze itself",
-    body: "MarginFi gave up the ability to change its own code. With $95M held in it, whatever is running now is what runs forever.",
-    facts: [
-      { text: "Control was removed at 14:12 UTC — no one can change it now.", receipt: { kind: "tx", ref: EVENTS.evt_demo05.signature } },
-      { text: "About $95M is held in it.", receipt: { kind: "account", ref: "9aRwFkq3sVtDmZePnB5cWuXhYgJqTdKvNbMxUwErA2Ls" } },
-    ],
-    inference: null,
-    subjects: [subjectRef("9aRwFkq3sVtDmZePnB5cWuXhYgJqTdKvNbMxUwErA2Ls")],
-    eventIds: ["evt_demo05"],
-  },
-  {
-    id: "sty_d05", type: "update", pinned: false, status: "published", publishedAt: iso(3),
-    headline: "Jupiter shipped an update to its main exchange",
-    body: "Jupiter updated its core exchange today. The code is public and matches — the change reworks how orders are split across venues and trims two fee paths.",
-    facts: [
-      { text: "The update went live at 12:33 UTC.", receipt: { kind: "tx", ref: EVENTS.evt_demo01.signature } },
-      { text: "The code is public and matches what is running.", receipt: { kind: "repo", ref: "https://github.com/jup-ag/jupiter-core/commit/4e8ba17" } },
-    ],
-    inference: null,
-    subjects: [subjectRef("JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4")],
-    eventIds: ["evt_demo01"],
-  },
-  {
-    id: "sty_d04", type: "radar", pinned: false, status: "published", publishedAt: iso(4),
-    headline: "Something new is live and already holding $4.2M",
-    body: "A new app went live four hours ago that matches nothing we have seen before. It is controlled by a single key and already holds $4.2M.",
-    facts: [
-      { text: "It went live at 11:02 UTC.", receipt: { kind: "tx", ref: EVENTS.evt_demo03.signature } },
-      { text: "About $4.2M is held in it.", receipt: { kind: "account", ref: "7vXqKvB2mYzXhBpTn4NxFhWcJqEeUkPnLxAvGrDhTk3q" } },
-    ],
-    inference: { text: "The naming inside the code points at a perpetuals exchange. We do not know who is behind it yet.", confidence: "low" },
-    subjects: [subjectRef("7vXqKvB2mYzXhBpTn4NxFhWcJqEeUkPnLxAvGrDhTk3q")],
-    eventIds: ["evt_demo03"],
-  },
-  {
-    id: "sty_d03", type: "became_real", pinned: false, status: "published", publishedAt: iso(5),
-    headline: "Tested in the lab for 3 weeks — now it is live",
-    body: "An app we have watched on the test network for 3 weeks went live for real today, launched by the same key that ran the tests.",
-    facts: [
-      { text: "It went live at 10:14 UTC.", receipt: { kind: "tx", ref: EVENTS.evt_demo04.signature } },
-      { text: "The same code was rehearsed on the test network 14 times.", receipt: { kind: "account", ref: "4kTpNvWyBmZcQhXsAeR2dFuJgLbVwMrEnUqYxKa3Pz8t" } },
-    ],
-    inference: { text: "Three weeks of steady rehearsal before launch usually means a funded team, not a hobbyist.", confidence: "med" },
-    subjects: [subjectRef("4kTpNvWyBmZcQhXsAeR2dFuJgLbVwMrEnUqYxKa3Pz8t")],
-    eventIds: ["evt_demo04"],
-  },
-  {
-    id: "sty_d02", type: "launch", pinned: false, status: "published", publishedAt: iso(6),
-    headline: "Kamino launched a new lending market",
-    body: "Kamino put a new lending market live this morning. The code is public and matches, and it is controlled by a team key.",
-    facts: [
-      { text: "It went live at 09:20 UTC.", receipt: { kind: "tx", ref: EVENTS.evt_demo02.signature } },
-      { text: "The code is public and matches what is running.", receipt: { kind: "repo", ref: "https://github.com/Kamino-Finance/klend/commit/b21f90c" } },
-    ],
-    inference: null,
-    subjects: [subjectRef("KLend2g3cP87fffoy8q1mQqGKjrxjC8boSyAYavgmjD")],
-    eventIds: ["evt_demo02"],
-  },
-  {
-    id: "sty_d01", type: "copy_wave", pinned: false, status: "published", publishedAt: iso(7),
-    headline: "34 copies of the same token launcher in 6 hours",
-    body: "34 copies of one token launcher went live in the last 6 hours — the same code stamped out again and again by different keys.",
-    facts: [{ text: "34 copies appeared in the last 6 hours.", receipt: { kind: "account", ref: "Copy1xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx" } }],
-    inference: null,
-    subjects: [{ id: "Copy1xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx", name: null }],
-    eventIds: [],
-  },
-];
+// --- raw loader event feed -------------------------------------------------
+// Deploy row per program, plus the flagship's richer timeline.
+function deployEvent(p) {
+  return {
+    id: `evt_${p.id.slice(0, 8)}_deploy`,
+    network: "mainnet",
+    type: "deploy",
+    signature: sig(),
+    slot: p.deployedSlot,
+    blockTime: p.deployedAt,
+    programId: p.id,
+    authorityBefore: null,
+    authorityAfter: p._authority,
+    sha256After: p._sha256,
+  };
+}
 
-const LAB = [
-  { id: "wl_d1", kind: "fingerprint", programId: "Lab1TestNetApp", authority: null, source: "devnet_novel", note: null, firstSeenAt: iso(19 * 24), lastSeenAt: iso(6), deployCount: 23, expiresAt: iso(-41 * 24), status: "active" },
-  { id: "wl_d2", kind: "fingerprint", programId: "Lab2TestNetApp", authority: null, source: "devnet_novel", note: null, firstSeenAt: iso(11 * 24), lastSeenAt: iso(2 * 24), deployCount: 8, expiresAt: iso(-49 * 24), status: "active" },
-  { id: "wl_d3", kind: "authority", programId: null, authority: "6pYzVrSaAzPcTeGgWlJuCbNfHi5YxZqRvDpOk7Ec9Fm3", source: "manual", note: "Team behind the March options launch — said v2 is coming.", firstSeenAt: iso(4 * 24), lastSeenAt: iso(4 * 24), deployCount: 1, expiresAt: iso(-56 * 24), status: "active" },
-];
+function eventsFor(p) {
+  if (p._events) return p._events;
+  const flagship = NOVEL[0];
+  if (p.id === flagship.id) {
+    const upSha1 = sha256();
+    return [
+      { id: `evt_${p.id.slice(0, 8)}_auth`, network: "mainnet", type: "set_authority", signature: sig(), slot: p.deployedSlot + 61, blockTime: iso(0.4), programId: p.id, authorityBefore: p._authority, authorityAfter: addr("Sq"), sha256After: null },
+      { id: `evt_${p.id.slice(0, 8)}_up2`, network: "mainnet", type: "upgrade", signature: sig(), slot: p.deployedSlot + 40, blockTime: iso(1.1), programId: p.id, authorityBefore: p._authority, authorityAfter: p._authority, sha256After: upSha1 },
+      { id: `evt_${p.id.slice(0, 8)}_up1`, network: "mainnet", type: "upgrade", signature: sig(), slot: p.deployedSlot + 12, blockTime: iso(1.7), programId: p.id, authorityBefore: p._authority, authorityAfter: p._authority, sha256After: sha256() },
+      deployEvent(p),
+    ];
+  }
+  return [deployEvent(p)];
+}
 
-const STATS = { launchesToday: 1, updatesToday: 1, copyPercentToday: 92, radarThisWeek: 1 };
-const publicStory = ({ eventIds, ...rest }) => rest;
+const RAW_FEED = ALL.flatMap(eventsFor).sort(
+  (a, b) => (Date.parse(b.blockTime ?? 0) || 0) - (Date.parse(a.blockTime ?? 0) || 0)
+);
 
+// --- projections -----------------------------------------------------------
+function radarRow(p) {
+  const { _sha256, _idl, _repoUrl, _authority, _neighbors, _strings, _events, ...row } = p;
+  return row;
+}
+
+function programDetail(p) {
+  return {
+    ...radarRow(p),
+    repoUrl: p._repoUrl,
+    authority: p._authority,
+    sha256: p._sha256,
+    events: eventsFor(p),
+    neighbors: p._neighbors,
+    idlInstructions: p._idl,
+    strings: p._strings,
+  };
+}
+
+function radarWindowFilter(window) {
+  const cutoff = window === "today" ? 24 : window === "week" ? 24 * 7 : Infinity;
+  return (p) => hoursOf(p) <= cutoff;
+}
+
+// --- server ----------------------------------------------------------------
 const send = (res, code, body, type = "application/json") => {
   res.writeHead(code, { "content-type": type, "access-control-allow-origin": "*" });
   res.end(typeof body === "string" ? body : JSON.stringify(body));
 };
 
+function paginate(items, cursor, limit) {
+  const start = cursor ? Number(cursor) || 0 : 0;
+  const slice = items.slice(start, start + limit);
+  const next = start + limit < items.length ? String(start + limit) : null;
+  return { items: slice, nextCursor: next };
+}
+
 createServer((req, res) => {
   const url = new URL(req.url, "http://localhost");
   const p = url.pathname;
+  const q = url.searchParams;
 
   if (p === "/health") return send(res, 200, { ok: true });
-  if (p === "/api/stats") return send(res, 200, STATS);
-  if (p === "/api/lab") return send(res, 200, LAB);
 
-  if (p === "/api/stories") {
-    const type = url.searchParams.get("type");
-    const items = STORIES.filter((s) => !type || s.type === type).map(publicStory);
-    return send(res, 200, { items, nextCursor: null });
+  if (p === "/api/radar") {
+    const window = q.get("window") || "today";
+    const band = q.get("band") || "novel";
+    const limit = Math.min(Number(q.get("limit")) || 50, 100);
+    const items = ALL.filter((x) => x.band === band)
+      .filter(radarWindowFilter(window))
+      .sort((a, b) => b.noveltyScore - a.noveltyScore)
+      .map(radarRow);
+    return send(res, 200, paginate(items, q.get("cursor"), limit));
   }
 
-  const storyMatch = p.match(/^\/api\/stories\/(.+)$/);
-  if (storyMatch) {
-    const story = STORIES.find((s) => s.id === decodeURIComponent(storyMatch[1]));
-    if (!story) return send(res, 404, { error: "story not found" });
-    return send(res, 200, { ...publicStory(story), events: story.eventIds.map(withId) });
+  const progMatch = p.match(/^\/api\/programs\/(.+)$/);
+  if (progMatch) {
+    const prog = BY_ID.get(decodeURIComponent(progMatch[1]));
+    if (!prog) return send(res, 404, { error: "program not found" });
+    return send(res, 200, programDetail(prog));
   }
 
-  const subjMatch = p.match(/^\/api\/subjects\/(.+)$/);
-  if (subjMatch) {
-    const id = decodeURIComponent(subjMatch[1]);
-    const s = SUBJECTS[id];
-    if (!s) return send(res, 404, { error: "subject not found" });
-    const stories = STORIES.filter((st) => st.subjects.some((x) => x.id === id)).map(publicStory);
-    return send(res, 200, { id, ...s, stories });
+  if (p === "/api/funnel") {
+    return send(res, 200, FUNNEL);
+  }
+
+  const cluMatch = p.match(/^\/api\/clusters\/(.+)$/);
+  if (cluMatch) {
+    const clu = CLUSTERS[decodeURIComponent(cluMatch[1])];
+    if (!clu) return send(res, 404, { error: "cluster not found" });
+    const { category, ...rest } = clu;
+    return send(res, 200, rest);
   }
 
   if (p === "/api/raw/events") {
-    return send(res, 200, { items: Object.keys(EVENTS).map(withId), nextCursor: null });
-  }
-
-  if (p === "/rss.xml") {
-    const items = STORIES.map((s) => `<item><title>${s.headline}</title><guid>${s.id}</guid><description>${s.body}</description></item>`).join("");
-    return send(res, 200, `<?xml version="1.0"?><rss version="2.0"><channel><title>On Record</title>${items}</channel></rss>`, "application/rss+xml");
+    const limit = Math.min(Number(q.get("limit")) || 50, 200);
+    const network = q.get("network");
+    const items = network ? RAW_FEED.filter((e) => e.network === network) : RAW_FEED;
+    return send(res, 200, paginate(items, q.get("cursor"), limit));
   }
 
   send(res, 404, { error: "not found" });
 }).listen(PORT, () => {
-  console.log(`mock On Record API on http://localhost:${PORT}  (${STORIES.length} demo stories)`);
+  console.log(
+    `mock On Record radar API on http://localhost:${PORT}  ` +
+      `(${ALL.length} programs · ${NOVEL_COUNT} novel today · ${RAW_FEED.length} raw events)`
+  );
 });

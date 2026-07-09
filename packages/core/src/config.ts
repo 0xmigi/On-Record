@@ -2,13 +2,11 @@ import { eq } from "drizzle-orm";
 import { db, schema } from "./db/client.js";
 import { DEFAULT_CONFIG, type RuntimeConfig } from "./types.js";
 
-// Env config — required secrets and endpoints (spec §7)
+// Env config — required secrets and endpoints (SPEC §7)
 export const env = {
   HELIUS_API_KEY: process.env.HELIUS_API_KEY ?? "",
   HELIUS_WEBHOOK_SECRET_MAINNET: process.env.HELIUS_WEBHOOK_SECRET_MAINNET ?? "",
   HELIUS_WEBHOOK_SECRET_DEVNET: process.env.HELIUS_WEBHOOK_SECRET_DEVNET ?? "",
-  ANTHROPIC_API_KEY: process.env.ANTHROPIC_API_KEY ?? "",
-  WRITER_MODEL: process.env.WRITER_MODEL ?? "claude-sonnet-4-6",
   ADMIN_PASSWORD: process.env.ADMIN_PASSWORD ?? "",
   PORT: Number(process.env.PORT ?? 3001),
   PUBLIC_API_URL: process.env.PUBLIC_API_URL ?? "http://localhost:3001",
@@ -28,8 +26,7 @@ export async function getConfig(): Promise<RuntimeConfig> {
   const merged: RuntimeConfig = {
     ...DEFAULT_CONFIG,
     ...stored,
-    rankWeights: { ...DEFAULT_CONFIG.rankWeights, ...(stored.rankWeights ?? {}) },
-    perTypeFloors: { ...DEFAULT_CONFIG.perTypeFloors, ...(stored.perTypeFloors ?? {}) },
+    noveltyWeights: { ...DEFAULT_CONFIG.noveltyWeights, ...(stored.noveltyWeights ?? {}) },
   };
   cache = { value: merged, at: Date.now() };
   return merged;
@@ -40,8 +37,7 @@ export async function updateConfig(patch: Partial<RuntimeConfig>): Promise<Runti
   const next = {
     ...current,
     ...patch,
-    rankWeights: { ...current.rankWeights, ...(patch.rankWeights ?? {}) },
-    perTypeFloors: { ...current.perTypeFloors, ...(patch.perTypeFloors ?? {}) },
+    noveltyWeights: { ...current.noveltyWeights, ...(patch.noveltyWeights ?? {}) },
   };
   await db
     .insert(schema.config)

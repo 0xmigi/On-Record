@@ -8,16 +8,29 @@ import {
   type Classification,
   type Fingerprint,
   type Network,
+  type NoveltyBand,
 } from "@onrecord/core";
 
 // ---------------------------------------------------------------------------
-// Classify stage (spec §4.3). Deploys only — upgrades inherit identity.
-//   1. exact sha256 match → existing copy bucket, increment, never a story
-//   2. TLSH distance < CLONE_THRESHOLD → same bucket (near copy)
-//   3. distance ≥ NOVEL_THRESHOLD from all neighbors → novel candidate
-//   4. middle band → data only
+// Classify stage (SPEC §2, the gate). Deploys only — upgrades inherit identity.
+//   1. exact sha256 match → existing copy bucket, increment → band=clone
+//   2. TLSH distance < CLONE_THRESHOLD → same bucket → band=variant
+//   3. distance ≥ NOVEL_THRESHOLD from all neighbors → band=novel
+//   4. middle band → band=variant (near a family, not a clean clone)
 // Corpus scan is linear with a size ±20% prefilter — fine at ~2k events/day.
 // ---------------------------------------------------------------------------
+
+/** Collapse the 4-way corpus disposition into the 3-way radar band. */
+function toBand(disposition: Classification["disposition"]): NoveltyBand {
+  switch (disposition) {
+    case "copy":
+      return "clone";
+    case "novel":
+      return "novel";
+    default:
+      return "variant"; // near_copy + data_only both fold into variant
+  }
+}
 
 export async function classifyFingerprint(
   network: Network,
@@ -35,9 +48,10 @@ export async function classifyFingerprint(
     await bumpBucket(exact[0].id);
     return {
       disposition: "copy",
+      band: "clone",
       bucketId: exact[0].id,
       nearestDistance: 0,
-      noveltyScore: 0,
+      structuralNovelty: 0,
       watchlistHit: await matchWatchlist(network, programId, fp, null),
     };
   }
@@ -67,8 +81,8 @@ export async function classifyFingerprint(
   }
 
   const minDist = nearest?.distance ?? Infinity;
-  // spec §11 default normalization: clamp((minDist − NOVEL_THRESHOLD) / 300, 0, 1)
-  const noveltyScore =
+  // structural novelty from bytecode distance: clamp((minDist − NOVEL) / 300, 0, 1)
+  const structuralNovelty =
     minDist === Infinity ? 1 : Math.max(0, Math.min(1, (minDist - cfg.NOVEL_THRESHOLD) / 300));
 
   let disposition: Classification["disposition"];
@@ -85,9 +99,10 @@ export async function classifyFingerprint(
 
   return {
     disposition,
+    band: toBand(disposition),
     bucketId,
     nearestDistance: nearest?.distance ?? null,
-    noveltyScore,
+    structuralNovelty,
     watchlistHit: await matchWatchlist(network, programId, fp, null),
   };
 }
