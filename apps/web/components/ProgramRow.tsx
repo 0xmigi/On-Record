@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { CopyAddress } from "@/components/CopyAddress";
 import { CATEGORY_LABELS, orbAddress, type ApiProgram } from "@/lib/api";
-import { formatBytes, noveltyGauge, relativeTime, truncateAddress } from "@/lib/format";
+import { formatBytes, relativeTime, truncateAddress } from "@/lib/format";
 
 const AUTHORITY_LABELS: Record<NonNullable<ApiProgram["authorityClass"]>, string> = {
   none: "immutable",
@@ -42,7 +42,6 @@ function Fact({ label, value }: { label: string; value: string }) {
  * rows note "×N in cluster".
  */
 export function ProgramRow({ program }: { program: ApiProgram }) {
-  const gauge = noveltyGauge(program.noveltyScore);
   const inCluster = (program.clusterSize ?? 0) > 1;
   const favicon = faviconUrl(program);
 
@@ -186,11 +185,6 @@ export function ProgramRow({ program }: { program: ApiProgram }) {
             }
           />
         </div>
-      </div>
-
-      <div className="radar-gauge" title={`novelty ${program.noveltyScore.toFixed(2)}`}>
-        <span className="gauge-num">{gauge}</span>
-        <span className="gauge-label">novelty</span>
       </div>
     </article>
   );

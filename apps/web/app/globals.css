@@ -1513,19 +1513,21 @@ a.copy-addr-text:hover {
   margin-bottom: 10px;
 }
 
-.dossier-addr {
-  font-size: 16px;
+/* the human-readable name is the title */
+.dossier-title {
+  font-family: var(--font-head);
+  font-size: 26px;
   font-weight: 700;
-  line-height: 1.4;
+  letter-spacing: -0.02em;
+  line-height: 1.2;
+  color: var(--ink);
   margin: 0 0 8px;
+  overflow-wrap: anywhere;
 }
 
-.dossier-addr .copy-addr {
-  flex-wrap: wrap;
-}
-
-.dossier-addr .copy-addr-text {
-  font-size: 15px;
+.dossier-title-unknown {
+  font-weight: 500;
+  color: var(--ink-faint);
 }
 
 .dossier-sub {
@@ -1535,17 +1537,19 @@ a.copy-addr-text:hover {
   gap: 6px 14px;
 }
 
+/* the program id is a quiet mono subtitle under the name */
+.dossier-id .copy-addr-text {
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+  font-weight: 500;
+  color: var(--ink-faint);
+}
+
 .dossier-name {
   font-family: var(--font-head);
   font-size: 14px;
   font-weight: 700;
   color: var(--ink);
-}
-
-.dossier-name-unknown {
-  font-weight: 400;
-  color: var(--ink-faint);
-  font-style: italic;
 }
 
 .dossier-gauge {

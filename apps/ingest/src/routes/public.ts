@@ -28,15 +28,15 @@ function windowStart(window: string | undefined): Date | null {
   return new Date(`${todayKey()}T00:00:00.000Z`); // default: today
 }
 
-/** cursor = base64("<score>:<id>") for stable score-desc, id-desc paging */
-function encodeCursor(score: number, id: string): string {
-  return Buffer.from(`${score}:${id}`).toString("base64url");
+/** cursor = base64("<lastSeenMs>:<id>") for stable recency-desc, id-desc paging */
+function encodeCursor(ts: number, id: string): string {
+  return Buffer.from(`${ts}:${id}`).toString("base64url");
 }
-function decodeCursor(cursor: string): { score: number; id: string } | null {
+function decodeCursor(cursor: string): { ts: number; id: string } | null {
   try {
-    const [score, id] = Buffer.from(cursor, "base64url").toString().split(":");
-    if (score === undefined || id === undefined) return null;
-    return { score: Number(score), id };
+    const [ts, id] = Buffer.from(cursor, "base64url").toString().split(":");
+    if (ts === undefined || id === undefined) return null;
+    return { ts: Number(ts), id };
   } catch {
     return null;
   }
@@ -78,12 +78,14 @@ export function registerPublicRoutes(app: FastifyInstance): void {
       }
       if (start) conditions.push(gte(schema.subjects.firstSeenAt, start));
 
+      // recency sort (newest activity first) now that the novelty score is hidden
       const cur = req.query.cursor ? decodeCursor(req.query.cursor) : null;
       if (cur) {
+        const curDate = new Date(cur.ts);
         conditions.push(
           or(
-            lt(schema.subjects.noveltyScore, cur.score),
-            and(eq(schema.subjects.noveltyScore, cur.score), lt(schema.subjects.id, cur.id)),
+            lt(schema.subjects.firstSeenAt, curDate),
+            and(eq(schema.subjects.firstSeenAt, curDate), lt(schema.subjects.id, cur.id)),
           )!,
         );
       }
@@ -92,7 +94,7 @@ export function registerPublicRoutes(app: FastifyInstance): void {
         .select()
         .from(schema.subjects)
         .where(and(...conditions))
-        .orderBy(desc(schema.subjects.noveltyScore), desc(schema.subjects.id))
+        .orderBy(desc(schema.subjects.firstSeenAt), desc(schema.subjects.id))
         .limit(limit + 1);
 
       const page = rows.slice(0, limit);
@@ -102,7 +104,7 @@ export function registerPublicRoutes(app: FastifyInstance): void {
       return {
         items,
         nextCursor:
-          rows.length > limit && last ? encodeCursor(last.noveltyScore ?? 0, last.id) : null,
+          rows.length > limit && last ? encodeCursor(last.firstSeenAt?.getTime() ?? 0, last.id) : null,
       };
     },
   );

@@ -11,13 +11,7 @@ import {
   type ApiProgramDetail,
   type ApiRawEvent,
 } from "@/lib/api";
-import {
-  formatBytes,
-  noveltyGauge,
-  relativeTime,
-  shortUrl,
-  truncateAddress,
-} from "@/lib/format";
+import { formatBytes, relativeTime, shortUrl, truncateAddress } from "@/lib/format";
 
 const EVENT_LABELS: Record<ApiRawEvent["type"], string> = {
   deploy: "DEPLOY",
@@ -65,7 +59,6 @@ export default async function ProgramDossierPage({
   const program = await fetchProgram(id);
   if (!program) notFound();
 
-  const gauge = noveltyGauge(program.noveltyScore);
   const mutability =
     program.authorityClass === "none"
       ? "immutable (frozen)"
@@ -88,31 +81,21 @@ export default async function ProgramDossierPage({
             {program.framework && program.framework !== "unknown" ? (
               <span className="fw-chip">{program.framework}</span>
             ) : null}
-            <span className="net-chip">{program.network}</span>
+            {program.deployType === "upgrade" && program.upgradeCount > 0 ? (
+              <span className="fw-chip">upgraded ×{program.upgradeCount}</span>
+            ) : null}
           </div>
 
-          <h1 className="dossier-addr">
-            <CopyAddress value={program.id} display={program.id} />
+          <h1 className="dossier-title">
+            {program.name ?? (
+              <span className="dossier-title-unknown">Unidentified program</span>
+            )}
           </h1>
 
           <div className="dossier-sub">
-            {program.name ? (
-              <span className="dossier-name">{program.name}</span>
-            ) : (
-              <span className="dossier-name dossier-name-unknown">
-                unidentified program
-              </span>
-            )}
+            <CopyAddress value={program.id} display={program.id} className="dossier-id" />
             <Ext href={orbAddress(program.id)} text="open in Orb" />
           </div>
-        </div>
-
-        <div
-          className="dossier-gauge"
-          title={`novelty ${program.noveltyScore.toFixed(2)}`}
-        >
-          <span className="gauge-num">{gauge}</span>
-          <span className="gauge-label">novelty</span>
         </div>
       </div>
 
@@ -157,7 +140,6 @@ export default async function ProgramDossierPage({
         info="Is it new code, or derived from something known? Novelty = 1 − similarity to the nearest program on record."
       />
       <div className="facts-panel">
-        <Row label="Novelty">{gauge} / 100</Row>
         <Row label="Nearest known program">
           {program.nearest ? (
             <>
