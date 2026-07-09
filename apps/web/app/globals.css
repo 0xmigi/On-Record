@@ -1241,12 +1241,47 @@ a.copy-addr-text:hover {
 }
 
 .radar-favicon {
-  width: 16px;
-  height: 16px;
-  border-radius: 4px;
+  width: 18px;
+  height: 18px;
+  border-radius: 5px;
   flex: none;
   object-fit: cover;
   background: var(--surface-2, rgba(0, 0, 0, 0.04));
+}
+
+/* fallback avatar: first two chars of the program id (Orb-style) */
+.radar-avatar {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--font-mono);
+  font-size: 8.5px;
+  font-weight: 600;
+  line-height: 1;
+  letter-spacing: 0.02em;
+  color: var(--ink-soft);
+  background: var(--surface-2, rgba(0, 0, 0, 0.06));
+  text-transform: none;
+}
+
+/* whole-card click target — an overlay Link that sits under the real links */
+.radar-row {
+  position: relative;
+}
+.radar-row-link {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  border-radius: inherit;
+}
+.radar-row:hover {
+  background: var(--surface-2, rgba(0, 0, 0, 0.02));
+}
+/* real interactive elements sit above the overlay so they still work */
+.radar-row a:not(.radar-row-link),
+.radar-row button {
+  position: relative;
+  z-index: 2;
 }
 
 .radar-addr .copy-addr-text {
