@@ -2425,3 +2425,39 @@ a.copy-addr-text:hover {
   color: var(--ink-faint);
   margin: 4px 0 0;
 }
+
+/* --- dossier tabs (Orb-style, under the title) -------------------------- */
+.dtabs {
+  margin-top: 22px;
+}
+.dtabs-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px 22px;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 18px;
+}
+.dtab {
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+  letter-spacing: 0.03em;
+  color: var(--ink-faint);
+  background: transparent;
+  border: none;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
+  padding: 8px 1px 10px;
+  cursor: pointer;
+}
+.dtab:hover {
+  color: var(--ink);
+}
+.dtab.active {
+  color: var(--ink);
+  font-weight: 700;
+  border-bottom-color: var(--ink);
+}
+/* the first section header inside a tab panel shouldn't add its big top margin */
+.dtabs [role="tabpanel"] > .section-header:first-child {
+  margin-top: 4px;
+}

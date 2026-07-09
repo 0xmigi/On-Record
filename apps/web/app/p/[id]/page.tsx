@@ -4,6 +4,7 @@ import { notFound } from "next/navigation";
 import { CopyAddress } from "@/components/CopyAddress";
 import { ProgramAvatar } from "@/components/ProgramAvatar";
 import { IdlViewer } from "@/components/IdlViewer";
+import { DossierTabs, type DossierTab } from "@/components/DossierTabs";
 import { SectionHeader } from "@/components/SectionHeader";
 import {
   CATEGORY_LABELS,
@@ -72,49 +73,9 @@ export default async function ProgramDossierPage({
         ? "mutable"
         : "unknown";
 
-  return (
+  const overviewPanel = (
     <>
-      <Link className="back-link" href="/">
-        ← the radar
-      </Link>
-
-      <div className="dossier-head">
-        <div className="dossier-head-main">
-          <div className="dossier-band-line">
-            <span className={`cat-chip cat-${program.category}`}>
-              {CATEGORY_LABELS[program.category]}
-            </span>
-            {program.framework && program.framework !== "unknown" ? (
-              <span className="fw-chip">{program.framework}</span>
-            ) : null}
-            {program.deployType === "upgrade" && program.upgradeCount > 0 ? (
-              <span className="cluster-note">upgraded ×{program.upgradeCount}</span>
-            ) : null}
-          </div>
-
-          <div className="dossier-title-row">
-            <ProgramAvatar program={program} size={38} />
-            <h1 className="dossier-title">
-              {program.name ?? (
-                <span className="dossier-title-unknown">Unidentified program</span>
-              )}
-            </h1>
-          </div>
-
-          <div className="dossier-sub">
-            <CopyAddress value={program.id} display={program.id} className="dossier-id" />
-            <Ext href={orbAddress(program.id)} text="open in Orb" />
-          </div>
-        </div>
-      </div>
-
-      <p className="dossier-note">
-        Vectors 1–5 are read straight from the binary the moment it deployed.
-        Traction (6) accrues over time.
-      </p>
-
-      {/* 1 · IDENTITY */}
-      <SectionHeader title="1 · Identity" info="What it is and who made it." />
+      <SectionHeader title="Identity" info="What it is and who made it." />
       <div className="facts-panel">
         <Row label="Name">
           {program.name ?? <span className="cell-dim">unidentified</span>}
@@ -142,12 +103,7 @@ export default async function ProgramDossierPage({
           )}
         </Row>
       </div>
-
-      {/* 2 · LINEAGE */}
-      <SectionHeader
-        title="2 · Lineage"
-        info="Is it new code, or derived from something known? Novelty = 1 − similarity to the nearest program on record."
-      />
+      <SectionHeader title="Lineage" info="Is it new code, or derived from something known?" />
       <div className="facts-panel">
         <Row label="Nearest known program">
           {program.nearest ? (
@@ -162,8 +118,7 @@ export default async function ProgramDossierPage({
                 "a peer deploy"
               )}
               <span className="cell-dim">
-                {" "}
-                · {Math.round(program.nearest.similarity * 100)}% code match
+                {" "}· {Math.round(program.nearest.similarity * 100)}% code match
               </span>
             </>
           ) : (
@@ -171,12 +126,43 @@ export default async function ProgramDossierPage({
           )}
         </Row>
       </div>
+    </>
+  );
 
-      {/* 3 · COMPOSITION */}
-      <SectionHeader
-        title="3 · Composition"
-        info="What it's built with and plugs into — parsed from the ELF binary."
-      />
+  const trustPanel = (
+    <>
+      <SectionHeader title="Control" info="Who can change it — and whether it can rug." />
+      <div className="facts-panel">
+        <Row label="Mutability">{mutability}</Row>
+        <Row label="Authority">
+          {program.authorityClass ?? "unknown"}
+          {program.authority ? (
+            <Ext href={orbAddress(program.authority)} text={truncateAddress(program.authority)} />
+          ) : null}
+        </Row>
+        <Row label="Verified build">{program.verified ? "yes" : "no"}</Row>
+      </div>
+      <SectionHeader title="Conviction" info="Skin in the game — who funded the deployer and how." />
+      <div className="facts-panel">
+        <Row label="Deployer funded by">
+          {program.deployerFundingSource ? (
+            program.deployerFundingSource
+          ) : program.funderAddress ? (
+            <Ext href={orbAddress(program.funderAddress)} text={truncateAddress(program.funderAddress)} />
+          ) : (
+            <span className="cell-dim">untraced</span>
+          )}
+          {program.fundingAmountSol != null ? (
+            <span className="cell-dim"> · {program.fundingAmountSol} SOL</span>
+          ) : null}
+        </Row>
+      </div>
+    </>
+  );
+
+  const compositionPanel = (
+    <>
+      <SectionHeader title="Composition" info="What it's built with and plugs into — parsed from the ELF binary." />
       <div className="facts-panel">
         <Row label="Framework">{program.framework ?? "unknown"}</Row>
         <Row label="Plugs into">
@@ -215,59 +201,12 @@ export default async function ProgramDossierPage({
         <Row label="Syscalls imported">{program.syscallCount ?? "—"}</Row>
         <Row label="Image size">{formatBytes(program.sizeBytes)}</Row>
       </div>
+    </>
+  );
 
-      {/* INTERFACE · IDL — how you actually call the program */}
-      {idl ? (
-        <>
-          <SectionHeader
-            title="Interface"
-            info="The Anchor IDL — the program's public instruction set: how you call it, what accounts and arguments each instruction takes."
-          />
-          <IdlViewer idl={idl} />
-        </>
-      ) : null}
-
-      {/* 4 · CONTROL */}
-      <SectionHeader
-        title="4 · Control"
-        info="Who can change it — and whether it can rug."
-      />
-      <div className="facts-panel">
-        <Row label="Mutability">{mutability}</Row>
-        <Row label="Authority">
-          {program.authorityClass ?? "unknown"}
-          {program.authority ? (
-            <Ext href={orbAddress(program.authority)} text={truncateAddress(program.authority)} />
-          ) : null}
-        </Row>
-        <Row label="Verified build">{program.verified ? "yes" : "no"}</Row>
-      </div>
-
-      {/* 5 · CONVICTION */}
-      <SectionHeader
-        title="5 · Conviction"
-        info="Skin in the game — who funded the deployer and how."
-      />
-      <div className="facts-panel">
-        <Row label="Deployer funded by">
-          {program.deployerFundingSource ? (
-            program.deployerFundingSource
-          ) : program.funderAddress ? (
-            <Ext href={orbAddress(program.funderAddress)} text={truncateAddress(program.funderAddress)} />
-          ) : (
-            <span className="cell-dim">untraced</span>
-          )}
-          {program.fundingAmountSol != null ? (
-            <span className="cell-dim"> · {program.fundingAmountSol} SOL</span>
-          ) : null}
-        </Row>
-      </div>
-
-      {/* 6 · TRACTION — accrues over time */}
-      <SectionHeader
-        title="6 · Traction"
-        info="Does it actually get used? This is the only vector that isn't knowable at deploy — it accrues over time."
-      />
+  const activityPanel = (
+    <>
+      <SectionHeader title="Traction" info="Does it actually get used? Accrues over time." />
       <div className="facts-panel">
         <Row label="Early activity">
           {program.earlySigners != null ? (
@@ -277,7 +216,6 @@ export default async function ProgramDossierPage({
           )}
         </Row>
       </div>
-
       {program.events.length > 0 ? (
         <div className="table-scroll" style={{ marginTop: 12 }}>
           <table className="record-table">
@@ -293,9 +231,7 @@ export default async function ProgramDossierPage({
               {program.events.map((ev) => (
                 <tr key={ev.id}>
                   <td>
-                    <span className={`evt-tag evt-${ev.type}`}>
-                      {EVENT_LABELS[ev.type]}
-                    </span>
+                    <span className={`evt-tag evt-${ev.type}`}>{EVENT_LABELS[ev.type]}</span>
                   </td>
                   <td className="cell-dim">
                     {ev.blockTime ? relativeTime(ev.blockTime) : "—"}
@@ -310,6 +246,54 @@ export default async function ProgramDossierPage({
           </table>
         </div>
       ) : null}
+    </>
+  );
+
+  const tabs: DossierTab[] = [
+    { id: "overview", label: "Overview", panel: overviewPanel },
+    { id: "trust", label: "Trust", panel: trustPanel },
+    { id: "composition", label: "Composition", panel: compositionPanel },
+    ...(idl ? [{ id: "interface", label: "Interface", panel: <IdlViewer idl={idl} /> }] : []),
+    { id: "activity", label: "Activity", panel: activityPanel },
+  ];
+
+  return (
+    <>
+      <Link className="back-link" href="/">
+        ← the radar
+      </Link>
+
+      <div className="dossier-head">
+        <div className="dossier-head-main">
+          <div className="dossier-band-line">
+            <span className={`cat-chip cat-${program.category}`}>
+              {CATEGORY_LABELS[program.category]}
+            </span>
+            {program.framework && program.framework !== "unknown" ? (
+              <span className="fw-chip">{program.framework}</span>
+            ) : null}
+            {program.deployType === "upgrade" && program.upgradeCount > 0 ? (
+              <span className="cluster-note">upgraded ×{program.upgradeCount}</span>
+            ) : null}
+          </div>
+
+          <div className="dossier-title-row">
+            <ProgramAvatar program={program} size={38} />
+            <h1 className="dossier-title">
+              {program.name ?? (
+                <span className="dossier-title-unknown">Unidentified program</span>
+              )}
+            </h1>
+          </div>
+
+          <div className="dossier-sub">
+            <CopyAddress value={program.id} display={program.id} className="dossier-id" />
+            <Ext href={orbAddress(program.id)} text="open in Orb" />
+          </div>
+        </div>
+      </div>
+
+      <DossierTabs tabs={tabs} />
     </>
   );
 }
