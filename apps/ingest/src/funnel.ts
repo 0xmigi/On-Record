@@ -96,9 +96,11 @@ export async function computeWindowFunnel(
   const lineage = { novel: 0, variant: 0, fork: 0 };
   const control = { mutable: 0, frozen: 0, verified: 0 };
   const conviction = { knownEntity: 0, funderTraced: 0, untraced: 0 };
-  // churn — deployed then closed (rent reclaimed) inside the window. `bot` is the
-  // sharper cut: a closed byte-clone, i.e. the throwaway redeploy signature.
-  const churn = { closed: 0, bot: 0 };
+  // churn / throwaway bots — a new deploy whose bytecode is a byte-clone of one
+  // already on record (band=clone) is the same program redeployed under a fresh
+  // id: the sniper-bot signature. `pumpfun` is the subset wired to Pump.fun;
+  // `closed` is the tail that already reclaimed its rent.
+  const churn = { redeploys: 0, pumpfun: 0, closed: 0 };
   const fwEarly: Record<string, number> = {};
   const fwLate: Record<string, number> = {};
   let earlyTotal = 0;
@@ -140,10 +142,12 @@ export async function computeWindowFunnel(
     else if (s.deployerFundingSource) conviction.funderTraced++;
     else conviction.untraced++;
 
-    if (s.facts?.closedAt) {
-      churn.closed++;
-      if (s.noveltyBand === "clone") churn.bot++;
+    // throwaway-bot signature: a new deploy that's a byte-clone of known code
+    if (s.deployType !== "upgrade" && s.noveltyBand === "clone") {
+      churn.redeploys++;
+      if ((s.profile?.integrations ?? []).includes("Pump.fun")) churn.pumpfun++;
     }
+    if (s.facts?.closedAt) churn.closed++;
 
     const t = s.firstSeenAt?.getTime() ?? 0;
     if (t >= midMs) {

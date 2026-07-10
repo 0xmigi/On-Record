@@ -314,9 +314,10 @@ export interface ApiFunnel {
   lineage?: { novel: number; variant: number; fork: number };
   control?: { mutable: number; frozen: number; verified: number };
   conviction?: { knownEntity: number; funderTraced: number; untraced: number };
-  /** churn — programs deployed then closed (rent reclaimed) in the window;
-   *  `bot` = the closed byte-clones, the throwaway-redeploy signature. */
-  churn?: { closed: number; bot: number };
+  /** throwaway bots — new deploys that are byte-clones of known code (same
+   *  program, fresh id: the sniper signature). `pumpfun` = the Pump.fun subset;
+   *  `closed` = deploys already closed (rent reclaimed) in the window. */
+  churn?: { redeploys: number; pumpfun: number; closed: number };
   frameworkTrend?: {
     framework: string;
     current: number;

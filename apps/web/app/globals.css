@@ -2906,6 +2906,46 @@ a.copy-addr-text:hover {
   color: var(--ink);
 }
 
+/* throwaway-bot share — the headline "X% of deploys are sniper redeploys" */
+.botshare {
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--red);
+  border-radius: 2px;
+  background: color-mix(in srgb, var(--red) 4%, var(--card));
+  padding: 14px 16px;
+  margin-bottom: 12px;
+}
+.botshare-fig {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-bottom: 10px;
+}
+.botshare-pct {
+  font-family: var(--font-head);
+  font-size: 30px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  color: var(--red);
+  line-height: 1;
+}
+.botshare-lbl {
+  font-size: 13px;
+  color: var(--ink-soft);
+}
+.botshare-bar {
+  height: 6px;
+  border-radius: 2px;
+  background: var(--bg);
+  overflow: hidden;
+}
+.botshare-fill {
+  height: 100%;
+  background: var(--red);
+  border-radius: 2px;
+}
+
 /* no-IDL educational panel — the "not all programs have an IDL" lesson */
 .no-idl {
   border: 1px solid var(--border);

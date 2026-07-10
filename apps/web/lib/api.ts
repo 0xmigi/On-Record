@@ -156,7 +156,7 @@ export interface ApiFunnel {
   lineage?: { novel: number; variant: number; fork: number };
   control?: { mutable: number; frozen: number; verified: number };
   conviction?: { knownEntity: number; funderTraced: number; untraced: number };
-  churn?: { closed: number; bot: number };
+  churn?: { redeploys: number; pumpfun: number; closed: number };
   // time series over the window — the stream, bucketed
   series?: {
     hoursAgo: number;

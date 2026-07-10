@@ -238,16 +238,32 @@ export default async function FunnelPage({
         </>
       ) : null}
 
-      {funnel.churn && funnel.churn.closed > 0 ? (
+      {funnel.churn && funnel.churn.redeploys > 0 ? (
         <>
           <SectionHeader
-            title="Churn"
-            info="Programs deployed then closed inside this window — the loader's ProgramData account was deallocated and its rent reclaimed. The 'throwaway bot' cut is a closed byte-clone: the same binary redeployed under a fresh id, run hot, then closed."
+            title="Throwaway bots"
+            info="New deploys whose bytecode is byte-identical to code already on record — the same program redeployed under a fresh id. That's the sniper-bot signature: deploy a disposable program, spam launch attempts, close it to reclaim rent, repeat. This is the share the dedup gate strips before ranking novelty."
           />
+          <div className="botshare">
+            <div className="botshare-fig">
+              <span className="botshare-pct">{pct(funnel.churn.redeploys, funnel.deploys)}%</span>
+              <span className="botshare-lbl">
+                of today&apos;s {groupNum(funnel.deploys)} new deploys are
+                throwaway redeploys
+              </span>
+            </div>
+            <div className="botshare-bar">
+              <div
+                className="botshare-fill"
+                style={{ width: `${pct(funnel.churn.redeploys, funnel.deploys)}%` }}
+              />
+            </div>
+          </div>
           <Breakdown
             rows={[
-              ["closed", funnel.churn.closed, "Deployed then closed within the window — rent reclaimed. Detected by the ProgramData account going missing."],
-              ["throwaway bots", funnel.churn.bot, "Closed AND byte-identical to other deploys — a bot redeploying the same code under fresh ids and closing to reclaim rent between runs."],
+              ["redeploys", funnel.churn.redeploys, "New deploys that are byte-clones of known code — the same program under a fresh id."],
+              ["→ Pump.fun", funnel.churn.pumpfun, "Of those redeploys, how many are wired to Pump.fun — the dominant sniper target."],
+              ["already closed", funnel.churn.closed, "Deploys in this window whose ProgramData is already gone — rent reclaimed, the bot moved on."],
             ]}
             labelWidth={112}
           />
