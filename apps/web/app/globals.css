@@ -2932,16 +2932,46 @@ a.copy-addr-text:hover {
   color: var(--ink-faint);
 }
 
-/* funnel strip — how many of "new programs today" are actually bots */
-.funnel-bots {
+/* funnel strip — the duplicate-redeploys toggle under the daily counts */
+.funnel-strip-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.bots-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  align-self: flex-start;
   font-family: var(--font-mono);
-  font-size: 10px;
-  letter-spacing: 0.02em;
+  font-size: 11px;
+  letter-spacing: 0.01em;
+  color: var(--ink-faint);
+  text-decoration: none;
+  padding: 3px 8px;
+  border: 1px solid var(--border);
+  border-radius: 2px;
+}
+.bots-toggle:hover {
+  color: var(--ink-soft);
+  border-color: var(--border-strong);
+}
+.bots-toggle.active {
   color: var(--red);
-  margin-top: 2px;
+  border-color: color-mix(in srgb, var(--red) 35%, transparent);
+  background: color-mix(in srgb, var(--red) 6%, transparent);
+}
+.bots-toggle-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--border-strong);
+}
+.bots-toggle.active .bots-toggle-dot {
+  background: var(--red);
 }
 
-/* bot classification chip on the dossier band line */
+/* bot classification chip on the dossier band line + rows */
 .bot-chip {
   font-family: var(--font-mono);
   font-size: 10px;
@@ -2950,6 +2980,19 @@ a.copy-addr-text:hover {
   color: var(--red);
   border: 1px solid color-mix(in srgb, var(--red) 35%, transparent);
   background: color-mix(in srgb, var(--red) 8%, transparent);
+  border-radius: 2px;
+  padding: 2px 6px;
+  white-space: nowrap;
+}
+/* neutral duplicate chip — byte-identical, but no bot claim */
+.dup-chip {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+  border: 1px solid var(--border);
+  background: var(--bg);
   border-radius: 2px;
   padding: 2px 6px;
   white-space: nowrap;
@@ -2993,6 +3036,14 @@ a.copy-addr-text:hover {
   font-size: 13px;
   line-height: 1.55;
   color: var(--ink);
+}
+/* neutral variant — a plain duplicate, no bot claim */
+.churn-note-neutral {
+  border-left-color: var(--border-strong);
+  background: var(--bg);
+}
+.churn-note-tag-neutral {
+  color: var(--ink-faint);
 }
 
 /* throwaway-bot share — the headline "X% of deploys are sniper redeploys" */

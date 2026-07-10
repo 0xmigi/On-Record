@@ -17,6 +17,30 @@ export interface Lifecycle {
   sniper: boolean; // a redeploy wired to Pump.fun — the sniper flavor
 }
 
+// ---------------------------------------------------------------------------
+// Honest labelling of byte-clones. band=clone is a *fact* (identical bytecode
+// already on record). What it *means* is graded by confidence — we only call
+// something a bot when the on-chain signature backs it:
+//   sniper     clone wired to Pump.fun — the launch-sniper signature (high)
+//   throwaway  clone that was closed — deploy, run, close for the rent (high)
+//   duplicate  clone, nothing else — could be a factory/launchpad/template
+//              deploying identical instances, or a dev redeploying. NO bot claim.
+// ---------------------------------------------------------------------------
+export type BotKind = "sniper" | "throwaway" | "duplicate";
+
+export function botKind(p: ApiProgram): BotKind | null {
+  if (p.band !== "clone") return null;
+  if ((p.integrations ?? []).includes("Pump.fun")) return "sniper";
+  if (p.closed) return "throwaway";
+  return "duplicate";
+}
+
+export const BOT_LABEL: Record<BotKind, string> = {
+  sniper: "pump.fun sniper",
+  throwaway: "throwaway bot",
+  duplicate: "duplicate",
+};
+
 function fmtSpan(ms: number): string {
   const m = Math.round(ms / 60_000);
   if (m < 60) return `${Math.max(1, m)}m`;

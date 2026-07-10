@@ -242,15 +242,15 @@ export default async function FunnelPage({
       {funnel.churn && funnel.churn.redeploys > 0 ? (
         <>
           <SectionHeader
-            title="Throwaway bots"
-            info="New deploys whose bytecode is byte-identical to code already on record — the same program redeployed under a fresh id. That's the sniper-bot signature: deploy a disposable program, spam launch attempts, close it to reclaim rent, repeat. This is the share the dedup gate strips before ranking novelty."
+            title="Duplicate redeploys"
+            info="New deploys whose bytecode is byte-identical to code already on record — the same program under a fresh id. Not novel code, so the gate strips it before ranking. Byte-identical is a fact; whether it's a bot is graded below — only the Pump.fun subset is a confident sniper signature."
           />
           <div className="botshare">
             <div className="botshare-fig">
               <span className="botshare-pct">{pct(funnel.churn.redeploys, funnel.deploys)}%</span>
               <span className="botshare-lbl">
                 of today&apos;s {groupNum(funnel.deploys)} new deploys are
-                throwaway redeploys
+                byte-clone redeploys, not new code
               </span>
             </div>
             <div className="botshare-bar">
@@ -262,11 +262,11 @@ export default async function FunnelPage({
           </div>
           <Breakdown
             rows={[
-              ["redeploys", funnel.churn.redeploys, "New deploys that are byte-clones of known code — the same program under a fresh id."],
-              ["→ Pump.fun", funnel.churn.pumpfun, "Of those redeploys, how many are wired to Pump.fun — the dominant sniper target."],
-              ["already closed", funnel.churn.closed, "Deploys in this window whose ProgramData is already gone — rent reclaimed, the bot moved on."],
+              ["redeploys", funnel.churn.redeploys, "New deploys that are byte-clones of known code — same program, fresh id. A fact, not a judgment."],
+              ["Pump.fun snipers", funnel.churn.pumpfun, "The confident bot subset: redeploys wired to Pump.fun — the launch-sniper signature."],
+              ["already closed", funnel.churn.closed, "Deploys whose ProgramData is already gone — rent reclaimed, likely a throwaway bot that moved on."],
             ]}
-            labelWidth={112}
+            labelWidth={132}
           />
           <BotExplainer />
         </>

@@ -5,6 +5,7 @@ import { SignalHex } from "@/components/SignalHex";
 import { Sparkline } from "@/components/Sparkline";
 import { CATEGORY_LABELS, type ApiProgram } from "@/lib/api";
 import { deriveSignals } from "@/lib/signals";
+import { botKind, BOT_LABEL } from "@/lib/lifecycle";
 import { formatBytes, relativeTime, truncateAddress } from "@/lib/format";
 
 // Programs CPI into the token programs almost universally — naming them on
@@ -34,8 +35,7 @@ function Fact({ label, value }: { label: string; value: string }) {
  */
 export function ProgramRow({ program }: { program: ApiProgram }) {
   const inCluster = (program.clusterSize ?? 0) > 1;
-  const isBot = program.band === "clone";
-  const isSniper = isBot && program.integrations.includes("Pump.fun");
+  const kind = botKind(program); // 'sniper' | 'throwaway' | 'duplicate' | null
   const signals = deriveSignals(program);
   const notableIntegrations = program.integrations.filter(
     (i) => !UBIQUITOUS_INTEGRATIONS.has(i),
@@ -109,12 +109,20 @@ export function ProgramRow({ program }: { program: ApiProgram }) {
               ✓ verified
             </span>
           ) : null}
-          {isBot ? (
+          {kind === "duplicate" ? (
+            <span className="dup-chip" title="Byte-identical bytecode to other deploys on record — same code, fresh id">
+              duplicate
+            </span>
+          ) : kind ? (
             <span
               className="bot-chip"
-              title="Byte-identical to known code under a fresh id — a throwaway bot"
+              title={
+                kind === "sniper"
+                  ? "Byte-clone wired to Pump.fun — the launch-sniper signature"
+                  : "A byte-clone that was closed — deploy, run, close to reclaim rent"
+              }
             >
-              {isSniper ? "pump.fun sniper" : "throwaway bot"}
+              {BOT_LABEL[kind]}
             </span>
           ) : null}
           {inCluster ? (

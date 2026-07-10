@@ -10,7 +10,7 @@ import { SignalHex } from "@/components/SignalHex";
 import { Sparkline } from "@/components/Sparkline";
 import { deriveSignals } from "@/lib/signals";
 import { deriveComposition } from "@/lib/composition";
-import { deriveLifecycle } from "@/lib/lifecycle";
+import { deriveLifecycle, botKind, BOT_LABEL } from "@/lib/lifecycle";
 import { OTHER_FRAMEWORKS_NOTE } from "@/lib/frameworks";
 import { SectionExplainer } from "@/components/SectionExplainer";
 import { BotExplainer } from "@/components/BotExplainer";
@@ -309,6 +309,7 @@ export default async function ProgramDossierPage({
 
   const comp = deriveComposition(program);
   const lifecycle = deriveLifecycle(program);
+  const botClass = botKind(program); // 'sniper' | 'throwaway' | 'duplicate' | null
   const SIZE_BAND_LABEL: Record<string, string> = {
     lean: "lean",
     moderate: "moderate",
@@ -664,13 +665,20 @@ export default async function ProgramDossierPage({
             {program.deployType === "upgrade" && program.upgradeCount > 0 ? (
               <span className="cluster-note">upgraded ×{program.upgradeCount}</span>
             ) : null}
-            {lifecycle.sniper ? (
-              <span className="bot-chip" title="Byte-identical redeploy wired to Pump.fun — a sniper bot">
-                pump.fun sniper
+            {botClass === "duplicate" ? (
+              <span className="dup-chip" title="Byte-identical bytecode to other deploys on record — same code, fresh id">
+                duplicate
               </span>
-            ) : lifecycle.redeploy ? (
-              <span className="bot-chip" title="Byte-identical to known code under a fresh id — a throwaway bot">
-                throwaway bot
+            ) : botClass ? (
+              <span
+                className="bot-chip"
+                title={
+                  botClass === "sniper"
+                    ? "Byte-clone wired to Pump.fun — the launch-sniper signature"
+                    : "A byte-clone that was closed — deploy, run, close to reclaim rent"
+                }
+              >
+                {BOT_LABEL[botClass]}
               </span>
             ) : null}
             {lifecycle.closed ? (
@@ -707,11 +715,11 @@ export default async function ProgramDossierPage({
         </div>
       </div>
 
-      {lifecycle.redeploy ? (
+      {botClass === "sniper" || botClass === "throwaway" ? (
         <>
           <div className="churn-note">
             <span className="churn-note-tag">
-              {lifecycle.sniper ? "sniper bot" : "throwaway bot"}
+              {botClass === "sniper" ? "sniper bot" : "throwaway bot"}
             </span>
             <p>
               This program&apos;s bytecode is{" "}
@@ -729,12 +737,24 @@ export default async function ProgramDossierPage({
                 <> It has logged <strong>{program.earlySigners.toLocaleString("en-US")}{program.earlySigners % 1000 === 0 ? "+" : ""} transactions</strong> since deploy — mostly failed attempts.</>
               ) : null}{" "}
               The signature of a throwaway bot: deploy a disposable id, run it hot
-              {lifecycle.sniper ? " sniping Pump.fun launches" : ""}, then close it
-              to reclaim the rent — and repeat.
+              {botClass === "sniper" ? " sniping Pump.fun launches" : ""}, then close
+              it to reclaim the rent — and repeat.
             </p>
           </div>
           <BotExplainer />
         </>
+      ) : botClass === "duplicate" ? (
+        <div className="churn-note churn-note-neutral">
+          <span className="churn-note-tag churn-note-tag-neutral">duplicate</span>
+          <p>
+            This bytecode is{" "}
+            <strong>byte-identical to {program.clusterSize && program.clusterSize > 1 ? `${program.clusterSize - 1} other deploy${program.clusterSize > 2 ? "s" : ""}` : "another deploy"} on record</strong>{" "}
+            — same code, fresh id. That can be a bot rotating identities,{" "}
+            <em>or</em> a factory/launchpad deploying instances of one program,{" "}
+            <em>or</em> a developer redeploying. We don&apos;t assume which —
+            it&apos;s simply not novel code, so it&apos;s kept off the novelty radar.
+          </p>
+        </div>
       ) : null}
 
       <DossierTabs tabs={tabs} />

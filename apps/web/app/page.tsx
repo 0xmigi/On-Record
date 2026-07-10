@@ -34,60 +34,81 @@ function radarHref(type: RadarType, window: RadarWindow, cursor?: string): strin
   return qs ? `/?${qs}` : "/";
 }
 
-/** Header strip: today's split of new programs vs upgrades, and how many of
- *  those "new programs" are actually throwaway bots redeploying themselves. */
+/** Header strip: today's split of new programs vs upgrades, plus a toggle for
+ *  how many of those "new programs" are actually byte-clone redeploys. */
 function FunnelStrip({
   deploys,
   upgrades,
   bots,
+  showBots,
+  botsHref,
 }: {
   deploys: number | null;
   upgrades: number | null;
   bots: number | null;
+  showBots: boolean;
+  botsHref: string;
 }) {
   return (
-    <Link className="funnel-strip" href="/funnel" aria-label="Open the funnel">
-      <span className="funnel-cell">
-        <span className="funnel-num funnel-num-accent">{groupNum(deploys)}</span>
-        <span className="funnel-lbl">new programs today</span>
-        {bots && deploys ? (
-          <span className="funnel-bots">
-            {groupNum(bots)} are throwaway bots
-          </span>
-        ) : null}
-      </span>
-      <span className="funnel-arrow" aria-hidden="true">
-        ·
-      </span>
-      <span className="funnel-cell">
-        <span className="funnel-num">{groupNum(upgrades)}</span>
-        <span className="funnel-lbl">upgrades</span>
-      </span>
-      <span className="funnel-arrow" aria-hidden="true">
-        →
-      </span>
-      <span className="funnel-cell funnel-cell-end">
-        <span className="funnel-lbl">see the funnel</span>
-      </span>
-    </Link>
+    <div className="funnel-strip-wrap">
+      <Link className="funnel-strip" href="/funnel" aria-label="Open the funnel">
+        <span className="funnel-cell">
+          <span className="funnel-num funnel-num-accent">{groupNum(deploys)}</span>
+          <span className="funnel-lbl">new programs today</span>
+        </span>
+        <span className="funnel-arrow" aria-hidden="true">
+          ·
+        </span>
+        <span className="funnel-cell">
+          <span className="funnel-num">{groupNum(upgrades)}</span>
+          <span className="funnel-lbl">upgrades</span>
+        </span>
+        <span className="funnel-arrow" aria-hidden="true">
+          →
+        </span>
+        <span className="funnel-cell funnel-cell-end">
+          <span className="funnel-lbl">see the funnel</span>
+        </span>
+      </Link>
+      {bots && deploys ? (
+        <Link
+          className={`bots-toggle${showBots ? " active" : ""}`}
+          href={botsHref}
+          scroll={false}
+        >
+          <span className="bots-toggle-dot" aria-hidden="true" />
+          {groupNum(bots)} of these are duplicate redeploys —{" "}
+          {showBots ? "hide" : "show"}
+        </Link>
+      ) : null}
+    </div>
   );
 }
 
 export default async function RadarPage({
   searchParams,
 }: {
-  searchParams: Promise<{ type?: string; window?: string; cursor?: string }>;
+  searchParams: Promise<{ type?: string; window?: string; cursor?: string; bots?: string }>;
 }) {
   const sp = await searchParams;
   const type: RadarType = isRadarType(sp.type) ? sp.type : "deploy";
   const window: RadarWindow = isWindow(sp.window) ? sp.window : "today";
   const cursor = sp.cursor;
+  const showBots = sp.bots === "1";
 
-  // Bot clusters (byte-clone redeploys) are hidden from the novel feed, but we
-  // fold them back in as one collapsed entry per cluster on the first page —
-  // the most recent redeploy shown, the rest stacked underneath. Only on the
-  // new-deploys stream, page one (clones aren't cursor-paged).
-  const showClusters = type === "deploy" && !cursor;
+  // Byte-clone redeploys (duplicates / bots) are hidden by default — they're not
+  // novel code. Toggling "N duplicate deploys" folds them back in as one
+  // collapsed entry per cluster: newest shown, the rest stacked underneath.
+  // Only on the new-deploys stream, page one (clones aren't cursor-paged).
+  const showClusters = type === "deploy" && !cursor && showBots;
+  const botsHref = (() => {
+    const params = new URLSearchParams();
+    if (type !== "deploy") params.set("type", type);
+    if (window !== "today") params.set("window", window);
+    if (!showBots) params.set("bots", "1");
+    const qs = params.toString();
+    return qs ? `/?${qs}` : "/";
+  })();
   const [page, clonePage, funnel] = await Promise.all([
     fetchRadar({ type, window, cursor }),
     showClusters
@@ -133,6 +154,8 @@ export default async function RadarPage({
         deploys={funnel?.deploys ?? null}
         upgrades={funnel?.upgrades ?? null}
         bots={funnel?.churn?.redeploys ?? null}
+        showBots={showBots}
+        botsHref={botsHref}
       />
 
       <div className="radar-controls">
