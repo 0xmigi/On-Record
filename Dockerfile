@@ -17,11 +17,19 @@ FROM node:22-bookworm-slim
 RUN apt-get update \
   && apt-get install -y --no-install-recommends git ca-certificates cmake g++ make curl \
   && rm -rf /var/lib/apt/lists/*
-# reference TLSH CLI
+# Reference TLSH CLI. This build MUST fail loudly if tlsh doesn't end up
+# runnable: the pipeline degrades silently without it (every fingerprint gets
+# tlsh=null → 100% "novel", no lineage, dedup gate dead — bit us 2026-07-09).
 RUN curl -fsSL https://github.com/trendmicro/tlsh/archive/refs/tags/4.12.0.tar.gz | tar xz -C /tmp \
-  && cd /tmp/tlsh-4.12.0 && ./make.sh >/dev/null 2>&1 || (mkdir -p build && cd build && cmake .. && make -j2) \
-  && (cp /tmp/tlsh-4.12.0/bin/tlsh* /usr/local/bin/tlsh || cp /tmp/tlsh-4.12.0/build/tlsh/tools/tlsh_unittest/tlsh /usr/local/bin/tlsh || true) \
-  && rm -rf /tmp/tlsh-4.12.0
+  && cd /tmp/tlsh-4.12.0 \
+  && (./make.sh || (mkdir -p build && cd build && cmake .. && make -j2)) \
+  && BIN=$(find /tmp/tlsh-4.12.0 -type f -name tlsh_unittest -perm -u+x | head -1) \
+  && if [ -z "$BIN" ]; then BIN=$(find /tmp/tlsh-4.12.0 -type f -name tlsh -perm -u+x | head -1); fi \
+  && test -n "$BIN" \
+  && cp "$BIN" /usr/local/bin/tlsh \
+  && head -c 1024 /dev/urandom > /tmp/tlsh-selftest \
+  && tlsh -f /tmp/tlsh-selftest | grep -qE '(T1)?[0-9A-Fa-f]{70}' \
+  && rm -rf /tmp/tlsh-4.12.0 /tmp/tlsh-selftest
 WORKDIR /app
 COPY --from=build /app ./
 ENV NODE_ENV=production

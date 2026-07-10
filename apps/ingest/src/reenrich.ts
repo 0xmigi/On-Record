@@ -7,14 +7,21 @@ import {
   getDeployHistory,
   parseProgramDataAccount,
   deriveBytecodeIdentity,
+  deployRentLamports,
+  sha256Hex,
+  tlshHash,
+  newId,
   type Network,
 } from "@onrecord/core";
 
 // ---------------------------------------------------------------------------
 // One-off re-enrichment: backfill recovered identity (name / repo / socials /
-// security.txt) onto program subjects that were ingested before the pipeline
-// learned to read it from the binary. Re-fetches each ProgramData account,
-// derives identity, and updates the subject (coalescing — never un-names).
+// security.txt), fingerprint (sha256/TLSH — corpus rows too, for subjects
+// ingested while the tlsh CLI was missing from the image), deploy cost, and
+// deploy history onto existing program subjects. Re-fetches each ProgramData
+// account and updates the subject. Facts are MERGED (jsonb ||), never
+// replaced — pipeline stages stash keys there (nearest, funder, codeMatch…)
+// that this pass must not clobber. Coalescing name — never un-names.
 //
 //   INLINE_PIPELINE=1 tsx src/reenrich.ts [--network=mainnet]
 // ---------------------------------------------------------------------------
@@ -28,6 +35,7 @@ async function run(network: Network): Promise<void> {
 
   let named = 0;
   let upgraded = 0;
+  let tlshFilled = 0;
   let done = 0;
   for (const s of subs) {
     try {
@@ -44,36 +52,80 @@ async function run(network: Network): Promise<void> {
       if (!parsed) continue;
       const bi = deriveBytecodeIdentity(parsed.bytecode);
 
+      // fingerprint: recompute sha256 + TLSH (fills rows ingested while the
+      // tlsh CLI was broken in the image)
+      const sha256 = sha256Hex(parsed.bytecode);
+      const tlsh = await tlshHash(parsed.bytecode);
+      if (tlsh) tlshFilled++;
+
       // deploy vs upgrade from the ProgramData signature history
       const dh = await getDeployHistory(s.network as Network, pd);
       const upgradeCount = Math.max(0, dh.txCount - 1);
       const deployType = upgradeCount > 0 ? "upgrade" : "deploy";
+
+      const factsPatch = {
+        social: bi.social,
+        website: bi.website,
+        hasSecurityTxt: bi.hasSecurityTxt,
+        anchor: bi.anchor,
+        upgradeCount,
+        deployCostLamports: deployRentLamports(raw.length),
+        ...(bi.securityTxt ? { securityTxt: bi.securityTxt } : {}),
+      };
 
       await db
         .update(schema.subjects)
         .set({
           name: sql`coalesce(${schema.subjects.name}, ${bi.name})`,
           repoUrl: sql`coalesce(${schema.subjects.repoUrl}, ${bi.repoUrl})`,
+          sha256,
+          tlsh,
+          sizeBytes: parsed.bytecode.length,
           firstDeployAt: dh.firstDeployAt,
           deployType,
-          facts: {
-            social: bi.social,
-            website: bi.website,
-            hasSecurityTxt: bi.hasSecurityTxt,
-            anchor: bi.anchor,
-            upgradeCount,
-          },
+          facts: sql`coalesce(${schema.subjects.facts}, '{}'::jsonb) || ${JSON.stringify(factsPatch)}::jsonb`,
           updatedAt: new Date(),
         })
         .where(eq(schema.subjects.id, s.id));
+
+      // corpus: ensure this program has a TLSH-bearing row for the neighbor scan
+      if (tlsh) {
+        const existing = await db
+          .select({ id: schema.fingerprintCorpus.id, tlsh: schema.fingerprintCorpus.tlsh })
+          .from(schema.fingerprintCorpus)
+          .where(
+            and(
+              eq(schema.fingerprintCorpus.programId, s.id),
+              eq(schema.fingerprintCorpus.sha256, sha256),
+            ),
+          )
+          .limit(1);
+        if (!existing[0]) {
+          await db.insert(schema.fingerprintCorpus).values({
+            id: newId("fpc"),
+            programId: s.id,
+            network: s.network,
+            sha256,
+            tlsh,
+            sizeBytes: parsed.bytecode.length,
+          });
+        } else if (!existing[0].tlsh) {
+          await db
+            .update(schema.fingerprintCorpus)
+            .set({ tlsh })
+            .where(eq(schema.fingerprintCorpus.id, existing[0].id));
+        }
+      }
+
       if (bi.name) named++;
       if (deployType === "upgrade") upgraded++;
     } catch (err) {
       logger.warn({ id: s.id, err: String(err) }, "reenrich: subject failed");
     }
-    if (++done % 25 === 0) logger.info({ done, of: subs.length, named, upgraded }, "reenrich: progress");
+    if (++done % 25 === 0)
+      logger.info({ done, of: subs.length, named, upgraded, tlshFilled }, "reenrich: progress");
   }
-  logger.info({ done, named, upgraded, of: subs.length }, "reenrich: complete");
+  logger.info({ done, named, upgraded, tlshFilled, of: subs.length }, "reenrich: complete");
 }
 
 const argv = process.argv.slice(2);
