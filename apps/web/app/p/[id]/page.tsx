@@ -13,6 +13,7 @@ import { deriveComposition } from "@/lib/composition";
 import { deriveLifecycle } from "@/lib/lifecycle";
 import { OTHER_FRAMEWORKS_NOTE } from "@/lib/frameworks";
 import { SectionExplainer } from "@/components/SectionExplainer";
+import { BotExplainer } from "@/components/BotExplainer";
 import { SectionHeader } from "@/components/SectionHeader";
 import {
   CATEGORY_LABELS,
@@ -663,6 +664,15 @@ export default async function ProgramDossierPage({
             {program.deployType === "upgrade" && program.upgradeCount > 0 ? (
               <span className="cluster-note">upgraded ×{program.upgradeCount}</span>
             ) : null}
+            {lifecycle.sniper ? (
+              <span className="bot-chip" title="Byte-identical redeploy wired to Pump.fun — a sniper bot">
+                pump.fun sniper
+              </span>
+            ) : lifecycle.redeploy ? (
+              <span className="bot-chip" title="Byte-identical to known code under a fresh id — a throwaway bot">
+                throwaway bot
+              </span>
+            ) : null}
             {lifecycle.closed ? (
               <span
                 className="closed-chip"
@@ -697,21 +707,34 @@ export default async function ProgramDossierPage({
         </div>
       </div>
 
-      {lifecycle.ephemeral ? (
-        <div className="churn-note">
-          <span className="churn-note-tag">churn pattern</span>
-          <p>
-            Deployed and <strong>closed within {lifecycle.lifespanLabel ?? "minutes"}</strong>
-            {program.earlySigners
-              ? <> after <strong>{program.earlySigners.toLocaleString("en-US")}{program.earlySigners % 1000 === 0 ? "+" : ""} transactions</strong></>
-              : null}
-            {program.band === "clone"
-              ? <> — and its bytecode is byte-identical to other deploys on record.</>
-              : "."}{" "}
-            This is the signature of a throwaway bot: deploy a fresh program id,
-            run it hot, then close it to reclaim the rent — and repeat.
-          </p>
-        </div>
+      {lifecycle.redeploy ? (
+        <>
+          <div className="churn-note">
+            <span className="churn-note-tag">
+              {lifecycle.sniper ? "sniper bot" : "throwaway bot"}
+            </span>
+            <p>
+              This program&apos;s bytecode is{" "}
+              <strong>byte-identical to other deploys on record</strong> — the
+              same program under a fresh id.
+              {lifecycle.closed ? (
+                <>
+                  {" "}It was <strong>closed within {lifecycle.lifespanLabel ?? "minutes"}</strong>
+                  {program.earlySigners
+                    ? <>, after <strong>{program.earlySigners.toLocaleString("en-US")}{program.earlySigners % 1000 === 0 ? "+" : ""} transactions</strong></>
+                    : null}
+                  .
+                </>
+              ) : program.earlySigners ? (
+                <> It has logged <strong>{program.earlySigners.toLocaleString("en-US")}{program.earlySigners % 1000 === 0 ? "+" : ""} transactions</strong> since deploy — mostly failed attempts.</>
+              ) : null}{" "}
+              The signature of a throwaway bot: deploy a disposable id, run it hot
+              {lifecycle.sniper ? " sniping Pump.fun launches" : ""}, then close it
+              to reclaim the rent — and repeat.
+            </p>
+          </div>
+          <BotExplainer />
+        </>
       ) : null}
 
       <DossierTabs tabs={tabs} />

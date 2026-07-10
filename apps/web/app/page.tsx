@@ -32,19 +32,27 @@ function radarHref(type: RadarType, window: RadarWindow, cursor?: string): strin
   return qs ? `/?${qs}` : "/";
 }
 
-/** Header strip: today's split of new programs vs upgrades. */
+/** Header strip: today's split of new programs vs upgrades, and how many of
+ *  those "new programs" are actually throwaway bots redeploying themselves. */
 function FunnelStrip({
   deploys,
   upgrades,
+  bots,
 }: {
   deploys: number | null;
   upgrades: number | null;
+  bots: number | null;
 }) {
   return (
     <Link className="funnel-strip" href="/funnel" aria-label="Open the funnel">
       <span className="funnel-cell">
         <span className="funnel-num funnel-num-accent">{groupNum(deploys)}</span>
         <span className="funnel-lbl">new programs today</span>
+        {bots && deploys ? (
+          <span className="funnel-bots">
+            {groupNum(bots)} are throwaway bots
+          </span>
+        ) : null}
       </span>
       <span className="funnel-arrow" aria-hidden="true">
         ·
@@ -85,6 +93,7 @@ export default async function RadarPage({
       <FunnelStrip
         deploys={funnel?.deploys ?? null}
         upgrades={funnel?.upgrades ?? null}
+        bots={funnel?.churn?.redeploys ?? null}
       />
 
       <div className="radar-controls">

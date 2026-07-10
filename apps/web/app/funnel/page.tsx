@@ -3,6 +3,7 @@ import Link from "next/link";
 import { Mark } from "@/components/Mark";
 import { SectionHeader } from "@/components/SectionHeader";
 import { FlowChart } from "@/components/FlowChart";
+import { BotExplainer } from "@/components/BotExplainer";
 import { CATEGORY_LABELS, fetchFunnel, type Category } from "@/lib/api";
 import { groupNum, utcStamp } from "@/lib/format";
 
@@ -267,6 +268,7 @@ export default async function FunnelPage({
             ]}
             labelWidth={112}
           />
+          <BotExplainer />
         </>
       ) : null}
 

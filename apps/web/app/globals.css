@@ -2866,6 +2866,29 @@ a.copy-addr-text:hover {
   border-bottom-color: var(--accent);
 }
 
+/* funnel strip — how many of "new programs today" are actually bots */
+.funnel-bots {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.02em;
+  color: var(--red);
+  margin-top: 2px;
+}
+
+/* bot classification chip on the dossier band line */
+.bot-chip {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--red);
+  border: 1px solid color-mix(in srgb, var(--red) 35%, transparent);
+  background: color-mix(in srgb, var(--red) 8%, transparent);
+  border-radius: 2px;
+  padding: 2px 6px;
+  white-space: nowrap;
+}
+
 /* closed / churn — a program whose ProgramData was deallocated (rent reclaimed) */
 .closed-chip {
   font-family: var(--font-mono);

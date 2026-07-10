@@ -13,6 +13,8 @@ export interface Lifecycle {
   lifespanLabel: string | null; // deploy → detected-closed, e.g. "12m", "3h"
   shortLived: boolean; // closed under 6h after deploy
   ephemeral: boolean; // clone + closed / short-lived — the churn signature
+  redeploy: boolean; // band=clone — byte-identical to known code, a fresh id
+  sniper: boolean; // a redeploy wired to Pump.fun — the sniper flavor
 }
 
 function fmtSpan(ms: number): string {
@@ -30,10 +32,13 @@ export function deriveLifecycle(p: ApiProgram): Lifecycle {
     lifespanMs = Math.max(0, Date.parse(p.closedAt) - Date.parse(deployed));
   }
   const shortLived = lifespanMs != null && lifespanMs < 6 * 3_600_000;
+  const redeploy = p.band === "clone";
   return {
     closed: p.closed,
     lifespanLabel: lifespanMs != null ? fmtSpan(lifespanMs) : null,
     shortLived,
     ephemeral: p.closed && (p.band === "clone" || shortLived),
+    redeploy,
+    sniper: redeploy && (p.integrations ?? []).includes("Pump.fun"),
   };
 }
