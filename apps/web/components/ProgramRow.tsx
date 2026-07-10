@@ -110,6 +110,11 @@ export function ProgramRow({ program }: { program: ApiProgram }) {
           {inCluster ? (
             <span className="cluster-note">×{program.clusterSize} in cluster</span>
           ) : null}
+          {program.closed ? (
+            <span className="closed-chip" title="Program closed — ProgramData deallocated, rent reclaimed">
+              closed
+            </span>
+          ) : null}
         </div>
 
         <div className="radar-sub">

@@ -87,19 +87,27 @@ async function clusterSizes(bucketIds: (string | null)[]): Promise<Map<string, n
 
 export function registerPublicRoutes(app: FastifyInstance): void {
   // --- the radar: ranked programs -----------------------------------------
-  app.get<{ Querystring: { window?: string; band?: string; type?: string; cursor?: string; limit?: string } }>(
+  app.get<{ Querystring: { window?: string; band?: string; type?: string; cursor?: string; limit?: string; closed?: string } }>(
     "/api/radar",
     async (req): Promise<ApiCursorPage<ApiProgram>> => {
       const limit = Math.min(Number(req.query.limit ?? 30) || 30, 100);
       const band = req.query.band && BANDS.has(req.query.band as NoveltyBand) ? req.query.band : "novel";
       const type = req.query.type === "upgrade" ? "upgrade" : "deploy";
       const start = windowStart(req.query.window);
+      // closed programs (rent reclaimed) are the churn tail — hidden by default,
+      // ?closed=1 shows them, ?closed=only isolates the graveyard.
+      const closedMode = req.query.closed === "1" ? "include" : req.query.closed === "only" ? "only" : "hide";
 
       const conditions = [
         eq(schema.subjects.network, "mainnet"),
         eq(schema.subjects.kind, "program"),
         eq(schema.subjects.noveltyBand, band),
       ];
+      if (closedMode === "hide") {
+        conditions.push(sql`(${schema.subjects.facts} ->> 'closedAt') is null`);
+      } else if (closedMode === "only") {
+        conditions.push(sql`(${schema.subjects.facts} ->> 'closedAt') is not null`);
+      }
       // deploy vs upgrade stream. Unclassified (null) rows read as new deploys so
       // nothing silently disappears before the classifier has run.
       if (type === "upgrade") {

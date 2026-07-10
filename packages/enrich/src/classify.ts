@@ -39,31 +39,43 @@ export async function classifyFingerprint(
 ): Promise<Classification> {
   const cfg = await getConfig();
 
-  // 1. exact match
+  // 1. exact byte-match → clone. Two ways to be an exact copy:
+  //   (a) a copy_bucket already exists for this sha256, or
+  //   (b) the identical bytecode is already in the corpus from an earlier deploy
+  //       but never got bucketed (it was the first of its kind — a bucket is only
+  //       created once a *second* copy shows up).
+  // Case (b) is the one that matters here: a bot that redeploys the same binary
+  // under fresh program ids would otherwise fall through to the TLSH scan, which
+  // skips same-sha candidates (see below), and surface as "novel" every time.
   const exact = await db
     .select()
     .from(schema.copyBuckets)
     .where(and(eq(schema.copyBuckets.network, network), eq(schema.copyBuckets.canonicalSha256, fp.sha256)));
-  if (exact[0]) {
-    await bumpBucket(exact[0].id);
-    // resolve the canonical member so the clone points at its original
-    const canonical = await db
-      .select({ programId: schema.fingerprintCorpus.programId })
-      .from(schema.fingerprintCorpus)
-      .where(
-        and(
-          eq(schema.fingerprintCorpus.network, network),
-          eq(schema.fingerprintCorpus.sha256, fp.sha256),
-          ne(schema.fingerprintCorpus.programId, programId),
-        ),
-      )
-      .limit(1);
+
+  const priorCopy = await db
+    .select({ programId: schema.fingerprintCorpus.programId })
+    .from(schema.fingerprintCorpus)
+    .where(
+      and(
+        eq(schema.fingerprintCorpus.network, network),
+        eq(schema.fingerprintCorpus.sha256, fp.sha256),
+        ne(schema.fingerprintCorpus.programId, programId),
+      ),
+    )
+    .limit(1);
+
+  if (exact[0] || priorCopy[0]) {
+    // join the existing bucket, or create one keyed on this sha256 (with the
+    // earlier deploy as canonical) when this is the second sighting.
+    const bucketId = exact[0]
+      ? (await bumpBucket(exact[0].id), exact[0].id)
+      : await bucketForSha(network, fp.sha256, fp);
     return {
       disposition: "copy",
       band: "clone",
-      bucketId: exact[0].id,
+      bucketId,
       nearestDistance: 0,
-      nearestProgramId: canonical[0]?.programId ?? null,
+      nearestProgramId: priorCopy[0]?.programId ?? null,
       structuralNovelty: 0,
       watchlistHit: await matchWatchlist(network, programId, fp, null),
     };

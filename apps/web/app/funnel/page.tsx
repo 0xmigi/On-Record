@@ -238,6 +238,22 @@ export default async function FunnelPage({
         </>
       ) : null}
 
+      {funnel.churn && funnel.churn.closed > 0 ? (
+        <>
+          <SectionHeader
+            title="Churn"
+            info="Programs deployed then closed inside this window — the loader's ProgramData account was deallocated and its rent reclaimed. The 'throwaway bot' cut is a closed byte-clone: the same binary redeployed under a fresh id, run hot, then closed."
+          />
+          <Breakdown
+            rows={[
+              ["closed", funnel.churn.closed, "Deployed then closed within the window — rent reclaimed. Detected by the ProgramData account going missing."],
+              ["throwaway bots", funnel.churn.bot, "Closed AND byte-identical to other deploys — a bot redeploying the same code under fresh ids and closing to reclaim rent between runs."],
+            ]}
+            labelWidth={112}
+          />
+        </>
+      ) : null}
+
       <p className="funnel-updated">last {win}h · updated {utcStamp(funnel.updatedAt)}</p>
     </>
   );

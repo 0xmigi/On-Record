@@ -242,6 +242,11 @@ export interface ApiProgram {
   social: string | null;
   website: string | null;
   hasSecurityTxt: boolean;
+  // --- lifecycle: closed = ProgramData deallocated, rent reclaimed ---
+  /** ISO detection time when the program's ProgramData was found gone (closed).
+   *  We detect absence, not the close tx — an honest "detected closed". */
+  closedAt: string | null;
+  closed: boolean;
   // --- deploy vs upgrade (from ProgramData history) ---
   deployType: "deploy" | "upgrade";
   firstDeployAt: string | null; // ISO — the ORIGINAL deploy (deployedAt is the latest)
@@ -309,6 +314,9 @@ export interface ApiFunnel {
   lineage?: { novel: number; variant: number; fork: number };
   control?: { mutable: number; frozen: number; verified: number };
   conviction?: { knownEntity: number; funderTraced: number; untraced: number };
+  /** churn — programs deployed then closed (rent reclaimed) in the window;
+   *  `bot` = the closed byte-clones, the throwaway-redeploy signature. */
+  churn?: { closed: number; bot: number };
   frameworkTrend?: {
     framework: string;
     current: number;

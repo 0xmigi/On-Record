@@ -81,6 +81,7 @@ export function serializeProgram(
     multisig?: ApiProgram["multisig"];
     activity?: { t: number; c: number }[];
     momentum?: { txns24h: number; growth: number | null };
+    closedAt?: string;
   };
   return {
     id: row.id,
@@ -111,6 +112,8 @@ export function serializeProgram(
     social: facts.social ?? null,
     website: facts.website ?? null,
     hasSecurityTxt: Boolean(facts.hasSecurityTxt),
+    closedAt: facts.closedAt ?? null,
+    closed: Boolean(facts.closedAt),
     deployType: (row.deployType as "deploy" | "upgrade") ?? "deploy",
     firstDeployAt: row.firstDeployAt?.toISOString() ?? null,
     upgradeCount: facts.upgradeCount ?? 0,

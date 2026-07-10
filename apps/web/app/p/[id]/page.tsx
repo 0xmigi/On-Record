@@ -9,6 +9,10 @@ import { DossierTabs, type DossierTab } from "@/components/DossierTabs";
 import { SignalHex } from "@/components/SignalHex";
 import { Sparkline } from "@/components/Sparkline";
 import { deriveSignals } from "@/lib/signals";
+import { deriveComposition } from "@/lib/composition";
+import { deriveLifecycle } from "@/lib/lifecycle";
+import { OTHER_FRAMEWORKS_NOTE } from "@/lib/frameworks";
+import { SectionExplainer } from "@/components/SectionExplainer";
 import { SectionHeader } from "@/components/SectionHeader";
 import {
   CATEGORY_LABELS,
@@ -176,8 +180,53 @@ export default async function ProgramDossierPage({
             </>
           )}
         </Row>
-        <Row label="Verified build">{program.verified ? "yes" : "no"}</Row>
+        <Row label="Verified build">
+          {program.verified ? (
+            <>
+              yes{" "}
+              <span className="cell-dim">· bytecode reproduces from public source</span>
+            </>
+          ) : (
+            <>
+              no{" "}
+              <span className="cell-dim">· source not confirmed against on-chain bytecode</span>
+            </>
+          )}
+        </Row>
       </div>
+
+      <SectionExplainer title="What's upgrade authority?">
+        <p className="explainer-read">
+          The upgrade authority is the account allowed to replace a
+          program&apos;s code after it&apos;s deployed.
+        </p>
+        <p>
+          If it&apos;s set (<strong>mutable</strong>), that key can push new
+          bytecode at any time — including malicious code, the classic
+          &quot;rug&quot; vector. If it&apos;s null (
+          <strong>immutable / frozen</strong>), the code can never change; what
+          &apos;s on-chain is final. A <strong>Squads multisig</strong> sits in
+          between — upgrades are possible but need M-of-N signers, not one hot
+          wallet. So mutable + single hot-wallet = highest risk; immutable or
+          multisig = stronger guarantees.
+        </p>
+      </SectionExplainer>
+
+      <SectionExplainer title="What's a verified build?">
+        <p className="explainer-read">
+          A verified build proves the program running on-chain was compiled from
+          the public source you can read — nothing hidden.
+        </p>
+        <p>
+          Someone re-compiles the source in a deterministic (Docker) environment
+          and checks the resulting bytecode is byte-for-byte identical to
+          what&apos;s deployed; tools like <strong>solana-verify</strong> do this
+          and record it with a verification service.{" "}
+          <strong>&quot;Not verified&quot; isn&apos;t a red flag by itself</strong>{" "}
+          — most programs simply never submit one. It just means you&apos;re
+          trusting the deployed bytecode as-is, with no source cross-check.
+        </p>
+      </SectionExplainer>
       {program.securityTxt ? (
         <>
           <SectionHeader
@@ -206,6 +255,19 @@ export default async function ProgramDossierPage({
               </Row>
             ) : null}
           </div>
+          <SectionExplainer title="What's a security.txt?">
+            <p className="explainer-read">
+              A block of contact info a developer embeds directly in the program
+              binary — the Neodyme convention — so whitehats know how to report a
+              vulnerability.
+            </p>
+            <p>
+              It carries contacts, a disclosure policy, auditors, and a source
+              link. It&apos;s self-declared, so treat it as a claim, not proof —
+              but its presence signals a team that expects scrutiny and wants to
+              be reachable.
+            </p>
+          </SectionExplainer>
         </>
       ) : null}
       <SectionHeader title="Conviction" info="Skin in the game — who funded the deployer and how." />
@@ -244,46 +306,200 @@ export default async function ProgramDossierPage({
     </>
   );
 
+  const comp = deriveComposition(program);
+  const lifecycle = deriveLifecycle(program);
+  const SIZE_BAND_LABEL: Record<string, string> = {
+    lean: "lean",
+    moderate: "moderate",
+    heavy: "heavy",
+  };
+
   const compositionPanel = (
     <>
-      <SectionHeader title="Composition" info="What it's built with and plugs into — parsed from the ELF binary." />
-      <div className="facts-panel">
-        <Row label="Framework">{program.framework ?? "unknown"}</Row>
-        <Row label="Plugs into">
-          {program.integrations.length ? (
+      <SectionHeader
+        title="Framework"
+        info="Read off the ELF — the syscall ABI and marker strings. Confidence: 'confirmed' = provable on-chain (Anchor); 'inferred' = read from binary shape. New to a framework? Expand the explainer at the bottom of this tab."
+      />
+      <div className="fw-stat">
+        <span className="fw-stat-value">{comp.framework.label}</span>
+        <span
+          className={`fw-conf fw-conf-${comp.confidence}`}
+          title={comp.framework.detection}
+        >
+          {comp.confidence}
+        </span>
+        {comp.publishesIdl ? (
+          <span className="fw-tag" title="Ships an on-chain Anchor IDL — the program describes itself">
+            self-describing IDL
+          </span>
+        ) : null}
+        <span className="fw-pos">{comp.framework.positioning}</span>
+      </div>
+
+      <SectionExplainer title={`What's ${comp.framework.label}?`}>
+        <p className="explainer-read">{comp.framework.read}</p>
+        <p className="explainer-tradeoff">{comp.framework.tradeoff}</p>
+        <p className="explainer-lead">{comp.framework.explainer.author}</p>
+
+        <h4 className="explainer-h">What it is</h4>
+        <p>{comp.framework.explainer.whatIs}</p>
+
+        <h4 className="explainer-h">When to pick it</h4>
+        <p>{comp.framework.explainer.whenToPick}</p>
+
+        <h4 className="explainer-h">How it looks on-chain</h4>
+        <p>{comp.framework.explainer.onChain}</p>
+
+        <p className="explainer-note">{OTHER_FRAMEWORKS_NOTE}</p>
+
+        {comp.framework.explainer.docsUrl ? (
+          <a
+            className="explainer-docs"
+            href={comp.framework.explainer.docsUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            {comp.framework.label} docs
+            <span aria-hidden="true"> ↗</span>
+          </a>
+        ) : null}
+      </SectionExplainer>
+
+      <SectionHeader
+        title="Footprint"
+        info="The physical cost of the build — what the framework choice put on-chain."
+      />
+      <div className="comp-metrics">
+        <div className="comp-metric">
+          <span className="comp-metric-v">{formatBytes(comp.sizeBytes)}</span>
+          <span className="comp-metric-k">
+            image size
+            {comp.sizeBand ? (
+              <span className={`size-band size-band-${comp.sizeBand}`}>
+                {" "}· {SIZE_BAND_LABEL[comp.sizeBand]}
+              </span>
+            ) : null}
+          </span>
+        </div>
+        <div className="comp-metric">
+          <span className="comp-metric-v">
+            {comp.rentSol != null ? `${comp.rentSol} SOL` : "—"}
+          </span>
+          <span className="comp-metric-k">rent locked</span>
+        </div>
+        <div className="comp-metric">
+          <span className="comp-metric-v">{comp.syscallCount ?? "—"}</span>
+          <span className="comp-metric-k">syscalls imported</span>
+        </div>
+        <div className="comp-metric">
+          <span className="comp-metric-v">
+            {comp.instructions.length ||
+              (program.instructionCount != null ? program.instructionCount : "—")}
+          </span>
+          <span className="comp-metric-k">instructions</span>
+        </div>
+      </div>
+      {comp.capabilities.length ? (
+        <div className="facts-panel" style={{ marginTop: 8 }}>
+          <Row label="Capabilities">
             <span className="chip-inline">
-              {program.integrations.map((it) => (
+              {comp.capabilities.map((c) => (
+                <span className="ix-chip" key={c}>
+                  {c}
+                </span>
+              ))}
+            </span>
+          </Row>
+        </div>
+      ) : null}
+
+      {comp.crate || comp.moduleGroups.length || comp.instructions.length ? (
+        <>
+          <SectionHeader
+            title="Recovered architecture"
+            info="The developer's own Rust source structure, recovered from panic paths and symbols left in the binary. Rust standard-library paths are filtered out."
+          />
+          <div className="facts-panel">
+            {comp.crate ? (
+              <Row label="Crate">
+                <span className="crate-name">{comp.crate}</span>
+              </Row>
+            ) : null}
+            {comp.instructions.length ? (
+              <Row label={comp.instructionsApprox ? "Instructions ~" : "Instructions"}>
+                <span className="chip-inline">
+                  {comp.instructions.map((ix) => (
+                    <span className="mod-chip" key={ix}>
+                      {ix}
+                    </span>
+                  ))}
+                </span>
+              </Row>
+            ) : null}
+            {comp.toolchain || comp.deps.length ? (
+              <Row label="Built with">
+                {comp.deps.length ? (
+                  <span className="chip-inline">
+                    {comp.deps.map((d) => (
+                      <span className="dep-chip" key={d}>
+                        {d}
+                      </span>
+                    ))}
+                  </span>
+                ) : (
+                  <span className="cell-dim">solana toolchain</span>
+                )}
+              </Row>
+            ) : null}
+          </div>
+          {comp.moduleGroups.length ? (
+            <div className="mod-map">
+              {comp.moduleGroups.map((g) => (
+                <div className="mod-group" key={g.dir}>
+                  <span className="mod-group-dir">{g.dir}/</span>
+                  <span className="mod-group-files">
+                    {g.files.map((f) => (
+                      <span className="mod-chip" key={f}>
+                        {f}
+                      </span>
+                    ))}
+                  </span>
+                </div>
+              ))}
+            </div>
+          ) : null}
+        </>
+      ) : null}
+
+      <SectionHeader
+        title="Reach"
+        info="What it plugs into. Embedded = a program id found verbatim in the bytecode (confirmed). Named in source = a protocol named in the recovered source paths (strong hint, confirmable against the live CPI graph)."
+      />
+      <div className="facts-panel">
+        <Row label="Embedded">
+          {comp.embeddedIntegrations.length ? (
+            <span className="chip-inline">
+              {comp.embeddedIntegrations.map((it) => (
                 <span className="ix-chip" key={it}>
                   {it}
                 </span>
               ))}
             </span>
           ) : (
-            <span className="cell-dim">nothing known detected</span>
+            <span className="cell-dim">no known program id embedded</span>
           )}
         </Row>
-        <Row label="Capabilities">
-          {program.capabilities.length ? (
+        {comp.sourceReach.length ? (
+          <Row label="Named in source">
             <span className="chip-inline">
-              {program.capabilities.map((c) => (
-                <span className="ix-chip" key={c}>
-                  {c}
+              {comp.sourceReach.map((it) => (
+                <span className="ix-chip ix-chip-soft" key={it}>
+                  {it}
                 </span>
               ))}
             </span>
-          ) : (
-            <span className="cell-dim">—</span>
-          )}
-        </Row>
-        <Row label="Instructions">
-          {program.instructionCount != null
-            ? program.instructionCount
-            : program.idlPresent
-              ? "IDL published"
-              : "—"}
-        </Row>
-        <Row label="Syscalls imported">{program.syscallCount ?? "—"}</Row>
-        <Row label="Image size">{formatBytes(program.sizeBytes)}</Row>
+          </Row>
+        ) : null}
       </div>
     </>
   );
@@ -349,28 +565,83 @@ export default async function ProgramDossierPage({
     </>
   );
 
+  const idlExplainer = (
+    <SectionExplainer title="What's an IDL?">
+      <p className="explainer-read">
+        An <strong>IDL</strong> — Interface Description Language — is a JSON spec
+        that describes how to talk to a program: its instructions, the accounts
+        each one needs, argument and account types, events, and errors.
+      </p>
+      <p className="explainer-tradeoff">
+        Anchor auto-generates it at build time. A program can publish it
+        on-chain at a PDA derived from its id, so any client or explorer can
+        decode the program&apos;s transactions without its source code.
+      </p>
+      <h4 className="explainer-h">Why it&apos;s often missing</h4>
+      <p>
+        Publishing is opt-in — a courtesy, not a requirement. Many programs
+        never do, and non-Anchor frameworks (Pinocchio, native, Steel)
+        don&apos;t produce one at all; their interface lives in an off-chain
+        Shank/Codama artifact, or nowhere public. Absence means you can&apos;t
+        auto-decode it — not that anything is wrong.
+      </p>
+    </SectionExplainer>
+  );
+
+  const interfacePanel = idl ? (
+    <>
+      <SectionHeader
+        title="Interface — the on-chain IDL"
+        info="The program's published IDL: every instruction, its accounts, and its types. This is what lets a client decode the program without its source."
+      />
+      {usage && usage.instructions.length ? (
+        <div style={{ marginBottom: 18 }}>
+          <UsageBars usage={usage} />
+        </div>
+      ) : null}
+      <IdlViewer idl={idl} />
+      {idlExplainer}
+    </>
+  ) : (
+    <>
+      <SectionHeader
+        title="No IDL published"
+        info="An IDL (Interface Description Language) is the JSON that names a program's instructions, accounts, and types so a client can decode it without the source."
+      />
+      <div className="no-idl">
+        <p className="no-idl-lead">
+          This program hasn&apos;t published an <strong>IDL</strong> — the
+          interface spec that would let its instructions be auto-decoded here.
+        </p>
+        <p>
+          <strong>That&apos;s normal, not a red flag.</strong> Publishing an IDL
+          on-chain is opt-in — closer to a courtesy than a requirement. Anchor
+          can write one to a PDA derived from the program id, but plenty of
+          teams never do. And non-Anchor programs —{" "}
+          {comp.framework.key === "anchor" ? "Pinocchio, native, Steel" : `like this ${comp.framework.label} one`}{" "}
+          — have no built-in IDL at all; their interface lives in an off-chain
+          Shank/Codama artifact, or nowhere public.
+        </p>
+        {comp.instructions.length ? (
+          <p>
+            We still recovered{" "}
+            <strong>{comp.instructions.length} instruction handler(s)</strong>{" "}
+            straight from the binary — see the{" "}
+            <span className="no-idl-ptr">Composition</span> tab. That&apos;s the
+            on-chain-first answer to a missing IDL: read the program, not its
+            paperwork.
+          </p>
+        ) : null}
+      </div>
+      {idlExplainer}
+    </>
+  );
+
   const tabs: DossierTab[] = [
     { id: "overview", label: "Overview", panel: overviewPanel },
     { id: "trust", label: "Trust", panel: trustPanel },
     { id: "composition", label: "Composition", panel: compositionPanel },
-    ...(idl
-      ? [
-          {
-            id: "interface",
-            label: "Interface",
-            panel: (
-              <>
-                {usage && usage.instructions.length ? (
-                  <div style={{ marginBottom: 18 }}>
-                    <UsageBars usage={usage} />
-                  </div>
-                ) : null}
-                <IdlViewer idl={idl} />
-              </>
-            ),
-          },
-        ]
-      : []),
+    { id: "interface", label: "Interface", panel: interfacePanel, muted: !idl },
     { id: "activity", label: "Activity", panel: activityPanel },
   ];
 
@@ -392,6 +663,19 @@ export default async function ProgramDossierPage({
             {program.deployType === "upgrade" && program.upgradeCount > 0 ? (
               <span className="cluster-note">upgraded ×{program.upgradeCount}</span>
             ) : null}
+            {lifecycle.closed ? (
+              <span
+                className="closed-chip"
+                title={
+                  lifecycle.lifespanLabel
+                    ? `ProgramData gone — closed within ${lifecycle.lifespanLabel} of deploy`
+                    : "ProgramData account no longer exists — the program was closed"
+                }
+              >
+                closed
+                {lifecycle.lifespanLabel ? ` · ${lifecycle.lifespanLabel}` : ""}
+              </span>
+            ) : null}
           </div>
 
           <div className="dossier-title-row">
@@ -412,6 +696,23 @@ export default async function ProgramDossierPage({
           <SignalHex signals={deriveSignals(program)} size={140} labels />
         </div>
       </div>
+
+      {lifecycle.ephemeral ? (
+        <div className="churn-note">
+          <span className="churn-note-tag">churn pattern</span>
+          <p>
+            Deployed and <strong>closed within {lifecycle.lifespanLabel ?? "minutes"}</strong>
+            {program.earlySigners
+              ? <> after <strong>{program.earlySigners.toLocaleString("en-US")}{program.earlySigners % 1000 === 0 ? "+" : ""} transactions</strong></>
+              : null}
+            {program.band === "clone"
+              ? <> — and its bytecode is byte-identical to other deploys on record.</>
+              : "."}{" "}
+            This is the signature of a throwaway bot: deploy a fresh program id,
+            run it hot, then close it to reclaim the rent — and repeat.
+          </p>
+        </div>
+      ) : null}
 
       <DossierTabs tabs={tabs} />
     </>

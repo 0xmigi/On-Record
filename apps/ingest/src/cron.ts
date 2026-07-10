@@ -3,6 +3,7 @@ import { db, schema, logger, tlshDistance } from "@onrecord/core";
 import { expireWatchlist, refreshTvl } from "@onrecord/enrich";
 import { snapshotFunnel, todayKey } from "./funnel.js";
 import { sampleMomentum } from "./momentum.js";
+import { sweepClosed } from "./closed.js";
 
 // ---------------------------------------------------------------------------
 // Scheduled work (SPEC §10): TVL refresh (6h), a live funnel snapshot (15m),
@@ -20,6 +21,10 @@ export function startCron(): void {
   // per-program hourly activity buckets — the Momentum signal (VISION §5a)
   every(Number(process.env.MOMENTUM_INTERVAL_MS ?? 3_600_000), "momentum-sample", async () => {
     await sampleMomentum();
+  });
+  // detect programs closed since deploy (rent reclaimed) — the churn tail
+  every(Number(process.env.CLOSED_SWEEP_INTERVAL_MS ?? 15 * 60_000), "closed-sweep", async () => {
+    await sweepClosed("mainnet");
   });
 }
 

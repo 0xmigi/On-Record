@@ -16,6 +16,7 @@ export type Category =
   | "governance"
   | "unknown";
 export type AuthorityClass = "none" | "squads" | "program" | "hot_wallet" | null;
+export type Framework = "anchor" | "pinocchio" | "native" | "unknown";
 
 export type RadarWindow = "today" | "week" | "all";
 export type RadarType = "deploy" | "upgrade";
@@ -53,8 +54,12 @@ export interface ApiProgram {
   social: string | null; // x.com / twitter
   website: string | null;
   hasSecurityTxt: boolean;
+  // lifecycle — closed = ProgramData deallocated (rent reclaimed). Detected by
+  // absence, not the close tx, so it's an honest "detected closed".
+  closedAt: string | null;
+  closed: boolean;
   // structured program profile (ELF-parsed)
-  framework: "anchor" | "pinocchio" | "native" | "unknown" | null;
+  framework: Framework | null;
   capabilities: string[];
   integrations: string[];
   syscallCount: number | null;
@@ -151,6 +156,7 @@ export interface ApiFunnel {
   lineage?: { novel: number; variant: number; fork: number };
   control?: { mutable: number; frozen: number; verified: number };
   conviction?: { knownEntity: number; funderTraced: number; untraced: number };
+  churn?: { closed: number; bot: number };
   // time series over the window — the stream, bucketed
   series?: {
     hoursAgo: number;

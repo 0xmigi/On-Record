@@ -35,6 +35,7 @@ type SubjectLite = {
   profile: ProgramProfile | null;
   deployType: string | null;
   firstSeenAt: Date | null;
+  facts: Record<string, unknown> | null;
 };
 
 /** The rich funnel for a trailing window. */
@@ -72,6 +73,7 @@ export async function computeWindowFunnel(
       profile: schema.subjects.profile,
       deployType: schema.subjects.deployType,
       firstSeenAt: schema.subjects.firstSeenAt,
+      facts: schema.subjects.facts,
     })
     .from(schema.subjects)
     .where(
@@ -94,6 +96,9 @@ export async function computeWindowFunnel(
   const lineage = { novel: 0, variant: 0, fork: 0 };
   const control = { mutable: 0, frozen: 0, verified: 0 };
   const conviction = { knownEntity: 0, funderTraced: 0, untraced: 0 };
+  // churn — deployed then closed (rent reclaimed) inside the window. `bot` is the
+  // sharper cut: a closed byte-clone, i.e. the throwaway redeploy signature.
+  const churn = { closed: 0, bot: 0 };
   const fwEarly: Record<string, number> = {};
   const fwLate: Record<string, number> = {};
   let earlyTotal = 0;
@@ -134,6 +139,11 @@ export async function computeWindowFunnel(
     if (s.entityKey) conviction.knownEntity++;
     else if (s.deployerFundingSource) conviction.funderTraced++;
     else conviction.untraced++;
+
+    if (s.facts?.closedAt) {
+      churn.closed++;
+      if (s.noveltyBand === "clone") churn.bot++;
+    }
 
     const t = s.firstSeenAt?.getTime() ?? 0;
     if (t >= midMs) {
@@ -202,6 +212,7 @@ export async function computeWindowFunnel(
     lineage,
     control,
     conviction,
+    churn,
     frameworkTrend,
     updatedAt: new Date().toISOString(),
   };

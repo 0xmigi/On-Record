@@ -24,7 +24,7 @@
   --font-sans: var(--font-plex-sans), -apple-system, BlinkMacSystemFont,
     "Segoe UI", "Helvetica Neue", Helvetica, Arial, sans-serif;
 
-  --radius: 10px;
+  --radius: 4px;
   --measure: 960px;
 }
 
@@ -2457,6 +2457,24 @@ a.copy-addr-text:hover {
   font-weight: 700;
   border-bottom-color: var(--ink);
 }
+/* muted tab — the section exists but this program has no data for it
+ * (e.g. no published IDL). Struck through so it reads as "empty, not missing". */
+.dtab-muted {
+  color: var(--ink-faint);
+  text-decoration: line-through;
+  text-decoration-color: var(--border-strong);
+  opacity: 0.7;
+}
+.dtab-muted:hover {
+  color: var(--ink-soft);
+  opacity: 1;
+}
+.dtab-muted.active {
+  color: var(--ink-soft);
+  font-weight: 400;
+  border-bottom-color: var(--border-strong);
+  opacity: 1;
+}
 /* the first section header inside a tab panel shouldn't add its big top margin */
 .dtabs [role="tabpanel"] > .section-header:first-child {
   margin-top: 4px;
@@ -2599,5 +2617,339 @@ a.copy-addr-text:hover {
     justify-content: flex-start;
     min-width: 0;
     gap: 10px;
+  }
+}
+
+/* ---------------- composition tab ---------------- */
+
+/* framework — a stat, not a definition. Just the value + confidence + role.
+ * The teaching lives in the collapsible explainer at the bottom of the tab. */
+.fw-stat {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  border: 1px solid var(--border);
+  border-radius: 2px;
+  background: var(--card);
+  padding: 12px 14px;
+}
+.fw-stat-value {
+  font-family: var(--font-head);
+  font-size: 17px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  color: var(--ink);
+}
+/* detection confidence — the honest label. confirmed = provable on-chain
+ * (Anchor discriminators/IDL); inferred = read off binary shape. */
+.fw-conf {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  padding: 2px 6px;
+  border-radius: 2px;
+  border: 1px solid transparent;
+}
+.fw-conf-confirmed {
+  color: var(--green);
+  border-color: color-mix(in srgb, var(--green) 35%, transparent);
+  background: color-mix(in srgb, var(--green) 8%, transparent);
+}
+.fw-conf-inferred {
+  color: var(--ink-faint);
+  border-color: var(--border);
+  background: var(--bg);
+}
+.fw-pos {
+  margin-left: auto;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.02em;
+  color: var(--ink-faint);
+}
+.fw-tag {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.02em;
+  color: var(--ink-soft);
+  border: 1px solid var(--border);
+  border-radius: 2px;
+  padding: 2px 6px;
+}
+
+/* footprint metric row */
+.comp-metrics {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 8px;
+}
+.comp-metric {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  border: 1px solid var(--border);
+  border-radius: 2px;
+  background: var(--card);
+  padding: 10px 12px;
+}
+.comp-metric-v {
+  font-family: var(--font-mono);
+  font-size: 16px;
+  color: var(--ink);
+}
+.comp-metric-k {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.02em;
+  color: var(--ink-faint);
+}
+.size-band {
+  text-transform: none;
+}
+.size-band-lean {
+  color: var(--green);
+}
+.size-band-heavy {
+  color: var(--accent);
+}
+
+/* recovered architecture */
+.crate-name {
+  font-family: var(--font-mono);
+  font-size: 13px;
+  color: var(--ink);
+}
+.mod-map {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 8px;
+}
+.mod-group {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.mod-group-dir {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--ink-faint);
+  min-width: 92px;
+  text-align: right;
+  flex-shrink: 0;
+}
+.mod-group-files {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+.mod-chip {
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  padding: 2px 7px;
+  border: 1px solid var(--border);
+  border-radius: 2px;
+  background: var(--bg);
+  color: var(--ink-soft);
+}
+.dep-chip {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  padding: 2px 7px;
+  border: 1px dashed var(--border-strong);
+  border-radius: 2px;
+  color: var(--ink-faint);
+}
+
+/* ---- Orb-style collapsible explainer ("What's Pinocchio?") ----
+ * the educational deep-dive, at the bottom of the tab, collapsed by default. */
+.explainer {
+  margin-top: 24px;
+  border: 1px solid var(--border);
+  border-radius: 2px;
+  background: var(--card);
+}
+/* section-level explainer: sits right under the section's data, tighter gap.
+ * Stacks cleanly when a section has more than one ("What's X?" + "What's Y?"). */
+.explainer-section {
+  margin-top: 8px;
+}
+.explainer-section + .explainer-section {
+  margin-top: 6px;
+}
+.explainer-summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px 16px;
+  cursor: pointer;
+  list-style: none;
+  font-family: var(--font-head);
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--ink);
+  user-select: none;
+}
+.explainer-summary::-webkit-details-marker {
+  display: none;
+}
+.explainer-chev {
+  font-size: 18px;
+  line-height: 1;
+  color: var(--ink-faint);
+  transition: transform 0.15s ease;
+}
+.explainer[open] .explainer-chev {
+  transform: rotate(180deg);
+}
+.explainer-body {
+  padding: 4px 16px 18px;
+  border-top: 1px solid var(--border);
+}
+/* generic framework intro at the top of the collapsible */
+.explainer-read {
+  font-size: 14px !important;
+  line-height: 1.6;
+  color: var(--ink) !important;
+  margin: 14px 0 0 !important;
+}
+.explainer-tradeoff {
+  font-size: 13px !important;
+  line-height: 1.6;
+  color: var(--ink-soft) !important;
+  margin: 8px 0 0 !important;
+}
+.explainer-lead {
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  color: var(--ink-faint);
+  margin: 14px 0 0;
+}
+.explainer-h {
+  font-family: var(--font-head);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: var(--ink-soft);
+  margin: 18px 0 6px;
+}
+.explainer-body p {
+  font-size: 13.5px;
+  line-height: 1.6;
+  color: var(--ink);
+  margin: 0;
+}
+.explainer-note {
+  margin-top: 18px !important;
+  padding: 12px 14px;
+  border-left: 2px solid var(--border-strong);
+  background: var(--bg);
+  font-size: 12.5px !important;
+  line-height: 1.6;
+  color: var(--ink-soft) !important;
+}
+.explainer-docs {
+  display: inline-block;
+  margin-top: 16px;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--accent);
+  text-decoration: none;
+  border-bottom: 1px solid color-mix(in srgb, var(--accent) 40%, transparent);
+}
+.explainer-docs:hover {
+  border-bottom-color: var(--accent);
+}
+
+/* closed / churn — a program whose ProgramData was deallocated (rent reclaimed) */
+.closed-chip {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--red);
+  border: 1px solid color-mix(in srgb, var(--red) 35%, transparent);
+  background: color-mix(in srgb, var(--red) 8%, transparent);
+  border-radius: 2px;
+  padding: 2px 6px;
+  white-space: nowrap;
+}
+.churn-note {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  margin: 4px 0 18px;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--red);
+  border-radius: 2px;
+  background: color-mix(in srgb, var(--red) 4%, var(--card));
+}
+.churn-note-tag {
+  flex-shrink: 0;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--red);
+  padding-top: 2px;
+}
+.churn-note p {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.55;
+  color: var(--ink);
+}
+
+/* no-IDL educational panel — the "not all programs have an IDL" lesson */
+.no-idl {
+  border: 1px solid var(--border);
+  border-radius: 2px;
+  background: var(--card);
+  padding: 16px 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.no-idl p {
+  font-size: 13.5px;
+  line-height: 1.6;
+  color: var(--ink);
+  margin: 0;
+}
+.no-idl-lead {
+  font-size: 14.5px !important;
+}
+.no-idl strong {
+  font-weight: 600;
+}
+.no-idl-ptr {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  padding: 1px 5px;
+  border: 1px solid var(--border);
+  border-radius: 2px;
+  color: var(--ink-soft);
+}
+
+/* reach — source-named protocols read softer than embedded (confirmed) ones */
+.ix-chip-soft {
+  background: var(--bg);
+  color: var(--ink-soft);
+  border-style: dashed;
+}
+
+@media (max-width: 720px) {
+  .comp-metrics {
+    grid-template-columns: repeat(2, 1fr);
+  }
+  .mod-group-dir {
+    min-width: 0;
+    text-align: left;
   }
 }

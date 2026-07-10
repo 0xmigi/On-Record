@@ -6,6 +6,10 @@ export interface DossierTab {
   id: string;
   label: string;
   panel: ReactNode;
+  /** Greyed + struck-through — the section exists conceptually but this
+   *  program has no data for it (e.g. no published IDL). Still clickable so
+   *  the panel can explain why it's empty. */
+  muted?: boolean;
 }
 
 /** Orb-style tabs under the program title. Panels are server-rendered and passed
@@ -22,7 +26,7 @@ export function DossierTabs({ tabs }: { tabs: DossierTab[] }) {
             type="button"
             role="tab"
             aria-selected={active === t.id}
-            className={`dtab${active === t.id ? " active" : ""}`}
+            className={`dtab${active === t.id ? " active" : ""}${t.muted ? " dtab-muted" : ""}`}
             onClick={() => setActive(t.id)}
           >
             {t.label}
