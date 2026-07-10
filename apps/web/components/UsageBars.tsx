@@ -24,7 +24,7 @@ export function UsageBars({
         <span className="usage-title">How it&apos;s used</span>
         <span className="usage-sub">
           last {w.txnsWithProgram.toLocaleString("en-US")} txns
-          {w.hoursSpan != null ? ` · ~${w.hoursSpan}h` : ""}
+          {w.hoursSpan != null ? ` · ${w.hoursSpan >= 1 ? `~${w.hoursSpan}h` : "<1h"}` : ""}
         </span>
       </div>
       <div className="usage-bars">

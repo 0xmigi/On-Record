@@ -1,8 +1,22 @@
+import { createHash } from "node:crypto";
 import bs58 from "bs58";
 import { env } from "./config.js";
 import { fetchAnchorIdl } from "./metadata.js";
 import { getSignaturesForAddress } from "./helius.js";
 import type { Network } from "./types.js";
+
+/** camelCase / PascalCase → snake_case (the name Anchor hashes for the discriminator). */
+function toSnakeCase(s: string): string {
+  return s
+    .replace(/([a-z0-9])([A-Z])/g, "$1_$2")
+    .replace(/([A-Z]+)([A-Z][a-z])/g, "$1_$2")
+    .toLowerCase();
+}
+
+/** Anchor's instruction discriminator = first 8 bytes of sha256("global:<name>"). */
+function anchorDiscriminator(name: string): string {
+  return createHash("sha256").update(`global:${name}`).digest().subarray(0, 8).toString("hex");
+}
 
 // ---------------------------------------------------------------------------
 // Instruction usage — the program's real "shape". Every Anchor instruction
@@ -62,11 +76,20 @@ export async function decodeInstructionUsage(
     | null;
   const declared = idl?.instructions ?? [];
   if (!declared.length) return null;
+  const declaredCount = new Set(declared.map((i) => i.name).filter(Boolean)).size;
 
   const discToName = new Map<string, string>();
   for (const ix of declared) {
-    if (ix.name && Array.isArray(ix.discriminator) && ix.discriminator.length === 8) {
+    if (!ix.name) continue;
+    if (Array.isArray(ix.discriminator) && ix.discriminator.length === 8) {
+      // Anchor ≥0.30: the IDL carries the explicit discriminator
       discToName.set(Buffer.from(ix.discriminator).toString("hex"), ix.name);
+    } else {
+      // legacy IDL (no discriminator): compute Anchor's from the name. Cover both
+      // the name as-is and its snake_case form (IDLs vary in casing).
+      for (const variant of new Set([ix.name, toSnakeCase(ix.name)])) {
+        discToName.set(anchorDiscriminator(variant), ix.name);
+      }
     }
   }
   if (!discToName.size) return null;
@@ -138,8 +161,8 @@ export async function decodeInstructionUsage(
       hoursSpan: newest && oldest ? Math.round((newest - oldest) / 3600) : null,
     },
     instructions,
-    unusedCount: discToName.size - instructions.length,
-    totalInstructions: discToName.size,
+    unusedCount: Math.max(0, declaredCount - instructions.length),
+    totalInstructions: declaredCount,
     unknownDisc,
   };
 }
