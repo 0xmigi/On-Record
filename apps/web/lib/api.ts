@@ -209,12 +209,14 @@ export async function fetchRadar(
     type?: RadarType;
     cursor?: string;
     limit?: number;
+    band?: Band;
   } = {}
 ): Promise<ApiCursorPage<ApiProgram>> {
   const params = new URLSearchParams();
   params.set("window", opts.window ?? "today");
   params.set("type", opts.type ?? "deploy");
   if (opts.cursor) params.set("cursor", opts.cursor);
+  if (opts.band) params.set("band", opts.band);
   params.set("limit", String(opts.limit ?? 50));
   const page = await getJson<ApiCursorPage<ApiProgram>>(
     `/api/radar?${params.toString()}`

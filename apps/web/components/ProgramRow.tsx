@@ -34,6 +34,8 @@ function Fact({ label, value }: { label: string; value: string }) {
  */
 export function ProgramRow({ program }: { program: ApiProgram }) {
   const inCluster = (program.clusterSize ?? 0) > 1;
+  const isBot = program.band === "clone";
+  const isSniper = isBot && program.integrations.includes("Pump.fun");
   const signals = deriveSignals(program);
   const notableIntegrations = program.integrations.filter(
     (i) => !UBIQUITOUS_INTEGRATIONS.has(i),
@@ -107,8 +109,16 @@ export function ProgramRow({ program }: { program: ApiProgram }) {
               ✓ verified
             </span>
           ) : null}
+          {isBot ? (
+            <span
+              className="bot-chip"
+              title="Byte-identical to known code under a fresh id — a throwaway bot"
+            >
+              {isSniper ? "pump.fun sniper" : "throwaway bot"}
+            </span>
+          ) : null}
           {inCluster ? (
-            <span className="cluster-note">×{program.clusterSize} in cluster</span>
+            <span className="cluster-note">×{program.clusterSize} today</span>
           ) : null}
           {program.closed ? (
             <span className="closed-chip" title="Program closed — ProgramData deallocated, rent reclaimed">

@@ -2866,6 +2866,72 @@ a.copy-addr-text:hover {
   border-bottom-color: var(--accent);
 }
 
+/* bot cluster — representative row + collapsed stack of identical redeploys */
+.cluster-group {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+.cluster-group .radar-row {
+  border: none;
+}
+.cluster-stack {
+  border-top: 1px dashed var(--border);
+  background: color-mix(in srgb, var(--red) 3%, var(--card));
+}
+.cluster-stack-summary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 16px;
+  cursor: pointer;
+  list-style: none;
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  color: var(--ink-soft);
+  user-select: none;
+}
+.cluster-stack-summary::-webkit-details-marker {
+  display: none;
+}
+.cluster-stack-chev {
+  font-size: 15px;
+  line-height: 1;
+  color: var(--ink-faint);
+  transition: transform 0.15s ease;
+}
+.cluster-stack[open] .cluster-stack-chev {
+  transform: rotate(180deg);
+}
+.cluster-stack-list {
+  list-style: none;
+  margin: 0;
+  padding: 0 16px 8px;
+  display: flex;
+  flex-direction: column;
+}
+.cluster-stack-item {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  padding: 5px 0;
+  border-top: 1px solid var(--border);
+}
+.cluster-stack-addr {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--ink);
+  text-decoration: none;
+}
+.cluster-stack-addr:hover {
+  color: var(--accent);
+}
+.cluster-stack-meta {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  color: var(--ink-faint);
+}
+
 /* funnel strip — how many of "new programs today" are actually bots */
 .funnel-bots {
   font-family: var(--font-mono);

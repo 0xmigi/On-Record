@@ -1,12 +1,14 @@
 import Link from "next/link";
 import { Mark } from "@/components/Mark";
 import { ProgramRow } from "@/components/ProgramRow";
+import { ClusterGroup } from "@/components/ClusterGroup";
 import { SectionHeader } from "@/components/SectionHeader";
 import {
   fetchFunnel,
   fetchRadar,
   isRadarType,
   isWindow,
+  type ApiProgram,
   type RadarType,
   type RadarWindow,
 } from "@/lib/api";
@@ -81,12 +83,49 @@ export default async function RadarPage({
   const window: RadarWindow = isWindow(sp.window) ? sp.window : "today";
   const cursor = sp.cursor;
 
-  const [page, funnel] = await Promise.all([
+  // Bot clusters (byte-clone redeploys) are hidden from the novel feed, but we
+  // fold them back in as one collapsed entry per cluster on the first page —
+  // the most recent redeploy shown, the rest stacked underneath. Only on the
+  // new-deploys stream, page one (clones aren't cursor-paged).
+  const showClusters = type === "deploy" && !cursor;
+  const [page, clonePage, funnel] = await Promise.all([
     fetchRadar({ type, window, cursor }),
+    showClusters
+      ? fetchRadar({ type, window, band: "clone", limit: 100 })
+      : Promise.resolve({ items: [] as ApiProgram[], nextCursor: null }),
     fetchFunnel(),
   ]);
 
-  const programs = page.items;
+  const ts = (p: ApiProgram) => (p.deployedAt ? Date.parse(p.deployedAt) : 0);
+
+  const byBucket = new Map<string, ApiProgram[]>();
+  for (const c of clonePage.items) {
+    const k = c.bucketId ?? c.id;
+    const arr = byBucket.get(k);
+    if (arr) arr.push(c);
+    else byBucket.set(k, [c]);
+  }
+
+  type FeedItem =
+    | { kind: "program"; key: string; t: number; program: ApiProgram }
+    | { kind: "cluster"; key: string; t: number; rep: ApiProgram; members: ApiProgram[] };
+
+  const feed: FeedItem[] = [
+    ...page.items.map(
+      (p): FeedItem => ({ kind: "program", key: p.id, t: ts(p), program: p }),
+    ),
+    ...[...byBucket.values()].map((members): FeedItem => {
+      members.sort((a, b) => ts(b) - ts(a));
+      const rep = members[0];
+      return {
+        kind: "cluster",
+        key: rep.bucketId ?? rep.id,
+        t: ts(rep),
+        rep,
+        members: members.slice(1),
+      };
+    }),
+  ].sort((a, b) => b.t - a.t);
 
   return (
     <>
@@ -136,7 +175,7 @@ export default async function RadarPage({
         }
       />
 
-      {programs.length === 0 ? (
+      {feed.length === 0 ? (
         <div className="empty-state">
           <Mark size={22} />
           <p className="empty-title">The radar is quiet</p>
@@ -148,9 +187,13 @@ export default async function RadarPage({
         </div>
       ) : (
         <ol className="radar-list">
-          {programs.map((program) => (
-            <li key={program.id}>
-              <ProgramRow program={program} />
+          {feed.map((item) => (
+            <li key={item.key}>
+              {item.kind === "cluster" ? (
+                <ClusterGroup rep={item.rep} members={item.members} />
+              ) : (
+                <ProgramRow program={item.program} />
+              )}
             </li>
           ))}
         </ol>
