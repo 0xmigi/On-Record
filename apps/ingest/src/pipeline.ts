@@ -86,8 +86,12 @@ export async function fingerprintStage(eventId: string): Promise<void> {
   }
 
   // Spam defense (SPEC §10): under backlog, authorities spraying deploys are
-  // bucketed by authority without fetching bytes.
-  const backlog = await getQueue("fingerprint").getWaitingCount();
+  // bucketed by authority without fetching bytes. Inline mode (live.js) has no
+  // Redis at all — getQueue would open a BullMQ/ioredis connection that retries
+  // localhost:6379 forever, hanging the poller on its first event and flooding
+  // the logs (took down Railway on 2026-07-09). No queue ⇒ no backlog.
+  const backlog =
+    process.env.INLINE_PIPELINE === "1" ? 0 : await getQueue("fingerprint").getWaitingCount();
   if (backlog > 200 && event.authorityAfter) {
     const hourAgo = new Date(Date.now() - 3_600_000);
     const recent = await db
