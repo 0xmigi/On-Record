@@ -852,10 +852,16 @@ a {
   font-family: var(--font-mono);
   font-size: 13px;
   color: var(--ink);
+  /* long unbreakable tokens (URLs, security.txt contacts, revisions) must
+   * wrap inside the cell, not force the page wider. min-width:0 lets the grid
+   * column shrink below its content; overflow-wrap breaks the token. */
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 
 .fact-value .receipt-link {
   margin-left: 8px;
+  overflow-wrap: anywhere;
 }
 
 /* ---------------- the lab ---------------- */
@@ -1549,6 +1555,7 @@ a.copy-addr-text:hover {
   font-size: 12.5px;
   font-weight: 500;
   color: var(--ink-faint);
+  overflow-wrap: anywhere;
 }
 
 .dossier-name {
