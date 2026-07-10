@@ -2932,43 +2932,205 @@ a.copy-addr-text:hover {
   color: var(--ink-faint);
 }
 
-/* funnel strip — the duplicate-redeploys toggle under the daily counts */
-.funnel-strip-wrap {
+/* ---------------- spectrum bar (the tiered deploy header) ---------------- */
+.spectrum-bar {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  flex-wrap: wrap;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--card);
+  padding: 14px 18px;
+}
+.spectrum-total {
   display: flex;
   flex-direction: column;
+  gap: 1px;
+}
+.spectrum-num {
+  font-family: var(--font-head);
+  font-size: 26px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  color: var(--accent);
+  line-height: 1;
+}
+.spectrum-lbl {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.03em;
+  color: var(--ink-faint);
+}
+.spectrum-tiers {
+  display: flex;
+  align-items: center;
   gap: 6px;
 }
-.bots-toggle {
+.spectrum-sep {
+  color: var(--border-strong);
+}
+.tier {
   display: inline-flex;
-  align-items: center;
-  gap: 7px;
-  align-self: flex-start;
-  font-family: var(--font-mono);
-  font-size: 11px;
-  letter-spacing: 0.01em;
-  color: var(--ink-faint);
+  align-items: baseline;
+  gap: 5px;
   text-decoration: none;
-  padding: 3px 8px;
-  border: 1px solid var(--border);
+  padding: 4px 9px;
+  border: 1px solid transparent;
   border-radius: 2px;
 }
-.bots-toggle:hover {
-  color: var(--ink-soft);
+.tier:hover {
+  background: var(--bg);
+}
+.tier-n {
+  font-family: var(--font-mono);
+  font-size: 15px;
+  color: var(--ink);
+}
+.tier-k {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+}
+.tier.active {
   border-color: var(--border-strong);
+  background: var(--bg);
 }
-.bots-toggle.active {
+.tier-novel.active {
+  border-color: color-mix(in srgb, var(--accent) 45%, transparent);
+}
+.tier-novel.active .tier-n {
+  color: var(--accent);
+}
+.tier-recycled.active {
+  border-color: color-mix(in srgb, var(--red) 40%, transparent);
+}
+.spectrum-funnel {
+  margin-left: auto;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--ink-faint);
+  text-decoration: none;
+}
+.spectrum-funnel:hover {
+  color: var(--ink);
+}
+
+/* ---------------- recycled section ---------------- */
+.recycled-section {
+  margin-top: 20px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg);
+}
+.recycled-summary {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 12px 16px;
+  cursor: pointer;
+  list-style: none;
+  font-size: 12.5px;
+  color: var(--ink-soft);
+  user-select: none;
+}
+.recycled-summary::-webkit-details-marker {
+  display: none;
+}
+.recycled-summary strong {
+  font-family: var(--font-head);
+  color: var(--ink);
+}
+.recycled-chev {
+  font-size: 16px;
+  line-height: 1;
+  color: var(--ink-faint);
+  transition: transform 0.15s ease;
+}
+.recycled-section[open] .recycled-chev {
+  transform: rotate(180deg);
+}
+.recycled-list {
+  border-top: 1px solid var(--border);
+}
+.recycled-row {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  flex-wrap: wrap;
+  padding: 9px 16px;
+  border-top: 1px solid var(--border);
+  text-decoration: none;
+}
+.recycled-row:first-child {
+  border-top: none;
+}
+.recycled-row:hover {
+  background: var(--card);
+}
+.recycled-kind {
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  padding: 2px 6px;
+  border-radius: 2px;
+  white-space: nowrap;
+}
+.rk-sniper,
+.rk-throwaway {
   color: var(--red);
-  border-color: color-mix(in srgb, var(--red) 35%, transparent);
-  background: color-mix(in srgb, var(--red) 6%, transparent);
+  border: 1px solid color-mix(in srgb, var(--red) 35%, transparent);
+  background: color-mix(in srgb, var(--red) 8%, transparent);
 }
-.bots-toggle-dot {
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: var(--border-strong);
+.rk-recycled {
+  color: var(--ink-faint);
+  border: 1px solid var(--border);
+  background: var(--card);
 }
-.bots-toggle.active .bots-toggle-dot {
-  background: var(--red);
+.recycled-name {
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+  color: var(--ink);
+}
+.recycled-x {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--ink-soft);
+}
+.recycled-txns {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  color: var(--ink-faint);
+}
+.recycled-when {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  color: var(--ink-faint);
+  margin-left: auto;
+}
+
+/* fork tag — a variant that's a close match to a known reference protocol */
+.fork-chip {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.02em;
+  color: var(--ink-soft);
+  border: 1px solid var(--border-strong);
+  border-radius: 2px;
+  padding: 2px 6px;
+  white-space: nowrap;
+}
+
+@media (max-width: 720px) {
+  .spectrum-funnel {
+    margin-left: 0;
+  }
+  .recycled-when {
+    margin-left: 0;
+  }
 }
 
 /* bot classification chip on the dossier band line + rows */

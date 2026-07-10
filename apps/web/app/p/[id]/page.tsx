@@ -665,9 +665,9 @@ export default async function ProgramDossierPage({
             {program.deployType === "upgrade" && program.upgradeCount > 0 ? (
               <span className="cluster-note">upgraded ×{program.upgradeCount}</span>
             ) : null}
-            {botClass === "duplicate" ? (
+            {botClass === "recycled" ? (
               <span className="dup-chip" title="Byte-identical bytecode to other deploys on record — same code, fresh id">
-                duplicate
+                recycled
               </span>
             ) : botClass ? (
               <span
@@ -743,9 +743,9 @@ export default async function ProgramDossierPage({
           </div>
           <BotExplainer />
         </>
-      ) : botClass === "duplicate" ? (
+      ) : botClass === "recycled" ? (
         <div className="churn-note churn-note-neutral">
-          <span className="churn-note-tag churn-note-tag-neutral">duplicate</span>
+          <span className="churn-note-tag churn-note-tag-neutral">recycled</span>
           <p>
             This bytecode is{" "}
             <strong>byte-identical to {program.clusterSize && program.clusterSize > 1 ? `${program.clusterSize - 1} other deploy${program.clusterSize > 2 ? "s" : ""}` : "another deploy"} on record</strong>{" "}

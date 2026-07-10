@@ -23,22 +23,22 @@ export interface Lifecycle {
 // something a bot when the on-chain signature backs it:
 //   sniper     clone wired to Pump.fun — the launch-sniper signature (high)
 //   throwaway  clone that was closed — deploy, run, close for the rent (high)
-//   duplicate  clone, nothing else — could be a factory/launchpad/template
+//   recycled   clone, nothing else — could be a factory/launchpad/template
 //              deploying identical instances, or a dev redeploying. NO bot claim.
 // ---------------------------------------------------------------------------
-export type BotKind = "sniper" | "throwaway" | "duplicate";
+export type BotKind = "sniper" | "throwaway" | "recycled";
 
 export function botKind(p: ApiProgram): BotKind | null {
   if (p.band !== "clone") return null;
   if ((p.integrations ?? []).includes("Pump.fun")) return "sniper";
   if (p.closed) return "throwaway";
-  return "duplicate";
+  return "recycled";
 }
 
 export const BOT_LABEL: Record<BotKind, string> = {
   sniper: "pump.fun sniper",
   throwaway: "throwaway bot",
-  duplicate: "duplicate",
+  recycled: "recycled",
 };
 
 function fmtSpan(ms: number): string {

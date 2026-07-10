@@ -242,8 +242,8 @@ export default async function FunnelPage({
       {funnel.churn && funnel.churn.redeploys > 0 ? (
         <>
           <SectionHeader
-            title="Duplicate redeploys"
-            info="New deploys whose bytecode is byte-identical to code already on record — the same program under a fresh id. Not novel code, so the gate strips it before ranking. Byte-identical is a fact; whether it's a bot is graded below — only the Pump.fun subset is a confident sniper signature."
+            title="Recycled — byte-clone redeploys"
+            info="New deploys whose bytecode is byte-identical to code already on record — the same program under a fresh id. Not novel, so the gate strips it before ranking. Byte-identical is a fact; whether it's a bot is graded below — only the Pump.fun subset is a confident sniper signature."
           />
           <div className="botshare">
             <div className="botshare-fig">

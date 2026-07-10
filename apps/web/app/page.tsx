@@ -1,7 +1,6 @@
 import Link from "next/link";
 import { Mark } from "@/components/Mark";
 import { ProgramRow } from "@/components/ProgramRow";
-import { ClusterGroup } from "@/components/ClusterGroup";
 import { SectionHeader } from "@/components/SectionHeader";
 import {
   fetchFunnel,
@@ -12,7 +11,10 @@ import {
   type RadarType,
   type RadarWindow,
 } from "@/lib/api";
-import { groupNum } from "@/lib/format";
+import { botKind, BOT_LABEL } from "@/lib/lifecycle";
+import { groupNum, relativeTime, truncateAddress } from "@/lib/format";
+
+type View = "novel" | "variant" | "recycled";
 
 const STREAM_FILTERS: { label: string; value: RadarType }[] = [
   { label: "NEW DEPLOYS", value: "deploy" },
@@ -25,100 +27,161 @@ const WINDOW_FILTERS: { label: string; value: RadarWindow }[] = [
   { label: "ALL", value: "all" },
 ];
 
-function radarHref(type: RadarType, window: RadarWindow, cursor?: string): string {
+const WINDOW_WORD: Record<RadarWindow, string> = {
+  today: "today",
+  week: "this week",
+  all: "all time",
+};
+
+function radarHref(type: RadarType, window: RadarWindow): string {
   const params = new URLSearchParams();
   if (type !== "deploy") params.set("type", type);
   if (window !== "today") params.set("window", window);
-  if (cursor) params.set("cursor", cursor);
   const qs = params.toString();
   return qs ? `/?${qs}` : "/";
 }
 
-/** Header strip: today's split of new programs vs upgrades, plus a toggle for
- *  how many of those "new programs" are actually byte-clone redeploys. */
-function FunnelStrip({
+function viewHref(view: View | undefined, window: RadarWindow): string {
+  const params = new URLSearchParams();
+  if (window !== "today") params.set("window", window);
+  if (view) params.set("view", view);
+  const qs = params.toString();
+  return qs ? `/?${qs}` : "/";
+}
+
+/** The spectrum header — the daily total, then novelty tiers that double as
+ *  filters (novel · variant · recycled), then a link into the funnel/stats. */
+function SpectrumBar({
   deploys,
   upgrades,
-  bots,
-  showBots,
-  botsHref,
+  counts,
+  view,
+  window,
 }: {
   deploys: number | null;
   upgrades: number | null;
-  bots: number | null;
-  showBots: boolean;
-  botsHref: string;
+  counts: { novel: number; variant: number; recycled: number } | null;
+  view: View | undefined;
+  window: RadarWindow;
 }) {
-  return (
-    <div className="funnel-strip-wrap">
-      <Link className="funnel-strip" href="/funnel" aria-label="Open the funnel">
-        <span className="funnel-cell">
-          <span className="funnel-num funnel-num-accent">{groupNum(deploys)}</span>
-          <span className="funnel-lbl">new programs today</span>
-        </span>
-        <span className="funnel-arrow" aria-hidden="true">
-          ·
-        </span>
-        <span className="funnel-cell">
-          <span className="funnel-num">{groupNum(upgrades)}</span>
-          <span className="funnel-lbl">upgrades</span>
-        </span>
-        <span className="funnel-arrow" aria-hidden="true">
-          →
-        </span>
-        <span className="funnel-cell funnel-cell-end">
-          <span className="funnel-lbl">see the funnel</span>
-        </span>
+  const Tier = ({ k, n }: { k: View; n: number }) => {
+    const active = view === k;
+    return (
+      <Link
+        className={`tier tier-${k}${active ? " active" : ""}`}
+        href={viewHref(active ? undefined : k, window)}
+        scroll={false}
+      >
+        <span className="tier-n">{groupNum(n)}</span>
+        <span className="tier-k">{k}</span>
       </Link>
-      {bots && deploys ? (
-        <Link
-          className={`bots-toggle${showBots ? " active" : ""}`}
-          href={botsHref}
-          scroll={false}
-        >
-          <span className="bots-toggle-dot" aria-hidden="true" />
-          {groupNum(bots)} of these are duplicate redeploys —{" "}
-          {showBots ? "hide" : "show"}
-        </Link>
+    );
+  };
+  return (
+    <div className="spectrum-bar">
+      <div className="spectrum-total">
+        <span className="spectrum-num">{groupNum(deploys)}</span>
+        <span className="spectrum-lbl">new programs {WINDOW_WORD[window]}</span>
+      </div>
+      {counts ? (
+        <div className="spectrum-tiers" role="group" aria-label="Filter by novelty">
+          <Tier k="novel" n={counts.novel} />
+          <span className="spectrum-sep" aria-hidden="true">
+            ·
+          </span>
+          <Tier k="variant" n={counts.variant} />
+          <span className="spectrum-sep" aria-hidden="true">
+            ·
+          </span>
+          <Tier k="recycled" n={counts.recycled} />
+        </div>
       ) : null}
+      <Link className="spectrum-funnel" href="/funnel">
+        {groupNum(upgrades)} upgrades · stats →
+      </Link>
     </div>
+  );
+}
+
+/** One compact row in the recycled section: the newest redeploy of a byte-clone
+ *  cluster, its confidence label, and how many share the code. */
+function RecycledRow({ rep, count }: { rep: ApiProgram; count: number }) {
+  const kind = botKind(rep) ?? "recycled";
+  const t = rep.momentum?.txns24h ?? rep.earlySigners ?? null;
+  return (
+    <Link href={`/p/${rep.id}`} className="recycled-row">
+      <span className={`recycled-kind rk-${kind}`}>{BOT_LABEL[kind]}</span>
+      <span className="recycled-name">{rep.name ?? truncateAddress(rep.id)}</span>
+      <span className="recycled-x">×{count} {count === 1 ? "seen" : "today"}</span>
+      {t ? (
+        <span className="recycled-txns">
+          {t.toLocaleString("en-US")}
+          {t % 1000 === 0 ? "+" : ""} txns
+        </span>
+      ) : null}
+      <span className="recycled-when">newest {relativeTime(rep.deployedAt)}</span>
+    </Link>
+  );
+}
+
+function RecycledSection({
+  clusters,
+  count,
+  open,
+}: {
+  clusters: { key: string; rep: ApiProgram; size: number }[];
+  count: number;
+  open: boolean;
+}) {
+  if (!clusters.length) return null;
+  return (
+    <details className="recycled-section" open={open}>
+      <summary className="recycled-summary">
+        <span className="recycled-chev" aria-hidden="true">
+          ⌄
+        </span>
+        <span>
+          <strong>Recycled</strong> — {groupNum(count)} byte-clone redeploy
+          {count === 1 ? "" : "s"} across {clusters.length} program
+          {clusters.length === 1 ? "" : "s"}. Same code, fresh ids — not new.
+        </span>
+      </summary>
+      <div className="recycled-list">
+        {clusters.map((c) => (
+          <RecycledRow key={c.key} rep={c.rep} count={c.size} />
+        ))}
+      </div>
+    </details>
   );
 }
 
 export default async function RadarPage({
   searchParams,
 }: {
-  searchParams: Promise<{ type?: string; window?: string; cursor?: string; bots?: string }>;
+  searchParams: Promise<{ type?: string; window?: string; view?: string }>;
 }) {
   const sp = await searchParams;
   const type: RadarType = isRadarType(sp.type) ? sp.type : "deploy";
   const window: RadarWindow = isWindow(sp.window) ? sp.window : "today";
-  const cursor = sp.cursor;
-  const showBots = sp.bots === "1";
+  const isDeploy = type === "deploy";
+  const view: View | undefined =
+    isDeploy && (sp.view === "novel" || sp.view === "variant" || sp.view === "recycled")
+      ? sp.view
+      : undefined;
 
-  // Byte-clone redeploys (duplicates / bots) are hidden by default — they're not
-  // novel code. Toggling "N duplicate deploys" folds them back in as one
-  // collapsed entry per cluster: newest shown, the rest stacked underneath.
-  // Only on the new-deploys stream, page one (clones aren't cursor-paged).
-  const showClusters = type === "deploy" && !cursor && showBots;
-  const botsHref = (() => {
-    const params = new URLSearchParams();
-    if (type !== "deploy") params.set("type", type);
-    if (window !== "today") params.set("window", window);
-    if (!showBots) params.set("bots", "1");
-    const qs = params.toString();
-    return qs ? `/?${qs}` : "/";
-  })();
-  const [page, clonePage, funnel] = await Promise.all([
-    fetchRadar({ type, window, cursor }),
-    showClusters
-      ? fetchRadar({ type, window, band: "clone", limit: 100 })
-      : Promise.resolve({ items: [] as ApiProgram[], nextCursor: null }),
+  const EMPTY = { items: [] as ApiProgram[], nextCursor: null };
+  const [novelPage, variantPage, clonePage, upgradePage, funnel] = await Promise.all([
+    isDeploy ? fetchRadar({ type, window, band: "novel", limit: 100 }) : Promise.resolve(EMPTY),
+    isDeploy ? fetchRadar({ type, window, band: "variant", limit: 100 }) : Promise.resolve(EMPTY),
+    isDeploy ? fetchRadar({ type, window, band: "clone", limit: 100 }) : Promise.resolve(EMPTY),
+    !isDeploy ? fetchRadar({ type, window, limit: 50 }) : Promise.resolve(EMPTY),
     fetchFunnel(),
   ]);
 
   const ts = (p: ApiProgram) => (p.deployedAt ? Date.parse(p.deployedAt) : 0);
+  const recency = (a: ApiProgram, b: ApiProgram) => ts(b) - ts(a);
 
+  // recycled = byte-clones, grouped into one entry per cluster (newest is rep)
   const byBucket = new Map<string, ApiProgram[]>();
   for (const c of clonePage.items) {
     const k = c.bucketId ?? c.id;
@@ -126,36 +189,53 @@ export default async function RadarPage({
     if (arr) arr.push(c);
     else byBucket.set(k, [c]);
   }
+  const clusters = [...byBucket.values()]
+    .map((ms) => {
+      ms.sort(recency);
+      return { key: ms[0].bucketId ?? ms[0].id, rep: ms[0], size: ms.length, t: ts(ms[0]) };
+    })
+    .sort((a, b) => b.t - a.t);
 
-  type FeedItem =
-    | { kind: "program"; key: string; t: number; program: ApiProgram }
-    | { kind: "cluster"; key: string; t: number; rep: ApiProgram; members: ApiProgram[] };
+  const counts = isDeploy
+    ? {
+        novel: novelPage.items.length,
+        variant: variantPage.items.length,
+        recycled: clonePage.items.length,
+      }
+    : null;
 
-  const feed: FeedItem[] = [
-    ...page.items.map(
-      (p): FeedItem => ({ kind: "program", key: p.id, t: ts(p), program: p }),
-    ),
-    ...[...byBucket.values()].map((members): FeedItem => {
-      members.sort((a, b) => ts(b) - ts(a));
-      const rep = members[0];
-      return {
-        kind: "cluster",
-        key: rep.bucketId ?? rep.id,
-        t: ts(rep),
-        rep,
-        members: members.slice(1),
-      };
-    }),
-  ].sort((a, b) => b.t - a.t);
+  // main list depends on the active tier; default (notable) = novel + variants
+  const notable = [...novelPage.items, ...variantPage.items].sort(recency);
+  const mainItems = !isDeploy
+    ? upgradePage.items
+    : view === "novel"
+      ? novelPage.items
+      : view === "variant"
+        ? variantPage.items
+        : view === "recycled"
+          ? []
+          : notable;
+
+  const showRecycled = isDeploy && (view === undefined || view === "recycled");
+
+  const header = !isDeploy
+    ? { title: "Upgrades — existing programs changed", info: "Existing programs whose code changed in this window. Trust already exists — what matters is the magnitude of what was changed." }
+    : view === "novel"
+      ? { title: "Novel — no known relative", info: "Bytecode with no match in the corpus. The genuinely new programs — the core signal." }
+      : view === "variant"
+        ? { title: "Variants & forks", info: "Loosely similar to known code — a fork or derivative, not a byte-for-byte copy. Often a real protocol variant worth a look." }
+        : view === "recycled"
+          ? { title: "Recycled — byte-clones redeployed", info: "Identical bytecode already on record, redeployed under fresh ids. Not new code. Some are bots (sniper / throwaway), some are factories or dev redeploys — labelled by what the signature supports." }
+          : { title: "New & notable — novel code and forks", info: "Genuinely new programs and meaningful forks, newest first. Byte-clone redeploys are collapsed into the Recycled section below." };
 
   return (
     <>
-      <FunnelStrip
+      <SpectrumBar
         deploys={funnel?.deploys ?? null}
         upgrades={funnel?.upgrades ?? null}
-        bots={funnel?.churn?.redeploys ?? null}
-        showBots={showBots}
-        botsHref={botsHref}
+        counts={counts}
+        view={view}
+        window={window}
       />
 
       <div className="radar-controls">
@@ -185,52 +265,34 @@ export default async function RadarPage({
         </nav>
       </div>
 
-      <SectionHeader
-        title={
-          type === "deploy"
-            ? "New deployments — trust from zero"
-            : "Upgrades — existing programs changed"
-        }
-        info={
-          type === "deploy"
-            ? "Brand-new program ids, deployed in this window. A new id means trust starts from scratch. Ranked by signal; open one for its full on-chain record."
-            : "Existing programs whose code changed in this window. Trust already exists — what matters is the magnitude of what was changed."
-        }
-      />
+      <SectionHeader title={header.title} info={header.info} />
 
-      {feed.length === 0 ? (
+      {mainItems.length === 0 && view !== "recycled" ? (
         <div className="empty-state">
           <Mark size={22} />
           <p className="empty-title">The radar is quiet</p>
           <p className="empty-body">
-            {type === "deploy"
-              ? "No new programs in this window yet. Fresh deploys land here as the loader sees them."
+            {isDeploy
+              ? "Nothing in this slice yet. Fresh deploys land here as the loader sees them."
               : "No upgrades in this window yet."}
           </p>
         </div>
       ) : (
         <ol className="radar-list">
-          {feed.map((item) => (
-            <li key={item.key}>
-              {item.kind === "cluster" ? (
-                <ClusterGroup rep={item.rep} members={item.members} />
-              ) : (
-                <ProgramRow program={item.program} />
-              )}
+          {mainItems.map((program) => (
+            <li key={program.id}>
+              <ProgramRow program={program} />
             </li>
           ))}
         </ol>
       )}
 
-      {page.nextCursor ? (
-        <nav className="pager" aria-label="Pagination">
-          <Link
-            className="older-link"
-            href={radarHref(type, window, page.nextCursor)}
-          >
-            More →
-          </Link>
-        </nav>
+      {showRecycled ? (
+        <RecycledSection
+          clusters={clusters}
+          count={clonePage.items.length}
+          open={view === "recycled"}
+        />
       ) : null}
     </>
   );

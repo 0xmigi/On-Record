@@ -109,9 +109,14 @@ export function ProgramRow({ program }: { program: ApiProgram }) {
               ✓ verified
             </span>
           ) : null}
-          {kind === "duplicate" ? (
+          {program.band === "variant" && program.nearest?.isReference && program.nearest.similarity >= 0.6 ? (
+            <span className="fork-chip" title={`${Math.round(program.nearest.similarity * 100)}% code match to ${program.nearest.name}`}>
+              fork of {program.nearest.name}
+            </span>
+          ) : null}
+          {kind === "recycled" ? (
             <span className="dup-chip" title="Byte-identical bytecode to other deploys on record — same code, fresh id">
-              duplicate
+              recycled
             </span>
           ) : kind ? (
             <span
