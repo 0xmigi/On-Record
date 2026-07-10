@@ -1,18 +1,20 @@
 import Link from "next/link";
 import { CopyAddress } from "@/components/CopyAddress";
 import { ProgramAvatar } from "@/components/ProgramAvatar";
-import { CATEGORY_LABELS, orbAddress, type ApiProgram } from "@/lib/api";
+import { SignalHex } from "@/components/SignalHex";
+import { Sparkline } from "@/components/Sparkline";
+import { CATEGORY_LABELS, type ApiProgram } from "@/lib/api";
+import { deriveSignals } from "@/lib/signals";
 import { formatBytes, relativeTime, truncateAddress } from "@/lib/format";
 
-const AUTHORITY_LABELS: Record<NonNullable<ApiProgram["authorityClass"]>, string> = {
-  none: "immutable",
-  squads: "squads multisig",
-  program: "program-owned",
-  hot_wallet: "hot wallet",
-};
+// Programs CPI into the token programs almost universally — naming them on
+// every card is chrome, not signal. The dossier Composition tab keeps them.
+const UBIQUITOUS_INTEGRATIONS = new Set(["SPL Token", "Token-2022", "System", "Associated Token"]);
 
-function authorityLabel(cls: ApiProgram["authorityClass"]): string {
-  return cls ? AUTHORITY_LABELS[cls] : "unknown authority";
+/** "1,000+" when the count sits exactly on a pagination boundary (the
+ *  counter caps at full pages, so a round thousand means "at least"). */
+function txnCount(n: number): string {
+  return n >= 1000 && n % 1000 === 0 ? `${n.toLocaleString("en-US")}+` : n.toLocaleString("en-US");
 }
 
 /** One fact chip in the compact facts row — label muted, value inked. */
@@ -32,6 +34,11 @@ function Fact({ label, value }: { label: string; value: string }) {
  */
 export function ProgramRow({ program }: { program: ApiProgram }) {
   const inCluster = (program.clusterSize ?? 0) > 1;
+  const signals = deriveSignals(program);
+  const notableIntegrations = program.integrations.filter(
+    (i) => !UBIQUITOUS_INTEGRATIONS.has(i),
+  );
+  const txns24h = program.momentum?.txns24h ?? null;
 
   return (
     <article className="radar-row">
@@ -107,19 +114,6 @@ export function ProgramRow({ program }: { program: ApiProgram }) {
 
         <div className="radar-sub">
           <span>deployed {relativeTime(program.deployedAt)}</span>
-          {program.deployedSlot != null ? (
-            <>
-              <span className="radar-dot">·</span>
-              <a
-                className="radar-slot"
-                href={orbAddress(program.id)}
-                target="_blank"
-                rel="noopener noreferrer"
-              >
-                slot {program.deployedSlot.toLocaleString("en-US")}
-              </a>
-            </>
-          ) : null}
         </div>
 
         <div className="radar-facts">
@@ -129,8 +123,8 @@ export function ProgramRow({ program }: { program: ApiProgram }) {
           {program.framework && program.framework !== "unknown" ? (
             <span className="fw-chip">{program.framework}</span>
           ) : null}
-          {program.integrations.length > 0 ? (
-            <Fact label="uses" value={program.integrations.slice(0, 2).join(", ")} />
+          {notableIntegrations.length > 0 ? (
+            <Fact label="talks to" value={notableIntegrations.slice(0, 2).join(", ")} />
           ) : null}
           {program.nearest?.isReference && program.nearest.similarity >= 0.4 ? (
             <Fact
@@ -139,33 +133,38 @@ export function ProgramRow({ program }: { program: ApiProgram }) {
             />
           ) : null}
           <Fact label="size" value={formatBytes(program.sizeBytes)} />
-          <Fact
-            label="ix"
-            value={
-              program.instructionCount != null
-                ? String(program.instructionCount)
-                : program.idlPresent
-                  ? "idl"
-                  : "—"
-            }
-          />
-          <Fact label="auth" value={authorityLabel(program.authorityClass)} />
-          <Fact
-            label="funded by"
-            value={
-              program.deployerFundingSource ??
-              (program.funderAddress
-                ? truncateAddress(program.funderAddress)
-                : "untraced")
-            }
-          />
-          <Fact
-            label="signers"
-            value={
-              program.earlySigners != null ? String(program.earlySigners) : "—"
-            }
-          />
+          {program.deployCostSol != null ? (
+            <Fact label="cost" value={`${program.deployCostSol} SOL`} />
+          ) : null}
+          {program.multisig ? (
+            <Fact
+              label="auth"
+              value={
+                program.multisig.threshold != null
+                  ? `squads ${program.multisig.threshold}/${program.multisig.members}`
+                  : "squads multisig"
+              }
+            />
+          ) : program.authorityClass === "none" ? (
+            <Fact label="auth" value="immutable" />
+          ) : null}
+          {program.deployerFundingSource &&
+          !["fresh", "unknown"].includes(program.deployerFundingSource) ? (
+            <Fact label="funded via" value={program.deployerFundingSource} />
+          ) : null}
         </div>
+      </div>
+
+      <div className="radar-rail">
+        <SignalHex signals={signals} size={56} />
+        {txns24h != null && txns24h > 0 ? (
+          <span className="radar-rail-txns">{txnCount(txns24h)} txns/24h</span>
+        ) : program.earlySigners ? (
+          <span className="radar-rail-txns">{txnCount(program.earlySigners)} early txns</span>
+        ) : null}
+        {program.activity && program.activity.length >= 2 ? (
+          <Sparkline points={program.activity} width={110} height={22} title="transactions per hour, last 48h" />
+        ) : null}
       </div>
     </article>
   );

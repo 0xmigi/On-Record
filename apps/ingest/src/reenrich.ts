@@ -76,7 +76,10 @@ async function run(network: Network): Promise<void> {
       await db
         .update(schema.subjects)
         .set({
-          name: sql`coalesce(${schema.subjects.name}, ${bi.name})`,
+          // coalesce (never un-name) — but a mojibake'd name (latin1-decoded
+          // UTF-8, e.g. "â€”") is corrupt, not operator-set: replace it
+          name: sql`case when ${schema.subjects.name} ~ '(â|Ã.|�)' then ${bi.name}
+                    else coalesce(${schema.subjects.name}, ${bi.name}) end`,
           repoUrl: sql`coalesce(${schema.subjects.repoUrl}, ${bi.repoUrl})`,
           sha256,
           tlsh,

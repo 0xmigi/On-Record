@@ -6,7 +6,9 @@ import { ProgramAvatar } from "@/components/ProgramAvatar";
 import { IdlViewer } from "@/components/IdlViewer";
 import { UsageBars } from "@/components/UsageBars";
 import { DossierTabs, type DossierTab } from "@/components/DossierTabs";
+import { SignalHex } from "@/components/SignalHex";
 import { Sparkline } from "@/components/Sparkline";
+import { deriveSignals } from "@/lib/signals";
 import { SectionHeader } from "@/components/SectionHeader";
 import {
   CATEGORY_LABELS,
@@ -308,7 +310,7 @@ export default async function ProgramDossierPage({
         ) : null}
         <Row label="Early activity">
           {program.earlySigners != null ? (
-            `${program.earlySigners} txns in first window`
+            `${program.earlySigners >= 1000 && program.earlySigners % 1000 === 0 ? `${program.earlySigners.toLocaleString("en-US")}+` : program.earlySigners.toLocaleString("en-US")} txns in the first 24h`
           ) : (
             <span className="cell-dim">—</span>
           )}
@@ -405,6 +407,9 @@ export default async function ProgramDossierPage({
             <CopyAddress value={program.id} display={program.id} className="dossier-id" />
             <Ext href={orbAddress(program.id)} text="open in Orb" />
           </div>
+        </div>
+        <div className="dossier-head-signals">
+          <SignalHex signals={deriveSignals(program)} size={140} labels />
         </div>
       </div>
 

@@ -2535,3 +2535,69 @@ a.copy-addr-text:hover {
   color: var(--ink-faint);
   margin: 12px 0 0;
 }
+
+/* --- signal pentagon + radar right rail (the "skill graph") ---------------- */
+
+.radar-rail {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  justify-content: center;
+  gap: 4px;
+  min-width: 110px;
+}
+
+.radar-rail-txns {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--ink-soft);
+  white-space: nowrap;
+}
+
+.radar-rail .sparkline,
+.fact-value .sparkline {
+  color: var(--accent);
+  display: block;
+}
+
+.signal-hex-grid {
+  fill: none;
+  stroke: var(--border);
+  stroke-width: 1;
+}
+
+.signal-hex-spoke {
+  stroke: var(--border);
+  stroke-width: 0.75;
+}
+
+.signal-hex-shape {
+  fill: var(--accent);
+  fill-opacity: 0.22;
+  stroke: var(--accent);
+  stroke-width: 1.25;
+  stroke-linejoin: round;
+}
+
+.signal-hex-label {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  letter-spacing: 0.06em;
+  fill: var(--ink-faint);
+}
+
+.dossier-head-signals {
+  flex: none;
+  align-self: center;
+}
+
+@media (max-width: 720px) {
+  .radar-rail {
+    flex-direction: row;
+    align-items: center;
+    justify-content: flex-start;
+    min-width: 0;
+    gap: 10px;
+  }
+}

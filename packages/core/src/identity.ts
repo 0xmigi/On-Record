@@ -38,7 +38,9 @@ export function parseSecurityTxt(bytecode: Uint8Array): Record<string, string> |
   const out: Record<string, string> = {};
   for (let i = 0; i + 1 < parts.length; i += 2) {
     const key = parts[i]!;
-    if (SEC_KEYS.includes(key)) out[key] = parts[i + 1]!;
+    // values were sliced out of a latin1 view of the binary — re-decode as
+    // UTF-8 so names like "Firstance — pump.fun Vault" don't mojibake ("â€”")
+    if (SEC_KEYS.includes(key)) out[key] = Buffer.from(parts[i + 1]!, "latin1").toString("utf8");
   }
   return Object.keys(out).length ? out : null;
 }
