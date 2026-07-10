@@ -4,10 +4,8 @@ import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
-import zlib from "node:zlib";
 import bs58 from "bs58";
-import { getAccountBytes, LOADER_PROGRAM_ID } from "./helius.js";
-import type { Network } from "./types.js";
+import { LOADER_PROGRAM_ID } from "./helius.js";
 
 const execFileAsync = promisify(execFile);
 
@@ -202,45 +200,9 @@ export interface IdlProbe {
   accounts: string[];
 }
 
-/** Fetch and decompress the on-chain Anchor IDL if one exists. */
-export async function probeAnchorIdl(network: Network, programId: string): Promise<IdlProbe | null> {
-  try {
-    const address = anchorIdlAddress(programId);
-    const data = await getAccountBytes(network, address);
-    // IdlAccount: 8-byte discriminator + 32-byte authority + u32 len + zlib data
-    if (!data || data.length < 44) return null;
-    const len = data.readUInt32LE(40);
-    if (len === 0 || 44 + len > data.length) return null;
-    const json = zlib.inflateSync(data.subarray(44, 44 + len)).toString("utf8");
-    const idl = JSON.parse(json) as {
-      instructions?: { name?: string }[];
-      accounts?: { name?: string }[];
-    };
-    return {
-      instructions: (idl.instructions ?? []).map((i) => i.name ?? "").filter(Boolean).slice(0, 64),
-      accounts: (idl.accounts ?? []).map((a) => a.name ?? "").filter(Boolean).slice(0, 64),
-    };
-  } catch {
-    return null;
-  }
-}
-
-/** Fetch and decompress the FULL on-chain Anchor IDL JSON (instructions, args,
- *  accounts, types, events, errors) — the program's human-readable interface.
- *  Returns the parsed IDL object as-is, or null if there is none. */
-export async function fetchAnchorIdl(network: Network, programId: string): Promise<unknown | null> {
-  try {
-    const address = anchorIdlAddress(programId);
-    const data = await getAccountBytes(network, address);
-    if (!data || data.length < 44) return null;
-    const len = data.readUInt32LE(40);
-    if (len === 0 || 44 + len > data.length) return null;
-    const json = zlib.inflateSync(data.subarray(44, 44 + len)).toString("utf8");
-    return JSON.parse(json);
-  } catch {
-    return null;
-  }
-}
+// NOTE: the on-chain IDL fetchers (probeAnchorIdl → probeProgramMetadata,
+// fetchAnchorIdl) live in metadata.ts now — they check the Program Metadata
+// Program (Anchor ≥1.0) first, then the legacy anchor:idl account above.
 
 // re-export so callers only need one import for loader constants
 export { LOADER_PROGRAM_ID };

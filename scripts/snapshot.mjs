@@ -18,7 +18,7 @@ const RPC = `https://mainnet.helius-rpc.com/?api-key=${KEY}`;
 // reuse the tested enumeration + IDL derivation from core's compiled output
 const core = await import("../packages/core/dist/index.js");
 const {
-  enumerateProgramData, enumerateProgramAccounts, getSlot, probeAnchorIdl,
+  enumerateProgramData, enumerateProgramAccounts, getSlot, probeProgramMetadata,
   getAccountBytes, extractStrings, getEarlyActivity,
 } = core;
 
@@ -279,7 +279,7 @@ async function bytecodeScan(pda) {
 const rows = await pool(recent, 4, async (h) => {
   const programId = pdToProgram.get(h.programDataAddress);
   const ver = await checkVerified(programId);
-  const idl = await withRetry(() => probeAnchorIdl("mainnet", programId)).catch(() => null);
+  const idl = await withRetry(() => probeProgramMetadata("mainnet", programId)).then((m) => m.idl).catch(() => null);
   const bc = await bytecodeScan(h.programDataAddress).catch(() => ({ sha256: null, sizeBytes: null, identity: null }));
   const authClass = await authorityClass(h.upgradeAuthority);
   const deployedAtMs = Date.now() - (currentSlot - h.deployedSlot) * (1000 / SLOTS_PER_SEC);

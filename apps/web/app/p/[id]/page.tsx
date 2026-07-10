@@ -4,12 +4,14 @@ import { notFound } from "next/navigation";
 import { CopyAddress } from "@/components/CopyAddress";
 import { ProgramAvatar } from "@/components/ProgramAvatar";
 import { IdlViewer } from "@/components/IdlViewer";
+import { UsageBars } from "@/components/UsageBars";
 import { DossierTabs, type DossierTab } from "@/components/DossierTabs";
 import { SectionHeader } from "@/components/SectionHeader";
 import {
   CATEGORY_LABELS,
   fetchIdl,
   fetchProgram,
+  fetchUsage,
   orbAddress,
   orbTx,
   type ApiProgramDetail,
@@ -63,8 +65,10 @@ export default async function ProgramDossierPage({
   const program = await fetchProgram(id);
   if (!program) notFound();
 
-  // the human-readable interface — fetched only when the program ships an IDL
-  const idl = program.idlPresent ? await fetchIdl(id) : null;
+  // the interface (IDL) + its real usage — only when the program ships an IDL
+  const [idl, usage] = program.idlPresent
+    ? await Promise.all([fetchIdl(id), fetchUsage(id)])
+    : [null, null];
 
   const mutability =
     program.authorityClass === "none"
@@ -75,6 +79,11 @@ export default async function ProgramDossierPage({
 
   const overviewPanel = (
     <>
+      {usage && usage.instructions.length ? (
+        <div style={{ marginBottom: 6 }}>
+          <UsageBars usage={usage} compact />
+        </div>
+      ) : null}
       <SectionHeader title="Identity" info="What it is and who made it." />
       <div className="facts-panel">
         <Row label="Name">
@@ -142,19 +151,67 @@ export default async function ProgramDossierPage({
         </Row>
         <Row label="Verified build">{program.verified ? "yes" : "no"}</Row>
       </div>
+      {program.securityTxt ? (
+        <>
+          <SectionHeader
+            title="Security.txt"
+            info="Embedded in the binary by the developer — their own declaration, verbatim."
+          />
+          <div className="facts-panel">
+            {program.securityTxt.contacts ? (
+              <Row label="Contacts">{program.securityTxt.contacts}</Row>
+            ) : null}
+            {program.securityTxt.auditors ? (
+              <Row label="Auditors">{program.securityTxt.auditors}</Row>
+            ) : null}
+            {program.securityTxt.policy ? (
+              <Row label="Policy">
+                {/^https?:\/\//.test(program.securityTxt.policy) ? (
+                  <Ext href={program.securityTxt.policy} text={shortUrl(program.securityTxt.policy)} />
+                ) : (
+                  program.securityTxt.policy
+                )}
+              </Row>
+            ) : null}
+            {program.securityTxt.source_revision ? (
+              <Row label="Source revision">
+                <span className="cell-dim">{program.securityTxt.source_revision}</span>
+              </Row>
+            ) : null}
+          </div>
+        </>
+      ) : null}
       <SectionHeader title="Conviction" info="Skin in the game — who funded the deployer and how." />
       <div className="facts-panel">
         <Row label="Deployer funded by">
-          {program.deployerFundingSource ? (
+          {program.funderAddress ? (
+            <>
+              <Ext
+                href={orbAddress(program.funderAddress)}
+                text={truncateAddress(program.funderAddress)}
+              />
+              {program.deployerFundingSource && program.deployerFundingSource !== "unknown" ? (
+                <span className="cell-dim"> · {program.deployerFundingSource}</span>
+              ) : null}
+            </>
+          ) : program.deployerFundingSource ? (
             program.deployerFundingSource
-          ) : program.funderAddress ? (
-            <Ext href={orbAddress(program.funderAddress)} text={truncateAddress(program.funderAddress)} />
           ) : (
             <span className="cell-dim">untraced</span>
           )}
           {program.fundingAmountSol != null ? (
             <span className="cell-dim"> · {program.fundingAmountSol} SOL</span>
           ) : null}
+        </Row>
+        <Row label="Deploy cost">
+          {program.deployCostSol != null ? (
+            <>
+              ≈ {program.deployCostSol} SOL{" "}
+              <span className="cell-dim">rent locked on-chain</span>
+            </>
+          ) : (
+            <span className="cell-dim">—</span>
+          )}
         </Row>
       </div>
     </>
@@ -253,7 +310,24 @@ export default async function ProgramDossierPage({
     { id: "overview", label: "Overview", panel: overviewPanel },
     { id: "trust", label: "Trust", panel: trustPanel },
     { id: "composition", label: "Composition", panel: compositionPanel },
-    ...(idl ? [{ id: "interface", label: "Interface", panel: <IdlViewer idl={idl} /> }] : []),
+    ...(idl
+      ? [
+          {
+            id: "interface",
+            label: "Interface",
+            panel: (
+              <>
+                {usage && usage.instructions.length ? (
+                  <div style={{ marginBottom: 18 }}>
+                    <UsageBars usage={usage} />
+                  </div>
+                ) : null}
+                <IdlViewer idl={idl} />
+              </>
+            ),
+          },
+        ]
+      : []),
     { id: "activity", label: "Activity", panel: activityPanel },
   ];
 

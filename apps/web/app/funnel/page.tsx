@@ -22,8 +22,6 @@ export const metadata: Metadata = {
 
 const CATEGORY_ORDER: Category[] = [
   "defi",
-  "gaming",
-  "payments",
   "token",
   "nft",
   "infra",

@@ -6,13 +6,19 @@ import {
   env,
   tlshDistance,
   fetchAnchorIdl,
+  decodeInstructionUsage,
   type ApiCluster,
   type ApiCursorPage,
   type ApiProgram,
   type ApiRawEvent,
   type NoveltyBand,
 } from "@onrecord/core";
-import { serializeEvent, serializeProgram, serializeProgramDetail } from "../serialize.js";
+import {
+  serializeEvent,
+  serializeProgram,
+  serializeProgramDetail,
+  type NearestMeta,
+} from "../serialize.js";
 import { computeWindowFunnel, windowHoursFor, todayKey } from "../funnel.js";
 
 // ---------------------------------------------------------------------------
@@ -41,6 +47,32 @@ function decodeCursor(cursor: string): { ts: number; id: string } | null {
   } catch {
     return null;
   }
+}
+
+/** Resolve display metadata for the nearest-relative ids stashed in facts:
+ *  name + whether the relative is a known reference (registry entity or
+ *  verified build) rather than an anonymous peer deploy. */
+async function nearestMetaFor(rows: { facts: unknown }[]): Promise<Map<string, NearestMeta>> {
+  const ids = [
+    ...new Set(
+      rows
+        .map((r) => ((r.facts ?? {}) as { nearest?: { id?: string } }).nearest?.id)
+        .filter((id): id is string => Boolean(id)),
+    ),
+  ];
+  if (!ids.length) return new Map();
+  const relatives = await db
+    .select({
+      id: schema.subjects.id,
+      name: schema.subjects.name,
+      entityKey: schema.subjects.entityKey,
+      verified: schema.subjects.verified,
+    })
+    .from(schema.subjects)
+    .where(inArray(schema.subjects.id, ids));
+  return new Map(
+    relatives.map((r) => [r.id, { name: r.name, isReference: Boolean(r.entityKey) || r.verified }]),
+  );
 }
 
 async function clusterSizes(bucketIds: (string | null)[]): Promise<Map<string, number>> {
@@ -99,8 +131,13 @@ export function registerPublicRoutes(app: FastifyInstance): void {
         .limit(limit + 1);
 
       const page = rows.slice(0, limit);
-      const sizes = await clusterSizes(page.map((r) => r.bucketId));
-      const items = page.map((r) => serializeProgram(r, r.bucketId ? (sizes.get(r.bucketId) ?? null) : null));
+      const [sizes, nearest] = await Promise.all([
+        clusterSizes(page.map((r) => r.bucketId)),
+        nearestMetaFor(page),
+      ]);
+      const items = page.map((r) =>
+        serializeProgram(r, r.bucketId ? (sizes.get(r.bucketId) ?? null) : null, nearest),
+      );
       const last = page[page.length - 1];
       return {
         items,
@@ -157,10 +194,13 @@ export function registerPublicRoutes(app: FastifyInstance): void {
       for (const t of top) neighbors.push({ ...t, name: nameMap.get(t.programId) ?? null });
     }
 
-    const clusterSize = row.bucketId
-      ? ((await clusterSizes([row.bucketId])).get(row.bucketId) ?? null)
-      : null;
-    return serializeProgramDetail(row, events, neighbors, clusterSize);
+    const [clusterSize, nearestMeta] = await Promise.all([
+      row.bucketId
+        ? clusterSizes([row.bucketId]).then((m) => m.get(row.bucketId!) ?? null)
+        : Promise.resolve(null),
+      nearestMetaFor([row]),
+    ]);
+    return serializeProgramDetail(row, events, neighbors, clusterSize, nearestMeta);
   });
 
   // --- a program's full Anchor IDL (the human-readable interface) ----------
@@ -172,6 +212,17 @@ export function registerPublicRoutes(app: FastifyInstance): void {
     const network = (rows[0]?.network as "mainnet" | "devnet") ?? "mainnet";
     const idl = await fetchAnchorIdl(network, req.params.id);
     return { idl };
+  });
+
+  // --- instruction usage: the program's real "shape" (decoded from recent txns)
+  app.get<{ Params: { id: string } }>("/api/programs/:id/usage", async (req) => {
+    const rows = await db
+      .select({ network: schema.subjects.network })
+      .from(schema.subjects)
+      .where(eq(schema.subjects.id, req.params.id));
+    const network = (rows[0]?.network as "mainnet" | "devnet") ?? "mainnet";
+    const usage = await decodeInstructionUsage(network, req.params.id, { sample: 400 });
+    return { usage };
   });
 
   // --- the funnel / program stats (windowed) -------------------------------

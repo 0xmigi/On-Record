@@ -6,18 +6,18 @@ export * from "./queue.js";
 export * from "./helius.js";
 export * from "./profile.js";
 export * from "./identity.js";
+export * from "./usage.js";
 export * from "./minhash.js";
 export {
   sha256Hex,
   tlshHash,
   tlshDistance,
   extractStrings,
-  probeAnchorIdl,
-  fetchAnchorIdl,
   anchorIdlAddress,
   isOnCurve,
   findProgramAddress,
   createWithSeed,
   type IdlProbe,
 } from "./fingerprint.js";
+export * from "./metadata.js";
 export { db, schema, type Db } from "./db/client.js";

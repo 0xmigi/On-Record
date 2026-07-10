@@ -8,7 +8,21 @@ import type { BytecodeIdentity } from "./types.js";
 // Neodyme security.txt; many also leak a repo, socials, or a website.
 // ---------------------------------------------------------------------------
 
-const SEC_KEYS = ["name", "project_url", "contacts", "policy", "source_code", "auditors", "expiry"];
+// the full Neodyme solana-security-txt field set (required + optional)
+const SEC_KEYS = [
+  "name",
+  "project_url",
+  "contacts",
+  "policy",
+  "preferred_languages",
+  "source_code",
+  "source_revision",
+  "source_release",
+  "encryption",
+  "auditors",
+  "acknowledgements",
+  "expiry",
+];
 const SEC_BEGIN = "=======BEGIN SECURITY.TXT V1=======";
 const SEC_END = "=======END SECURITY.TXT V1=======";
 
@@ -76,6 +90,7 @@ export function deriveBytecodeIdentity(bytecode: Uint8Array): BytecodeIdentity {
     social,
     website,
     hasSecurityTxt: Boolean(sec),
+    securityTxt: sec,
     anchor,
   };
 }

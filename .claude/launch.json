@@ -7,6 +7,15 @@
       "runtimeArgs": ["dev", "apps/web"],
       "port": 3000,
       "autoPort": true
+    },
+    {
+      "name": "web-verify",
+      "runtimeExecutable": "sh",
+      "runtimeArgs": [
+        "-c",
+        "API_URL=http://localhost:3011 exec ./apps/web/node_modules/.bin/next dev apps/web -p 3010"
+      ],
+      "port": 3010
     }
   ]
 }

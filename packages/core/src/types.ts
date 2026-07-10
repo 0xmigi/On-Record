@@ -28,6 +28,9 @@ export interface Fingerprint {
   sha256: string;
   tlsh: string | null;
   sizeBytes: number;
+  /** full ProgramData account size (header + allocated bytecode incl. padding) —
+   *  what the deployer's rent is actually locked against */
+  programDataBytes?: number;
   idl: { instructions: string[]; accounts: string[] } | null;
   strings: string[];
 }
@@ -50,6 +53,8 @@ export interface Classification {
   band: NoveltyBand;
   bucketId: string | null;
   nearestDistance: number | null;
+  /** the corpus program the fingerprint sits closest to (lineage anchor) */
+  nearestProgramId: string | null;
   /** structural novelty from bytecode distance: clamp((minDist − NOVEL) / 300, 0, 1) */
   structuralNovelty: number;
   watchlistHit: { watchlistId: string; matchedOn: "sha256" | "tlsh" | "authority" } | null;
@@ -70,8 +75,29 @@ export interface ScoreResult {
   instructionCount: number | null;
   idlPresent: boolean;
   fundingSource: FundingSource | null;
+  /** traced wallet that funded the deploy authority (conviction evidence) */
+  funderAddress: string | null;
+  /** lamports the authority received in its funding transaction */
+  fundingLamports: number | null;
   earlySigners: number | null;
   components: Record<string, number>;
+}
+
+/** The developer's own security.txt declaration, embedded in the binary
+ *  (Neodyme standard). Every value is the developer's words — zero inference. */
+export interface SecurityTxt {
+  name?: string;
+  project_url?: string;
+  contacts?: string;
+  policy?: string;
+  preferred_languages?: string;
+  source_code?: string;
+  source_revision?: string;
+  source_release?: string;
+  encryption?: string;
+  auditors?: string;
+  acknowledgements?: string;
+  expiry?: string;
 }
 
 /** Identity recovered directly from the SBF bytecode (Rust panic paths, Neodyme
@@ -82,6 +108,8 @@ export interface BytecodeIdentity {
   social: string | null;
   website: string | null;
   hasSecurityTxt: boolean;
+  /** the full parsed security.txt block, when the binary ships one */
+  securityTxt: SecurityTxt | null;
   anchor: boolean;
 }
 
@@ -89,6 +117,11 @@ export interface EventEnrichment {
   fingerprint?: Fingerprint;
   profile?: ProgramProfile;
   bytecodeIdentity?: BytecodeIdentity;
+  /** on-chain metadata probe: where the IDL came from + PMP security seed */
+  metadata?: {
+    idlSource: "pmp" | "anchor-legacy" | null;
+    security: Record<string, unknown> | null;
+  };
   deploy?: { firstDeployAt: string | null; deployType: "deploy" | "upgrade"; upgradeCount: number };
   identity?: Identity;
   classification?: Classification;
@@ -168,6 +201,10 @@ export interface ApiProgram {
   sizeBytes: number | null;
   instructionCount: number | null;
   idlPresent: boolean;
+  /** where the IDL was published: Program Metadata Program vs legacy anchor:idl */
+  idlSource: "pmp" | "anchor-legacy" | null;
+  /** developer-declared logo (PMP security seed) */
+  logoUrl: string | null;
   authorityClass: AuthorityClass | null;
   deployerFundingSource: string | null;
   earlySigners: number | null;
@@ -188,6 +225,21 @@ export interface ApiProgram {
   deployType: "deploy" | "upgrade";
   firstDeployAt: string | null; // ISO — the ORIGINAL deploy (deployedAt is the latest)
   upgradeCount: number; // times re-deployed after the original
+  // --- conviction: the traced funding of the deploy authority ---
+  funderAddress: string | null;
+  fundingAmountSol: number | null;
+  /** rent-exempt SOL locked by the deploy (Program + ProgramData accounts) */
+  deployCostSol: number | null;
+  // --- fuzzy lineage: nearest known program by bytecode similarity ---
+  nearest: ApiNearest | null;
+}
+
+/** Nearest bytecode relative, resolved for display (SPEC §7). */
+export interface ApiNearest {
+  id: string | null; // program id of the relative (null if it left the corpus)
+  name: string | null;
+  similarity: number; // 0..1, from TLSH distance
+  isReference: boolean; // true = registry/verified protocol, false = a peer deploy
 }
 
 export interface ApiProgramDetail extends ApiProgram {
@@ -198,6 +250,8 @@ export interface ApiProgramDetail extends ApiProgram {
   neighbors: { programId: string; distance: number; name: string | null }[];
   idlInstructions: string[];
   strings: string[];
+  /** the developer's embedded security.txt, verbatim fields */
+  securityTxt: SecurityTxt | null;
 }
 
 export interface ApiFunnel {

@@ -1,4 +1,4 @@
-import { and, eq, gte, lte, sql } from "drizzle-orm";
+import { and, eq, gte, lte, ne, sql } from "drizzle-orm";
 import {
   db,
   schema,
@@ -46,23 +46,40 @@ export async function classifyFingerprint(
     .where(and(eq(schema.copyBuckets.network, network), eq(schema.copyBuckets.canonicalSha256, fp.sha256)));
   if (exact[0]) {
     await bumpBucket(exact[0].id);
+    // resolve the canonical member so the clone points at its original
+    const canonical = await db
+      .select({ programId: schema.fingerprintCorpus.programId })
+      .from(schema.fingerprintCorpus)
+      .where(
+        and(
+          eq(schema.fingerprintCorpus.network, network),
+          eq(schema.fingerprintCorpus.sha256, fp.sha256),
+          ne(schema.fingerprintCorpus.programId, programId),
+        ),
+      )
+      .limit(1);
     return {
       disposition: "copy",
       band: "clone",
       bucketId: exact[0].id,
       nearestDistance: 0,
+      nearestProgramId: canonical[0]?.programId ?? null,
       structuralNovelty: 0,
       watchlistHit: await matchWatchlist(network, programId, fp, null),
     };
   }
 
   // 2/3. nearest neighbor over the corpus (size ±20% prefilter)
-  let nearest: { distance: number; sha256: string } | null = null;
+  let nearest: { distance: number; sha256: string; programId: string } | null = null;
   if (fp.tlsh) {
     const lo = Math.floor(fp.sizeBytes * 0.8);
     const hi = Math.ceil(fp.sizeBytes * 1.2);
     const candidates = await db
-      .select({ sha256: schema.fingerprintCorpus.sha256, tlsh: schema.fingerprintCorpus.tlsh })
+      .select({
+        programId: schema.fingerprintCorpus.programId,
+        sha256: schema.fingerprintCorpus.sha256,
+        tlsh: schema.fingerprintCorpus.tlsh,
+      })
       .from(schema.fingerprintCorpus)
       .where(
         and(
@@ -72,10 +89,10 @@ export async function classifyFingerprint(
         ),
       );
     for (const c of candidates) {
-      if (!c.tlsh || c.sha256 === fp.sha256) continue;
+      if (!c.tlsh || c.sha256 === fp.sha256 || c.programId === programId) continue;
       const d = tlshDistance(fp.tlsh, c.tlsh);
       if (d !== null && (nearest === null || d < nearest.distance)) {
-        nearest = { distance: d, sha256: c.sha256 };
+        nearest = { distance: d, sha256: c.sha256, programId: c.programId };
       }
     }
   }
@@ -102,6 +119,7 @@ export async function classifyFingerprint(
     band: toBand(disposition),
     bucketId,
     nearestDistance: nearest?.distance ?? null,
+    nearestProgramId: nearest?.programId ?? null,
     structuralNovelty,
     watchlistHit: await matchWatchlist(network, programId, fp, null),
   };

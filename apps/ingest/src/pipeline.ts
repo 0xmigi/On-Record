@@ -9,10 +9,11 @@ import {
   sha256Hex,
   tlshHash,
   extractStrings,
-  probeAnchorIdl,
+  probeProgramMetadata,
   stageLogger,
   getConfig,
-  getFundingSource,
+  getFundingTrail,
+  deployRentLamports,
   getEarlyActivity,
   getDeployHistory,
   profileProgram,
@@ -121,14 +122,21 @@ export async function fingerprintStage(eventId: string): Promise<void> {
     return;
   }
 
+  // one batched probe: PMP idl + PMP security + legacy anchor:idl accounts
+  const md = event.programId
+    ? await probeProgramMetadata(network, event.programId)
+    : { idl: null, idlSource: null, security: null };
+
   const fp: Fingerprint = {
     sha256: sha256Hex(parsed.bytecode),
     tlsh: await tlshHash(parsed.bytecode),
     sizeBytes: parsed.bytecode.length,
-    idl: event.programId ? await probeAnchorIdl(network, event.programId) : null,
+    programDataBytes: raw.length,
+    idl: md.idl,
     strings: extractStrings(parsed.bytecode),
   };
   enrichment.fingerprint = fp;
+  enrichment.metadata = { idlSource: md.idlSource, security: md.security };
 
   // structured profile from the SBF bytecode: framework, syscalls, capabilities,
   // integrations (docs/GRADING.md §5). Feeds the radar's framework chip + the
@@ -235,12 +243,16 @@ async function upsertSubject(event: EventRow, enrichment: EventEnrichment): Prom
   const id = enrichment.identity;
   const bi = enrichment.bytecodeIdentity;
   const dep = enrichment.deploy;
+  const md = enrichment.metadata;
+  const pmpName = typeof md?.security?.name === "string" ? md.security.name : null;
+  const pmpLogo = typeof md?.security?.logo === "string" ? md.security.logo : null;
   const when = event.blockTime ?? new Date();
   const values = {
     kind: "program" as const,
     network: event.network,
-    // registry/entity name wins; else the name recovered from the binary
-    name: id?.entityName ?? bi?.name ?? null,
+    // registry/entity name wins; else the developer's on-chain PMP declaration;
+    // else the name recovered from the binary
+    name: id?.entityName ?? pmpName ?? bi?.name ?? null,
     entityKey: id?.entityId ?? null,
     verified: id?.verified ?? false,
     // verified-build repo wins; else a repo URL found in the binary
@@ -256,7 +268,12 @@ async function upsertSubject(event: EventRow, enrichment: EventEnrichment): Prom
     deployType: dep?.deployType ?? null,
     facts: {
       ...(bi ? { social: bi.social, website: bi.website, hasSecurityTxt: bi.hasSecurityTxt, anchor: bi.anchor } : {}),
+      ...(bi?.securityTxt ? { securityTxt: bi.securityTxt } : {}),
       ...(dep ? { upgradeCount: dep.upgradeCount } : {}),
+      ...(fp?.programDataBytes ? { deployCostLamports: deployRentLamports(fp.programDataBytes) } : {}),
+      ...(md?.idlSource ? { idlSource: md.idlSource } : {}),
+      ...(pmpLogo ? { logoUrl: pmpLogo } : {}),
+      ...(md?.security ? { pmpSecurity: md.security } : {}),
     },
     tvl: id?.tvl ?? null,
     lastEventAt: when,
@@ -271,8 +288,22 @@ async function upsertSubject(event: EventRow, enrichment: EventEnrichment): Prom
         ...values,
         // never un-name a subject the operator or registry already named
         name: sql`coalesce(${schema.subjects.name}, ${values.name})`,
+        // merge facts: classify/score stash keys here (nearest, funder, …) that a
+        // later event's identify pass must not clobber
+        facts: sql`coalesce(${schema.subjects.facts}, '{}'::jsonb) || ${JSON.stringify(values.facts)}::jsonb`,
       },
     });
+}
+
+/** Merge keys into subjects.facts without touching the rest of the row. */
+async function mergeSubjectFacts(programId: string, patch: Record<string, unknown>): Promise<void> {
+  await db
+    .update(schema.subjects)
+    .set({
+      facts: sql`coalesce(${schema.subjects.facts}, '{}'::jsonb) || ${JSON.stringify(patch)}::jsonb`,
+      updatedAt: new Date(),
+    })
+    .where(eq(schema.subjects.id, programId));
 }
 
 // ---------------------------------------------------------------------------
@@ -295,6 +326,13 @@ export async function classifyStage(eventId: string): Promise<void> {
       .update(schema.subjects)
       .set({ bucketId: classification.bucketId, noveltyBand: classification.band })
       .where(eq(schema.subjects.id, event.programId));
+
+    // persist lineage so the radar/dossier can show "nearest relative" cheaply
+    if (classification.nearestProgramId !== null && classification.nearestDistance !== null) {
+      await mergeSubjectFacts(event.programId, {
+        nearest: { id: classification.nearestProgramId, distance: classification.nearestDistance },
+      });
+    }
 
     if (classification.watchlistHit) {
       await markWatchlistMatched(classification.watchlistHit.watchlistId, eventId);
@@ -349,8 +387,8 @@ export async function scoreStage(eventId: string): Promise<void> {
   const category: Category = categorize(fp, id);
 
   // funding trail is an RPC walk — only worth it for novel candidates
-  const fundingSource =
-    band === "novel" ? await getFundingSource(network, event.authorityAfter) : null;
+  const trail = band === "novel" ? await getFundingTrail(network, event.authorityAfter) : null;
+  const fundingSource = trail?.source ?? null;
 
   // early usage is lagging; measured now (may be ~0 fresh off the deploy) and
   // refreshed by the cron re-rank as traffic arrives.
@@ -377,6 +415,8 @@ export async function scoreStage(eventId: string): Promise<void> {
     instructionCount,
     idlPresent,
     fundingSource,
+    funderAddress: trail?.funderAddress ?? null,
+    fundingLamports: trail?.fundingLamports ?? null,
     earlySigners,
     components,
   };
@@ -396,6 +436,13 @@ export async function scoreStage(eventId: string): Promise<void> {
       updatedAt: new Date(),
     })
     .where(eq(schema.subjects.id, event.programId));
+
+  if (trail?.funderAddress) {
+    await mergeSubjectFacts(event.programId, {
+      funderAddress: trail.funderAddress,
+      fundingLamports: trail.fundingLamports,
+    });
+  }
 
   await saveEnrichment(eventId, enrichment, "scored");
   log.info(

@@ -2461,3 +2461,77 @@ a.copy-addr-text:hover {
 .dtabs [role="tabpanel"] > .section-header:first-child {
   margin-top: 4px;
 }
+
+/* --- instruction usage bars (the program's real shape) ------------------ */
+.usage {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 14px 18px 16px;
+}
+.usage-compact {
+  padding: 12px 16px 14px;
+}
+.usage-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+.usage-title {
+  font-family: var(--font-head);
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  color: var(--ink);
+}
+.usage-sub {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--ink-faint);
+}
+.usage-bars {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+.usage-row {
+  display: grid;
+  grid-template-columns: minmax(120px, 200px) 1fr 48px;
+  align-items: center;
+  gap: 12px;
+}
+.usage-name {
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+  color: var(--ink);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.usage-track {
+  height: 10px;
+  background: var(--surface-2, rgba(0, 0, 0, 0.05));
+  border-radius: 3px;
+  overflow: hidden;
+}
+.usage-bar {
+  height: 100%;
+  background: var(--accent);
+  border-radius: 3px;
+  min-width: 3px;
+}
+.usage-pct {
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  font-variant-numeric: tabular-nums;
+  color: var(--ink-soft);
+  text-align: right;
+}
+.usage-foot {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--ink-faint);
+  margin: 12px 0 0;
+}

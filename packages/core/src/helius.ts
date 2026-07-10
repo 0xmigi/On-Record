@@ -82,6 +82,20 @@ export async function getAccountBytes(network: Network, address: string): Promis
   return raw;
 }
 
+/** Fetch several small accounts in one round-trip (getMultipleAccounts).
+ *  For metadata-sized accounts — do not use for ProgramData (no zstd here). */
+export async function getMultipleAccountBytes(
+  network: Network,
+  addresses: string[],
+): Promise<(Buffer | null)[]> {
+  if (!addresses.length) return [];
+  const result = await rpc<{ value: (AccountInfo | null)[] }>(network, "getMultipleAccounts", [
+    addresses,
+    { encoding: "base64", commitment: "confirmed" },
+  ]);
+  return result.value.map((acc) => (acc ? Buffer.from(acc.data[0], "base64") : null));
+}
+
 export async function accountExists(network: Network, address: string): Promise<boolean> {
   const result = await rpc<{ value: AccountInfo | null }>(network, "getAccountInfo", [
     address,
@@ -307,13 +321,23 @@ const KNOWN_SOURCES: Record<string, "cex" | "bridge" | "known_multisig"> = {
 
 export type FundingClass = "cex" | "bridge" | "known_multisig" | "fresh" | "unknown";
 
+export interface FundingTrail {
+  source: FundingClass;
+  /** the wallet that sent the authority its first SOL (largest balance drop) */
+  funderAddress: string | null;
+  /** lamports the authority received in that transaction */
+  fundingLamports: number | null;
+}
+
+const NO_TRAIL: FundingTrail = { source: "unknown", funderAddress: null, fundingLamports: null };
+
 /** Trace where the deploy authority's SOL first came from. Best-effort: reads
- *  the oldest signature and inspects the funding transfer's source. */
-export async function getFundingSource(
+ *  the oldest signature and inspects the funding transfer's balances. */
+export async function getFundingTrail(
   network: Network,
   authority: string | null,
-): Promise<FundingClass> {
-  if (!authority) return "unknown";
+): Promise<FundingTrail> {
+  if (!authority) return NO_TRAIL;
   try {
     // walk to the oldest page of signatures
     let before: string | undefined;
@@ -325,7 +349,7 @@ export async function getFundingSource(
       if (sigs.length < 1000) break;
       before = oldest?.signature;
     }
-    if (!oldest) return "unknown";
+    if (!oldest) return NO_TRAIL;
     const tx = await rpc<{
       transaction: { message: { accountKeys: string[] } };
       meta: { preBalances: number[]; postBalances: number[] } | null;
@@ -333,17 +357,52 @@ export async function getFundingSource(
       oldest.signature,
       { maxSupportedTransactionVersion: 0, encoding: "json", commitment: "confirmed" },
     ]);
-    if (!tx?.meta) return "unknown";
+    if (!tx?.meta) return NO_TRAIL;
     const keys = tx.transaction.message.accountKeys;
-    // the fee payer / first account is usually the funder in a funding transfer
+    const { preBalances, postBalances } = tx.meta;
+
+    // how much the authority received in its first transaction
+    const authorityIdx = keys.indexOf(authority);
+    const received = authorityIdx >= 0 ? (postBalances[authorityIdx] ?? 0) - (preBalances[authorityIdx] ?? 0) : 0;
+
+    // the funder is the account whose balance dropped the most (fee payer in a
+    // plain transfer; still correct when a program routed the SOL)
+    let funderAddress: string | null = null;
+    let biggestDrop = 0;
+    for (let i = 0; i < keys.length; i++) {
+      const key = keys[i]!;
+      if (key === authority) continue;
+      const drop = (preBalances[i] ?? 0) - (postBalances[i] ?? 0);
+      if (drop > biggestDrop) {
+        biggestDrop = drop;
+        funderAddress = key;
+      }
+    }
+
+    let source: FundingClass = "fresh";
     for (const key of keys) {
       const known = KNOWN_SOURCES[key];
-      if (known) return known;
+      if (known) {
+        source = known;
+        break;
+      }
     }
-    return "fresh";
+    return { source, funderAddress, fundingLamports: received > 0 ? received : null };
   } catch {
-    return "unknown";
+    return NO_TRAIL;
   }
+}
+
+// --- Deploy cost -------------------------------------------------------------
+
+/** Rent-exempt lamports a deploy locks on chain: the 36-byte Program account +
+ *  the ProgramData account (header + allocated bytecode). Solana's rent math:
+ *  (128-byte account overhead + data_len) × 3,480 lamports/byte-year × 2 years.
+ *  Deterministic from account size — no RPC needed. */
+export function deployRentLamports(programDataAccountBytes: number): number {
+  const LAMPORTS_PER_BYTE_2Y = 3_480 * 2;
+  const PROGRAM_ACCOUNT_BYTES = 36;
+  return (128 + PROGRAM_ACCOUNT_BYTES + 128 + programDataAccountBytes) * LAMPORTS_PER_BYTE_2Y;
 }
 
 // --- Upgradeable-loader account parsing -------------------------------------

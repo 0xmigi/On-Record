@@ -6,10 +6,10 @@ const API_BASE = process.env.API_URL ?? "http://localhost:3001";
 
 export type Network = "mainnet" | "devnet";
 export type Band = "clone" | "variant" | "novel";
+// Mirrors the backend Category enum (packages/enrich categorize.ts) — only add
+// values here once the classifier can actually produce them.
 export type Category =
   | "defi"
-  | "gaming"
-  | "payments"
   | "token"
   | "nft"
   | "infra"
@@ -34,10 +34,13 @@ export interface ApiProgram {
   sizeBytes: number | null;
   instructionCount: number | null;
   idlPresent: boolean;
+  idlSource: "pmp" | "anchor-legacy" | null; // where the IDL was published
+  logoUrl: string | null; // developer-declared logo (on-chain metadata)
   authorityClass: AuthorityClass;
   deployerFundingSource: string | null; // known entity label (e.g. "Coinbase"), else null
   funderAddress: string | null; // the wallet that funded the deployer (traced)
   fundingAmountSol: number | null;
+  deployCostSol: number | null; // rent-exempt SOL locked by the deploy
   earlySigners: number | null;
   verified: boolean;
   bucketId: string | null;
@@ -83,6 +86,23 @@ export interface ApiNeighbor {
   name: string | null;
 }
 
+/** The developer's own security.txt declaration, embedded in the program
+ *  binary (Neodyme standard). Verbatim fields — nothing inferred. */
+export interface SecurityTxt {
+  name?: string;
+  project_url?: string;
+  contacts?: string;
+  policy?: string;
+  preferred_languages?: string;
+  source_code?: string;
+  source_revision?: string;
+  source_release?: string;
+  encryption?: string;
+  auditors?: string;
+  acknowledgements?: string;
+  expiry?: string;
+}
+
 export interface ApiProgramDetail extends ApiProgram {
   authority: string | null;
   sha256: string | null;
@@ -90,6 +110,7 @@ export interface ApiProgramDetail extends ApiProgram {
   neighbors: ApiNeighbor[]; // nearest bytecode fingerprints
   idlInstructions: string[];
   strings: string[]; // notable printable strings from bytecode
+  securityTxt: SecurityTxt | null; // embedded security.txt, verbatim
 }
 
 export interface ApiFunnel {
@@ -230,6 +251,27 @@ export async function fetchIdl(id: string): Promise<AnchorIdl | null> {
   return res?.idl ?? null;
 }
 
+// --- instruction usage: the program's real shape, decoded from recent txns --
+export interface InstructionUsage {
+  window: {
+    txnsSampled: number;
+    txnsWithProgram: number;
+    totalCalls: number;
+    hoursSpan: number | null;
+  };
+  instructions: { name: string; count: number; pct: number }[];
+  unusedCount: number;
+  totalInstructions: number;
+  unknownDisc: number;
+}
+
+export async function fetchUsage(id: string): Promise<InstructionUsage | null> {
+  const res = await getJson<{ usage: InstructionUsage | null }>(
+    `/api/programs/${encodeURIComponent(id)}/usage`
+  );
+  return res?.usage ?? null;
+}
+
 export async function fetchFunnel(window?: string): Promise<ApiFunnel | null> {
   const qs = window ? `?window=${encodeURIComponent(window)}` : "";
   return getJson<ApiFunnel>(`/api/funnel${qs}`);
@@ -269,8 +311,6 @@ export const BAND_LABELS: Record<Band, string> = {
 
 export const CATEGORY_LABELS: Record<Category, string> = {
   defi: "DEFI",
-  gaming: "GAMING",
-  payments: "PAY",
   token: "TOKEN",
   nft: "NFT",
   infra: "INFRA",
