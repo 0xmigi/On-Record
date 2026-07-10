@@ -4,6 +4,7 @@ import { expireWatchlist, refreshTvl } from "@onrecord/enrich";
 import { snapshotFunnel, todayKey } from "./funnel.js";
 import { sampleMomentum } from "./momentum.js";
 import { sweepClosed } from "./closed.js";
+import { reclassifyRecent } from "./reclassify.js";
 
 // ---------------------------------------------------------------------------
 // Scheduled work (SPEC §10): TVL refresh (6h), a live funnel snapshot (15m),
@@ -18,6 +19,9 @@ export function startCron(): void {
     await snapshotFunnel(todayKey());
   });
   every(3_600_000, "daily-batch", maybeRunDaily);
+  // refresh band / bucket / nearest-relative as the corpus grows — a late
+  // sibling deploy makes an earlier program's stored "nearest" go stale.
+  every(6 * 3_600_000, "reclassify-refresh", () => reclassifyRecent("mainnet", 72));
   // per-program hourly activity buckets — the Momentum signal (VISION §5a)
   every(Number(process.env.MOMENTUM_INTERVAL_MS ?? 3_600_000), "momentum-sample", async () => {
     await sampleMomentum();
