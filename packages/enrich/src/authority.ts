@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { getAccountBytes, isOnCurve, rpcUrl, type AuthorityClass, type Network } from "@onrecord/core";
 import bs58 from "bs58";
 
@@ -39,6 +40,92 @@ export async function classifyAuthority(
     // network hiccup — fall through to the conservative read
   }
   return "hot_wallet";
+}
+
+// ---------------------------------------------------------------------------
+// Squads multisig inspection. A Squads-governed program's upgrade authority is
+// usually a vault PDA (off-curve, often with no account at all), so the owner
+// check above can't see it — but the deploy/upgrade TRANSACTION carries the
+// Squads program and the Multisig account. Decoding that account yields the
+// threshold ("2-of-3"), the strongest governance fact we can show.
+// Layout verified on mainnet (Kamino upgrade multisig → 5-of-10, 2026-07-09).
+// ---------------------------------------------------------------------------
+
+const SQUADS_V4 = "SQDS4ep65T869zMMBKyuUq6aD6EgTu8psMjkvj52pCf";
+const SQUADS_V3 = "SMPLecH534NA9acpos4G6x7uf3LWbCAwZQE9e8ZekMu";
+// Anchor account discriminator: sha256("account:Multisig")[0..8]
+const MULTISIG_V4_DISC = createHash("sha256").update("account:Multisig").digest().subarray(0, 8);
+
+export interface MultisigInfo {
+  address: string;
+  version: "v4" | "v3";
+  /** null when detected but not decodable (v3 legacy layout) */
+  threshold: number | null;
+  members: number | null;
+}
+
+/** Given the deploy/upgrade transaction, find and decode the Squads multisig
+ *  behind it. Returns null when the tx doesn't involve Squads. */
+export async function inspectSquadsAuthority(
+  network: Network,
+  deployTxSignature: string,
+): Promise<MultisigInfo | null> {
+  try {
+    const tx = await rpc<{
+      transaction: { message: { accountKeys: string[] } };
+    } | null>(network, "getTransaction", [
+      deployTxSignature,
+      { maxSupportedTransactionVersion: 0, encoding: "json", commitment: "confirmed" },
+    ]);
+    const keys = tx?.transaction.message.accountKeys ?? [];
+    const hasV4 = keys.includes(SQUADS_V4);
+    const hasV3 = keys.includes(SQUADS_V3);
+    if (!hasV4 && !hasV3) return null;
+
+    // find the Multisig account among the tx accounts (owner + discriminator)
+    const infos = await rpc<{ value: ({ owner: string; data: [string, string] } | null)[] }>(
+      network,
+      "getMultipleAccounts",
+      [keys, { encoding: "base64", dataSlice: { offset: 0, length: 132 }, commitment: "confirmed" }],
+    );
+    for (let i = 0; i < keys.length; i++) {
+      const acc = infos.value[i];
+      if (!acc) continue;
+      if (hasV4 && acc.owner === SQUADS_V4) {
+        const data = Buffer.from(acc.data[0], "base64");
+        if (data.length >= 100 && data.subarray(0, 8).equals(MULTISIG_V4_DISC)) {
+          // Multisig: disc 8 · create_key 32 · config_authority 32 · threshold u16
+          // · time_lock u32 · transaction_index u64 · stale_transaction_index u64
+          // · rent_collector Option<Pubkey> · bump u8 · members Vec<Member>
+          const threshold = data.readUInt16LE(72);
+          const rentTag = data[94];
+          const membersOff = rentTag === 1 ? 128 : 96;
+          const members = data.length >= membersOff + 4 ? data.readUInt32LE(membersOff) : null;
+          return { address: keys[i]!, version: "v4", threshold, members };
+        }
+      }
+      if (hasV3 && acc.owner === SQUADS_V3) {
+        // legacy v3: report detection without decoding (layout differs) —
+        // stating nothing beats stating a wrong threshold
+        return { address: keys[i]!, version: "v3", threshold: null, members: null };
+      }
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+async function rpc<T>(network: Network, method: string, params: unknown[]): Promise<T> {
+  const res = await fetch(rpcUrl(network), {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ jsonrpc: "2.0", id: 1, method, params }),
+  });
+  if (!res.ok) throw new Error(`rpc ${method}: HTTP ${res.status}`);
+  const json = (await res.json()) as { result?: T; error?: { message: string } };
+  if (json.error) throw new Error(`rpc ${method}: ${json.error.message}`);
+  return json.result as T;
 }
 
 async function getAccountOwner(network: Network, address: string): Promise<string | null> {

@@ -65,6 +65,19 @@ export interface ApiProgram {
     similarity: number; // 0..1
     isReference: boolean; // true = a famous protocol, false = a peer deploy
   } | null;
+  // exact lineage — byte-identical to a verified build of a known program
+  codeMatch: {
+    programId: string; // the original (verified) program
+    repository: string;
+    trusted: boolean;
+  } | null;
+  // Squads governance decoded from the deploy tx
+  multisig: {
+    address: string;
+    version: "v4" | "v3";
+    threshold: number | null; // null = detected but not decodable (v3 legacy)
+    members: number | null;
+  } | null;
 }
 
 export interface ApiRawEvent {

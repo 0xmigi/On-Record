@@ -77,6 +77,8 @@ export function serializeProgram(
     deployCostLamports?: number;
     idlSource?: "pmp" | "anchor-legacy";
     logoUrl?: string;
+    codeMatch?: ApiProgram["codeMatch"];
+    multisig?: ApiProgram["multisig"];
   };
   return {
     id: row.id,
@@ -120,6 +122,8 @@ export function serializeProgram(
         ? Math.round((facts.deployCostLamports / 1e9) * 1000) / 1000
         : null,
     nearest: nearestOf(facts, nearestMeta),
+    codeMatch: facts.codeMatch ?? null,
+    multisig: facts.multisig ?? null,
   };
 }
 

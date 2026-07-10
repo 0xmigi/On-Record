@@ -44,6 +44,27 @@ export interface Identity {
   previousCommit: string | null;
   authorityClass: AuthorityClass | null;
   tvl: number | null;
+  /** this bytecode is byte-identical to a verified build of another program */
+  codeMatch: ApiCodeMatch | null;
+  /** decoded Squads multisig behind the upgrade authority, when governed */
+  multisig: ApiMultisig | null;
+}
+
+/** Squads multisig decoded from the deploy/upgrade transaction. */
+export interface ApiMultisig {
+  address: string;
+  version: "v4" | "v3";
+  threshold: number | null; // null = detected but not decodable (v3 legacy)
+  members: number | null;
+}
+
+/** Exact-bytecode match against the verified-builds registry (OtterSec
+ *  resolve-hash): the deploy ships the same code as a known open-source
+ *  program. A lookup, not an inference. */
+export interface ApiCodeMatch {
+  programId: string; // the original (verified) program
+  repository: string;
+  trusted: boolean;
 }
 
 export interface Classification {
@@ -232,6 +253,10 @@ export interface ApiProgram {
   deployCostSol: number | null;
   // --- fuzzy lineage: nearest known program by bytecode similarity ---
   nearest: ApiNearest | null;
+  /** exact lineage: byte-identical to a verified build of a known program */
+  codeMatch: ApiCodeMatch | null;
+  /** Squads governance decoded from the deploy tx ("2-of-3") */
+  multisig: ApiMultisig | null;
 }
 
 /** Nearest bytecode relative, resolved for display (SPEC §7). */

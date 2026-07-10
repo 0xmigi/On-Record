@@ -32,7 +32,9 @@ import {
   classifyFingerprint,
   findEntityForAuthority,
   findEntityForProgram,
+  inspectSquadsAuthority,
   markWatchlistMatched,
+  resolveCodeMatch,
   watchDevnetNovel,
 } from "@onrecord/enrich";
 
@@ -201,15 +203,27 @@ export async function identifyStage(eventId: string): Promise<void> {
     ? await checkVerification(programId, { bustCache: event.type === "upgrade" })
     : { verified: false, repoUrl: null, commit: null };
 
+  // exact-code lineage: does this bytecode match a verified build of some
+  // OTHER program? (Self-matches are just the program's own verification.)
+  const fpForMatch = enrichment.fingerprint;
+  let codeMatch = null;
+  if (fpForMatch?.sha256 && !verification.verified) {
+    const match = await resolveCodeMatch(fpForMatch.sha256);
+    if (match && match.programId !== programId) {
+      codeMatch = { programId: match.programId, repository: match.repository, trusted: match.trusted };
+    }
+  }
+
   const subjectRows = programId
     ? await db.select().from(schema.subjects).where(eq(schema.subjects.id, programId))
     : [];
   const previousCommit = subjectRows[0]?.repoCommit ?? null;
 
-  const authorityClass = await classifyAuthority(network, event.authorityAfter);
+  let authorityClass = await classifyAuthority(network, event.authorityAfter);
 
   // deploy vs upgrade: read the ProgramData deploy history (its signatures are
   // deploy/upgrade txns only). >1 tx ⇒ the program existed and was re-deployed.
+  let multisig = null;
   if (event.programDataAddress) {
     const dh = await getDeployHistory(network, event.programDataAddress);
     const upgradeCount = Math.max(0, dh.txCount - 1);
@@ -218,6 +232,13 @@ export async function identifyStage(eventId: string): Promise<void> {
       deployType: upgradeCount > 0 ? "upgrade" : "deploy",
       upgradeCount,
     };
+
+    // Squads governance hides behind a vault PDA (classified "program" above);
+    // the deploy tx itself names the multisig — decode its threshold.
+    if (dh.lastSignature && (authorityClass === "program" || authorityClass === "squads")) {
+      multisig = await inspectSquadsAuthority(network, dh.lastSignature);
+      if (multisig) authorityClass = "squads";
+    }
   }
 
   enrichment.identity = {
@@ -229,6 +250,8 @@ export async function identifyStage(eventId: string): Promise<void> {
     previousCommit,
     authorityClass,
     tvl: entity?.tvl ?? null,
+    codeMatch,
+    multisig,
   };
 
   await saveEnrichment(eventId, enrichment, "identified");
@@ -274,6 +297,8 @@ async function upsertSubject(event: EventRow, enrichment: EventEnrichment): Prom
       ...(md?.idlSource ? { idlSource: md.idlSource } : {}),
       ...(pmpLogo ? { logoUrl: pmpLogo } : {}),
       ...(md?.security ? { pmpSecurity: md.security } : {}),
+      ...(id?.codeMatch ? { codeMatch: id.codeMatch } : {}),
+      ...(id?.multisig ? { multisig: id.multisig } : {}),
     },
     tvl: id?.tvl ?? null,
     lastEventAt: when,

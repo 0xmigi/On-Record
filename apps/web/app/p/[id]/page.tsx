@@ -114,6 +114,15 @@ export default async function ProgramDossierPage({
       </div>
       <SectionHeader title="Lineage" info="Is it new code, or derived from something known?" />
       <div className="facts-panel">
+        {program.codeMatch ? (
+          <Row label="Exact code match">
+            <Link href={`/p/${program.codeMatch.programId}`} className="neighbor-addr">
+              {truncateAddress(program.codeMatch.programId)}
+            </Link>
+            <span className="cell-dim"> · byte-identical to </span>
+            <Ext href={program.codeMatch.repository} text={shortUrl(program.codeMatch.repository)} />
+          </Row>
+        ) : null}
         <Row label="Nearest known program">
           {program.nearest ? (
             <>
@@ -144,10 +153,25 @@ export default async function ProgramDossierPage({
       <div className="facts-panel">
         <Row label="Mutability">{mutability}</Row>
         <Row label="Authority">
-          {program.authorityClass ?? "unknown"}
-          {program.authority ? (
-            <Ext href={orbAddress(program.authority)} text={truncateAddress(program.authority)} />
-          ) : null}
+          {program.multisig ? (
+            <>
+              Squads multisig
+              {program.multisig.threshold != null && program.multisig.members != null ? (
+                <span> · {program.multisig.threshold} of {program.multisig.members} signers</span>
+              ) : null}
+              <Ext
+                href={orbAddress(program.multisig.address)}
+                text={truncateAddress(program.multisig.address)}
+              />
+            </>
+          ) : (
+            <>
+              {program.authorityClass ?? "unknown"}
+              {program.authority ? (
+                <Ext href={orbAddress(program.authority)} text={truncateAddress(program.authority)} />
+              ) : null}
+            </>
+          )}
         </Row>
         <Row label="Verified build">{program.verified ? "yes" : "no"}</Row>
       </div>
