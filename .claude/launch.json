@@ -13,7 +13,7 @@
       "runtimeExecutable": "sh",
       "runtimeArgs": [
         "-c",
-        "API_URL=http://localhost:3011 exec ./apps/web/node_modules/.bin/next dev apps/web -p 3010"
+        "PATH=$HOME/.nvm/versions/node/v24.18.0/bin:$PATH API_URL=http://localhost:3011 exec ./apps/web/node_modules/.bin/next dev apps/web -p 3010"
       ],
       "port": 3010
     }

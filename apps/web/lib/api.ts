@@ -78,6 +78,9 @@ export interface ApiProgram {
     threshold: number | null; // null = detected but not decodable (v3 legacy)
     members: number | null;
   } | null;
+  // sampled on-chain activity (hourly tx buckets; radar 48h, dossier 7d)
+  activity: { t: number; c: number }[] | null;
+  momentum: { txns24h: number; growth: number | null } | null;
 }
 
 export interface ApiRawEvent {

@@ -2,6 +2,7 @@ import { and, eq, gte } from "drizzle-orm";
 import { db, schema, logger, tlshDistance } from "@onrecord/core";
 import { expireWatchlist, refreshTvl } from "@onrecord/enrich";
 import { snapshotFunnel, todayKey } from "./funnel.js";
+import { sampleMomentum } from "./momentum.js";
 
 // ---------------------------------------------------------------------------
 // Scheduled work (SPEC §10): TVL refresh (6h), a live funnel snapshot (15m),
@@ -16,6 +17,10 @@ export function startCron(): void {
     await snapshotFunnel(todayKey());
   });
   every(3_600_000, "daily-batch", maybeRunDaily);
+  // per-program hourly activity buckets — the Momentum signal (VISION §5a)
+  every(Number(process.env.MOMENTUM_INTERVAL_MS ?? 3_600_000), "momentum-sample", async () => {
+    await sampleMomentum();
+  });
 }
 
 function every(ms: number, name: string, fn: () => Promise<unknown>): void {

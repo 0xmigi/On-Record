@@ -6,6 +6,7 @@ import { ProgramAvatar } from "@/components/ProgramAvatar";
 import { IdlViewer } from "@/components/IdlViewer";
 import { UsageBars } from "@/components/UsageBars";
 import { DossierTabs, type DossierTab } from "@/components/DossierTabs";
+import { Sparkline } from "@/components/Sparkline";
 import { SectionHeader } from "@/components/SectionHeader";
 import {
   CATEGORY_LABELS,
@@ -289,6 +290,22 @@ export default async function ProgramDossierPage({
     <>
       <SectionHeader title="Traction" info="Does it actually get used? Accrues over time." />
       <div className="facts-panel">
+        {program.momentum ? (
+          <Row label="Last 24h">
+            {program.momentum.txns24h.toLocaleString("en-US")} txns
+            {program.momentum.growth != null ? (
+              <span className="cell-dim"> · ×{program.momentum.growth} vs prior day</span>
+            ) : null}
+          </Row>
+        ) : null}
+        {program.activity && program.activity.length >= 2 ? (
+          <Row label="Activity (7d)">
+            <Sparkline
+              points={program.activity}
+              title="hourly transactions, last 7 days"
+            />
+          </Row>
+        ) : null}
         <Row label="Early activity">
           {program.earlySigners != null ? (
             `${program.earlySigners} txns in first window`

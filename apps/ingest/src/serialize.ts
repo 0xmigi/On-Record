@@ -79,6 +79,8 @@ export function serializeProgram(
     logoUrl?: string;
     codeMatch?: ApiProgram["codeMatch"];
     multisig?: ApiProgram["multisig"];
+    activity?: { t: number; c: number }[];
+    momentum?: { txns24h: number; growth: number | null };
   };
   return {
     id: row.id,
@@ -124,6 +126,11 @@ export function serializeProgram(
     nearest: nearestOf(facts, nearestMeta),
     codeMatch: facts.codeMatch ?? null,
     multisig: facts.multisig ?? null,
+    // radar rows carry a 48h sparkline; the detail serializer widens to 7d
+    activity: facts.activity?.slice(-48) ?? null,
+    momentum: facts.momentum
+      ? { txns24h: facts.momentum.txns24h, growth: facts.momentum.growth }
+      : null,
   };
 }
 
@@ -134,7 +141,10 @@ export function serializeProgramDetail(
   clusterSize: number | null,
   nearestMeta?: Map<string, NearestMeta>,
 ): ApiProgramDetail {
-  const facts = (row.facts ?? {}) as { securityTxt?: SecurityTxt };
+  const facts = (row.facts ?? {}) as {
+    securityTxt?: SecurityTxt;
+    activity?: { t: number; c: number }[];
+  };
   // pull IDL instructions + notable strings from the most recent fingerprint
   let idlInstructions: string[] = [];
   let strings: string[] = [];
@@ -156,5 +166,6 @@ export function serializeProgramDetail(
     idlInstructions,
     strings,
     securityTxt: facts.securityTxt ?? null,
+    activity: facts.activity ?? null, // full 7-day series on the dossier
   };
 }

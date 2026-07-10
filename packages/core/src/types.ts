@@ -257,6 +257,15 @@ export interface ApiProgram {
   codeMatch: ApiCodeMatch | null;
   /** Squads governance decoded from the deploy tx ("2-of-3") */
   multisig: ApiMultisig | null;
+  // --- momentum: sampled on-chain activity (methodology v0) ---
+  /** hourly tx-count buckets, oldest→newest (radar: last 48h; detail: 7d) */
+  activity: ApiActivityPoint[] | null;
+  momentum: { txns24h: number; growth: number | null } | null;
+}
+
+export interface ApiActivityPoint {
+  t: number; // hour bucket, epoch ms
+  c: number; // transactions observed in that hour
 }
 
 /** Nearest bytecode relative, resolved for display (SPEC §7). */
