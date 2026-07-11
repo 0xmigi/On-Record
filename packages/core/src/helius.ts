@@ -96,6 +96,21 @@ export async function getMultipleAccountBytes(
   return result.value.map((acc) => (acc ? Buffer.from(acc.data[0], "base64") : null));
 }
 
+/** Is a ProgramData account still a live program image? Closing a program
+ *  does NOT remove the account — it leaves a 4-byte husk (state tag 0 =
+ *  Uninitialized, 0 lamports), so a bare existence check reads "alive"
+ *  forever. Alive = account present, funded, and state tag 3 (ProgramData). */
+export async function programDataAlive(network: Network, address: string): Promise<boolean> {
+  const result = await rpc<{ value: (AccountInfo & { lamports: number }) | null }>(
+    network,
+    "getAccountInfo",
+    [address, { encoding: "base64", dataSlice: { offset: 0, length: 4 }, commitment: "confirmed" }],
+  );
+  if (!result.value || result.value.lamports === 0) return false;
+  const head = Buffer.from(result.value.data[0], "base64");
+  return head.length >= 4 && head.readUInt32LE(0) === 3;
+}
+
 export async function accountExists(network: Network, address: string): Promise<boolean> {
   const result = await rpc<{ value: AccountInfo | null }>(network, "getAccountInfo", [
     address,

@@ -97,6 +97,10 @@ export function computeInterest(row: SubjectRow): Interest {
   const base = Object.values(components).reduce((a, b) => a + b, 0);
 
   let penalty = 1;
+  // near-copy family: shares a copy-bucket with other deploys (the ×N churn —
+  // same code family under fresh ids). Softer than the exact-clone discount:
+  // a genuine fork lands here too, and its other signals can still carry it.
+  if (row.bucketId) penalty = 0.5;
   if (row.noveltyBand === "clone") penalty = 0.2;
   if (facts.closedAt) penalty = Math.min(penalty, 0.05);
   const isSniper =

@@ -245,18 +245,18 @@ export default async function RadarPage({
     .sort(recency);
 
   /** Collapse rows sharing a copy-bucket into one card (the near-copy churn:
-   *  same code family deployed ×N under fresh ids). Keeps the top-ranked
-   *  member as the representative; the card's ×N chip carries the count. */
+   *  same code family deployed ×N under fresh ids). The FIRST sighting of the
+   *  family in the window holds its spot — later duplicates stack behind it
+   *  (the ×N chip carries the count) and never re-float the family to the
+   *  top. Families then rank on that first entry's own interest. */
   const collapseBuckets = (items: ApiProgram[]): ApiProgram[] => {
-    const seen = new Set<string>();
-    const out: ApiProgram[] = [];
+    const families = new Map<string, ApiProgram>();
     for (const p of items) {
       const k = p.bucketId ?? p.id;
-      if (seen.has(k)) continue;
-      seen.add(k);
-      out.push(p);
+      const cur = families.get(k);
+      if (!cur || ts(p) < ts(cur)) families.set(k, p);
     }
-    return out;
+    return [...families.values()].sort(interest);
   };
 
   // recycled = byte-clones, grouped into one entry per cluster (newest is rep)
