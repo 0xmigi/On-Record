@@ -17,6 +17,7 @@ import { BotExplainer } from "@/components/BotExplainer";
 import { SectionHeader } from "@/components/SectionHeader";
 import {
   CATEGORY_LABELS,
+  fetchCluster,
   fetchIdl,
   fetchProgram,
   fetchUsage,
@@ -77,6 +78,13 @@ export default async function ProgramDossierPage({
   const [idl, usage] = program.idlPresent
     ? await Promise.all([fetchIdl(id), fetchUsage(id)])
     : [null, null];
+
+  // the code family: other deploys of (nearly) this bytecode
+  const cluster = program.bucketId ? await fetchCluster(program.bucketId) : null;
+  const family = cluster && cluster.members.length > 1 ? cluster : null;
+  const familyOldest = family ? family.members[family.members.length - 1] : null;
+  const familyNewest = family ? family.members[0] : null;
+  const familyClosed = family ? family.members.filter((m) => m.closed).length : 0;
 
   const mutability =
     program.authorityClass === "none"
@@ -502,6 +510,58 @@ export default async function ProgramDossierPage({
           )}
         </Row>
       </div>
+      {family ? (
+        <>
+          <SectionHeader
+            title="Code family"
+            info="Other deploys of (nearly) this exact bytecode — same code under fresh ids. The deploy cadence IS the signal: a factory redeploys and closes; a fork ships once."
+          />
+          <div className="facts-panel">
+            <Row label="First seen">
+              {familyOldest?.deployedAt ? relativeTime(familyOldest.deployedAt) : "—"}
+              <span className="cell-dim">
+                {" "}· {family.memberCount} deploys since · newest{" "}
+                {familyNewest?.deployedAt ? relativeTime(familyNewest.deployedAt) : "—"}
+              </span>
+            </Row>
+            {familyClosed > 0 ? (
+              <Row label="Already closed">
+                {familyClosed} of {family.members.length}
+                <span className="cell-dim"> · deployed, run, rent reclaimed</span>
+              </Row>
+            ) : null}
+          </div>
+          <details className="recycled-section family-section">
+            <summary className="recycled-summary">
+              <span className="recycled-chev" aria-hidden="true">
+                ⌄
+              </span>
+              <span>every deploy of this code, newest first</span>
+            </summary>
+            <div className="recycled-list">
+              {family.members.slice(0, 30).map((m) => (
+                <Link
+                  href={`/p/${m.programId}`}
+                  className="recycled-row"
+                  key={m.programId}
+                  aria-current={m.programId === program.id ? "page" : undefined}
+                >
+                  <span className="recycled-name">
+                    {m.name ?? truncateAddress(m.programId)}
+                    {m.programId === program.id ? (
+                      <span className="cell-dim"> · this one</span>
+                    ) : null}
+                  </span>
+                  {m.closed ? <span className="recycled-kind rk-closed">closed</span> : null}
+                  <span className="recycled-when">
+                    {m.deployedAt ? relativeTime(m.deployedAt) : "—"}
+                  </span>
+                </Link>
+              ))}
+            </div>
+          </details>
+        </>
+      ) : null}
       {program.events.length > 0 ? (
         <div className="table-scroll" style={{ marginTop: 12 }}>
           <table className="record-table">

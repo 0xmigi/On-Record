@@ -334,7 +334,12 @@ export interface ApiCluster {
   canonicalSha256: string;
   memberCount: number;
   velocity6h: number;
-  members: { programId: string; deployedAt: string | null }[];
+  members: {
+    programId: string;
+    name: string | null;
+    deployedAt: string | null;
+    closed: boolean;
+  }[];
 }
 
 export interface ApiCursorPage<T> {

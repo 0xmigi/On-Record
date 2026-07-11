@@ -47,7 +47,7 @@ export interface Interest {
   computedAt: string;
 }
 
-export function computeInterest(row: SubjectRow): Interest {
+export function computeInterest(row: SubjectRow, familySize = 1): Interest {
   const facts = (row.facts ?? {}) as InterestFacts;
 
   const txns24h = facts.momentum?.txns24h ?? row.earlySigners ?? 0;
@@ -97,11 +97,12 @@ export function computeInterest(row: SubjectRow): Interest {
   const base = Object.values(components).reduce((a, b) => a + b, 0);
 
   let penalty = 1;
-  // near-copy family: shares a copy-bucket with other deploys (the ×N churn —
-  // same code family under fresh ids). Softer than the exact-clone discount:
-  // a genuine fork lands here too, and its other signals can still carry it.
-  if (row.bucketId) penalty = 0.5;
-  if (row.noveltyBand === "clone") penalty = 0.2;
+  // near-copy family, scaled by how industrial it is: a 2-member family reads
+  // as a fork (mild discount, other signals can carry it); a 15-a-day family
+  // is a factory regardless of whether today's instance is still alive.
+  //   2 members → ×0.59 · 5 → ×0.42 · 15 → ×0.30 · 50 → ×0.23
+  if (row.bucketId && familySize >= 2) penalty = 1 / (1 + Math.log2(familySize));
+  if (row.noveltyBand === "clone") penalty = Math.min(penalty, 0.2);
   if (facts.closedAt) penalty = Math.min(penalty, 0.05);
   const isSniper =
     row.noveltyBand === "clone" && (row.profile?.integrations ?? []).includes("Pump.fun");
@@ -120,7 +121,15 @@ export async function refreshInterest(programId: string): Promise<Interest | nul
   const rows = await db.select().from(schema.subjects).where(eq(schema.subjects.id, programId));
   const row = rows[0];
   if (!row) return null;
-  const interest = computeInterest(row);
+  let familySize = 1;
+  if (row.bucketId) {
+    const bucket = await db
+      .select({ n: schema.copyBuckets.memberCount })
+      .from(schema.copyBuckets)
+      .where(eq(schema.copyBuckets.id, row.bucketId));
+    familySize = bucket[0]?.n ?? 1;
+  }
+  const interest = computeInterest(row, familySize);
   await db
     .update(schema.subjects)
     .set({

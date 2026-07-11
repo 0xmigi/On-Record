@@ -255,7 +255,12 @@ export function registerPublicRoutes(app: FastifyInstance): void {
     const bucket = rows[0];
     if (!bucket) return reply.code(404).send({ error: "cluster not found" });
     const members = await db
-      .select({ programId: schema.subjects.id, deployedAt: schema.subjects.firstSeenAt })
+      .select({
+        programId: schema.subjects.id,
+        name: schema.subjects.name,
+        deployedAt: schema.subjects.firstSeenAt,
+        closedAt: sql<string | null>`${schema.subjects.facts} ->> 'closedAt'`,
+      })
       .from(schema.subjects)
       .where(eq(schema.subjects.bucketId, bucket.id))
       .orderBy(desc(schema.subjects.firstSeenAt))
@@ -268,7 +273,9 @@ export function registerPublicRoutes(app: FastifyInstance): void {
       velocity6h: velocity6h(bucket.velocity),
       members: members.map((m) => ({
         programId: m.programId,
+        name: m.name,
         deployedAt: m.deployedAt?.toISOString() ?? null,
+        closed: m.closedAt != null,
       })),
     };
     return cluster;
