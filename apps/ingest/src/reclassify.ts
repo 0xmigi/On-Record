@@ -1,6 +1,7 @@
 import { and, desc, eq, gte, sql } from "drizzle-orm";
 import { db, schema, logger, type Fingerprint, type Network } from "@onrecord/core";
 import { classifyFingerprint } from "@onrecord/enrich";
+import { refreshInterest } from "./interest.js";
 
 // ---------------------------------------------------------------------------
 // Reclassify — re-run the dedup gate over existing program subjects. Two jobs:
@@ -84,6 +85,7 @@ export async function reclassifyRecent(network: Network, hours: number): Promise
 
       if (bandChanged) rebanded++;
       if (hasNearest) renearested++;
+      await refreshInterest(s.id); // band / nearest moved — re-rank
     } catch (err) {
       logger.warn({ id: s.id, err: String(err) }, "reclassify: subject failed");
     }

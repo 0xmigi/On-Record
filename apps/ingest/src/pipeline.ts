@@ -37,6 +37,7 @@ import {
   resolveCodeMatch,
   watchDevnetNovel,
 } from "@onrecord/enrich";
+import { refreshInterest } from "./interest.js";
 
 type EventRow = typeof schema.events.$inferSelect;
 
@@ -455,7 +456,6 @@ export async function scoreStage(eventId: string): Promise<void> {
     .update(schema.subjects)
     .set({
       noveltyBand: band,
-      noveltyScore: score,
       category,
       instructionCount,
       idlPresent,
@@ -472,6 +472,10 @@ export async function scoreStage(eventId: string): Promise<void> {
       fundingLamports: trail.fundingLamports,
     });
   }
+
+  // the radar's ordering: interest v0.1 (interest.ts) — computed from the row
+  // as it now stands; refreshed later by the momentum + reclassify crons
+  await refreshInterest(event.programId);
 
   await saveEnrichment(eventId, enrichment, "scored");
   log.info(

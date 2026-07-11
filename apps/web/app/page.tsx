@@ -11,7 +11,7 @@ import {
   type RadarType,
   type RadarWindow,
 } from "@/lib/api";
-import { botKind, BOT_LABEL } from "@/lib/lifecycle";
+import { botKind, BOT_LABEL, deriveLifecycle } from "@/lib/lifecycle";
 import { groupNum, relativeTime, truncateAddress } from "@/lib/format";
 
 type View = "novel" | "variant" | "recycled";
@@ -24,12 +24,14 @@ const STREAM_FILTERS: { label: string; value: RadarType }[] = [
 const WINDOW_FILTERS: { label: string; value: RadarWindow }[] = [
   { label: "LAST 24H", value: "today" },
   { label: "THIS WEEK", value: "week" },
+  { label: "THIS MONTH", value: "month" },
   { label: "ALL", value: "all" },
 ];
 
 const WINDOW_WORD: Record<RadarWindow, string> = {
   today: "last 24h",
   week: "this week",
+  month: "this month",
   all: "all time",
 };
 
@@ -38,6 +40,7 @@ const WINDOW_WORD: Record<RadarWindow, string> = {
 const FUNNEL_WINDOW: Record<RadarWindow, string> = {
   today: "24h",
   week: "7d",
+  month: "30d",
   all: "all",
 };
 
@@ -163,6 +166,42 @@ function RecycledSection({
   );
 }
 
+/** The graveyard: programs whose ProgramData vanished (rent reclaimed). They
+ *  never occupy the main tiers — they pile up here, labelled by lifespan. */
+function ClosedSection({ items }: { items: ApiProgram[] }) {
+  if (!items.length) return null;
+  return (
+    <details className="recycled-section closed-section">
+      <summary className="recycled-summary">
+        <span className="recycled-chev" aria-hidden="true">
+          ⌄
+        </span>
+        <span>
+          <strong>Closed</strong> — {groupNum(items.length)} program
+          {items.length === 1 ? "" : "s"} deployed and already gone (rent
+          reclaimed). The churn tail, kept out of the feed.
+        </span>
+      </summary>
+      <div className="recycled-list">
+        {items.slice(0, 30).map((p) => {
+          const life = deriveLifecycle(p);
+          const kind = botKind(p);
+          return (
+            <Link href={`/p/${p.id}`} className="recycled-row" key={p.id}>
+              <span className="recycled-kind rk-closed">
+                closed{life.lifespanLabel ? ` within ${life.lifespanLabel}` : ""}
+              </span>
+              <span className="recycled-name">{p.name ?? truncateAddress(p.id)}</span>
+              {kind ? <span className="recycled-x">{BOT_LABEL[kind]}</span> : null}
+              <span className="recycled-when">deployed {relativeTime(p.deployedAt)}</span>
+            </Link>
+          );
+        })}
+      </div>
+    </details>
+  );
+}
+
 export default async function RadarPage({
   searchParams,
 }: {
@@ -178,16 +217,47 @@ export default async function RadarPage({
       : undefined;
 
   const EMPTY = { items: [] as ApiProgram[], nextCursor: null };
-  const [novelPage, variantPage, clonePage, upgradePage, funnel] = await Promise.all([
+  const [novelPage, variantPage, clonePage, closedPages, upgradePage, funnel] = await Promise.all([
     isDeploy ? fetchRadar({ type, window, band: "novel", limit: 100 }) : Promise.resolve(EMPTY),
     isDeploy ? fetchRadar({ type, window, band: "variant", limit: 100 }) : Promise.resolve(EMPTY),
     isDeploy ? fetchRadar({ type, window, band: "clone", limit: 100 }) : Promise.resolve(EMPTY),
+    // the graveyard: closed programs across all bands (rent reclaimed)
+    isDeploy
+      ? Promise.all(
+          (["novel", "variant", "clone"] as const).map((band) =>
+            fetchRadar({ type, window, band, closed: "only", limit: 100 }),
+          ),
+        )
+      : Promise.resolve([]),
     !isDeploy ? fetchRadar({ type, window, limit: 50 }) : Promise.resolve(EMPTY),
     fetchFunnel(FUNNEL_WINDOW[window]),
   ]);
 
   const ts = (p: ApiProgram) => (p.deployedAt ? Date.parse(p.deployedAt) : 0);
   const recency = (a: ApiProgram, b: ApiProgram) => ts(b) - ts(a);
+  // interest ordering (the API's default sort — noveltyScore carries the
+  // interest v0.1 blend); recency breaks ties so fresh unscored rows behave
+  const interest = (a: ApiProgram, b: ApiProgram) =>
+    (b.noveltyScore ?? 0) - (a.noveltyScore ?? 0) || recency(a, b);
+
+  const closedItems = closedPages
+    .flatMap((p) => p.items)
+    .sort(recency);
+
+  /** Collapse rows sharing a copy-bucket into one card (the near-copy churn:
+   *  same code family deployed ×N under fresh ids). Keeps the top-ranked
+   *  member as the representative; the card's ×N chip carries the count. */
+  const collapseBuckets = (items: ApiProgram[]): ApiProgram[] => {
+    const seen = new Set<string>();
+    const out: ApiProgram[] = [];
+    for (const p of items) {
+      const k = p.bucketId ?? p.id;
+      if (seen.has(k)) continue;
+      seen.add(k);
+      out.push(p);
+    }
+    return out;
+  };
 
   // recycled = byte-clones, grouped into one entry per cluster (newest is rep)
   const byBucket = new Map<string, ApiProgram[]>();
@@ -212,14 +282,17 @@ export default async function RadarPage({
       }
     : null;
 
-  // main list depends on the active tier; default (notable) = novel + variants
-  const notable = [...novelPage.items, ...variantPage.items].sort(recency);
+  // main list depends on the active tier; default (notable) = novel + variants,
+  // interest-ordered, near-copy families collapsed to one card each
+  const notable = collapseBuckets(
+    [...novelPage.items, ...variantPage.items].sort(interest),
+  );
   const mainItems = !isDeploy
     ? upgradePage.items
     : view === "novel"
       ? novelPage.items
       : view === "variant"
-        ? variantPage.items
+        ? collapseBuckets(variantPage.items)
         : view === "recycled"
           ? []
           : notable;
@@ -302,6 +375,8 @@ export default async function RadarPage({
           open={view === "recycled"}
         />
       ) : null}
+
+      {isDeploy ? <ClosedSection items={closedItems} /> : null}
     </>
   );
 }

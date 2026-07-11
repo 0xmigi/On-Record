@@ -18,7 +18,7 @@ export type Category =
 export type AuthorityClass = "none" | "squads" | "program" | "hot_wallet" | null;
 export type Framework = "anchor" | "pinocchio" | "native" | "unknown";
 
-export type RadarWindow = "today" | "week" | "all";
+export type RadarWindow = "today" | "week" | "month" | "all";
 export type RadarType = "deploy" | "upgrade";
 
 /** A radar row / program summary. */
@@ -210,6 +210,8 @@ export async function fetchRadar(
     cursor?: string;
     limit?: number;
     band?: Band;
+    /** "only" = the closed graveyard; default hides closed programs */
+    closed?: "only" | "include";
   } = {}
 ): Promise<ApiCursorPage<ApiProgram>> {
   const params = new URLSearchParams();
@@ -217,6 +219,7 @@ export async function fetchRadar(
   params.set("type", opts.type ?? "deploy");
   if (opts.cursor) params.set("cursor", opts.cursor);
   if (opts.band) params.set("band", opts.band);
+  if (opts.closed) params.set("closed", opts.closed === "only" ? "only" : "1");
   params.set("limit", String(opts.limit ?? 50));
   const page = await getJson<ApiCursorPage<ApiProgram>>(
     `/api/radar?${params.toString()}`
@@ -348,7 +351,7 @@ export function isBand(value: string | undefined): value is Band {
   return value !== undefined && (BANDS as string[]).includes(value);
 }
 
-const WINDOWS: RadarWindow[] = ["today", "week", "all"];
+const WINDOWS: RadarWindow[] = ["today", "week", "month", "all"];
 
 export function isWindow(value: string | undefined): value is RadarWindow {
   return value !== undefined && (WINDOWS as string[]).includes(value);

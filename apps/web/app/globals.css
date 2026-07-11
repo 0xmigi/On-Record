@@ -3302,3 +3302,12 @@ a.copy-addr-text:hover {
     text-align: left;
   }
 }
+
+/* closed graveyard rows */
+.rk-closed {
+  color: var(--ink-faint);
+  border-color: var(--border);
+}
+.closed-section .recycled-summary strong {
+  color: var(--ink-soft);
+}

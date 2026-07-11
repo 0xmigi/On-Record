@@ -1,5 +1,6 @@
 import { and, eq, gte, sql } from "drizzle-orm";
 import { db, schema, logger, getSignaturesForAddress, type Network } from "@onrecord/core";
+import { refreshInterest } from "./interest.js";
 
 // ---------------------------------------------------------------------------
 // Momentum sampler (methodology v0's "Momentum" signal, VISION §5a): per-hour
@@ -110,6 +111,7 @@ export async function sampleMomentum(network: Network = "mainnet"): Promise<void
           updatedAt: new Date(),
         })
         .where(eq(schema.subjects.id, s.id));
+      await refreshInterest(s.id); // activity moved — re-rank
       sampled++;
     } catch (err) {
       logger.warn({ id: s.id, err: String(err) }, "momentum: sample failed");

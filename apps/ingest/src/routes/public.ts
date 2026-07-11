@@ -31,6 +31,7 @@ const BANDS = new Set<NoveltyBand>(["clone", "variant", "novel"]);
 
 function windowStart(window: string | undefined): Date | null {
   if (window === "all") return null;
+  if (window === "month") return new Date(Date.now() - 30 * 86_400_000);
   if (window === "week") return new Date(Date.now() - 7 * 86_400_000);
   return new Date(Date.now() - 86_400_000); // default: rolling last 24h
 }
@@ -87,10 +88,14 @@ async function clusterSizes(bucketIds: (string | null)[]): Promise<Map<string, n
 
 export function registerPublicRoutes(app: FastifyInstance): void {
   // --- the radar: ranked programs -----------------------------------------
-  app.get<{ Querystring: { window?: string; band?: string; type?: string; cursor?: string; limit?: string; closed?: string } }>(
+  app.get<{ Querystring: { window?: string; band?: string; type?: string; cursor?: string; limit?: string; closed?: string; sort?: string } }>(
     "/api/radar",
     async (req): Promise<ApiCursorPage<ApiProgram>> => {
       const limit = Math.min(Number(req.query.limit ?? 30) || 30, 100);
+      // interest ordering (interest.ts v0.1 blend, stored on noveltyScore) is
+      // the default — "most worth seeing first". ?sort=recent restores the
+      // plain stream (and keeps cursor paging; interest pages have no cursor).
+      const sort = req.query.sort === "recent" ? "recent" : "interest";
       const band = req.query.band && BANDS.has(req.query.band as NoveltyBand) ? req.query.band : "novel";
       const type = req.query.type === "upgrade" ? "upgrade" : "deploy";
       const start = windowStart(req.query.window);
@@ -119,8 +124,7 @@ export function registerPublicRoutes(app: FastifyInstance): void {
       }
       if (start) conditions.push(gte(schema.subjects.firstSeenAt, start));
 
-      // recency sort (newest activity first) now that the novelty score is hidden
-      const cur = req.query.cursor ? decodeCursor(req.query.cursor) : null;
+      const cur = sort === "recent" && req.query.cursor ? decodeCursor(req.query.cursor) : null;
       if (cur) {
         const curDate = new Date(cur.ts);
         conditions.push(
@@ -135,7 +139,11 @@ export function registerPublicRoutes(app: FastifyInstance): void {
         .select()
         .from(schema.subjects)
         .where(and(...conditions))
-        .orderBy(desc(schema.subjects.firstSeenAt), desc(schema.subjects.id))
+        .orderBy(
+          ...(sort === "interest"
+            ? [sql`${schema.subjects.noveltyScore} desc nulls last`, desc(schema.subjects.firstSeenAt), desc(schema.subjects.id)]
+            : [desc(schema.subjects.firstSeenAt), desc(schema.subjects.id)]),
+        )
         .limit(limit + 1);
 
       const page = rows.slice(0, limit);
@@ -149,8 +157,11 @@ export function registerPublicRoutes(app: FastifyInstance): void {
       const last = page[page.length - 1];
       return {
         items,
+        // cursor paging is recency-keyed; interest-ordered pages don't paginate
         nextCursor:
-          rows.length > limit && last ? encodeCursor(last.firstSeenAt?.getTime() ?? 0, last.id) : null,
+          sort === "recent" && rows.length > limit && last
+            ? encodeCursor(last.firstSeenAt?.getTime() ?? 0, last.id)
+            : null,
       };
     },
   );
