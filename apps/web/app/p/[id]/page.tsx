@@ -85,76 +85,6 @@ export default async function ProgramDossierPage({
         ? "mutable"
         : "unknown";
 
-  const overviewPanel = (
-    <>
-      {usage && usage.instructions.length ? (
-        <div style={{ marginBottom: 6 }}>
-          <UsageBars usage={usage} compact />
-        </div>
-      ) : null}
-      <SectionHeader title="Identity" info="What it is and who made it." />
-      <div className="facts-panel">
-        <Row label="Name">
-          {program.name ?? <span className="cell-dim">unidentified</span>}
-        </Row>
-        <Row label="Category">{CATEGORY_LABELS[program.category]}</Row>
-        <Row label="Source">
-          {program.repoUrl ? (
-            <Ext href={program.repoUrl} text={shortUrl(program.repoUrl)} />
-          ) : (
-            <span className="cell-dim">—</span>
-          )}
-        </Row>
-        <Row label="Social">
-          {program.social ? (
-            <Ext href={program.social} text={shortUrl(program.social)} />
-          ) : (
-            <span className="cell-dim">—</span>
-          )}
-        </Row>
-        <Row label="Website">
-          {program.website ? (
-            <Ext href={program.website} text={shortUrl(program.website)} />
-          ) : (
-            <span className="cell-dim">—</span>
-          )}
-        </Row>
-      </div>
-      <SectionHeader title="Lineage" info="Is it new code, or derived from something known?" />
-      <div className="facts-panel">
-        {program.codeMatch ? (
-          <Row label="Exact code match">
-            <Link href={`/p/${program.codeMatch.programId}`} className="neighbor-addr">
-              {truncateAddress(program.codeMatch.programId)}
-            </Link>
-            <span className="cell-dim"> · byte-identical to </span>
-            <Ext href={program.codeMatch.repository} text={shortUrl(program.codeMatch.repository)} />
-          </Row>
-        ) : null}
-        <Row label="Nearest known program">
-          {program.nearest ? (
-            <>
-              {program.nearest.isReference ? (
-                <span className="dossier-name">{program.nearest.name}</span>
-              ) : program.nearest.id ? (
-                <Link href={`/p/${program.nearest.id}`} className="neighbor-addr">
-                  {program.nearest.name ?? truncateAddress(program.nearest.id)}
-                </Link>
-              ) : (
-                "a peer deploy"
-              )}
-              <span className="cell-dim">
-                {" "}· {Math.round(program.nearest.similarity * 100)}% code match
-              </span>
-            </>
-          ) : (
-            <span className="cell-dim">no known relative — novel code</span>
-          )}
-        </Row>
-      </div>
-    </>
-  );
-
   const trustPanel = (
     <>
       <SectionHeader title="Control" info="Who can change it — and whether it can rug." />
@@ -318,6 +248,39 @@ export default async function ProgramDossierPage({
 
   const compositionPanel = (
     <>
+      <SectionHeader title="Lineage" info="Is it new code, or derived from something known?" />
+      <div className="facts-panel">
+        {program.codeMatch ? (
+          <Row label="Exact code match">
+            <Link href={`/p/${program.codeMatch.programId}`} className="neighbor-addr">
+              {truncateAddress(program.codeMatch.programId)}
+            </Link>
+            <span className="cell-dim"> · byte-identical to </span>
+            <Ext href={program.codeMatch.repository} text={shortUrl(program.codeMatch.repository)} />
+          </Row>
+        ) : null}
+        <Row label="Nearest known program">
+          {program.nearest ? (
+            <>
+              {program.nearest.isReference ? (
+                <span className="dossier-name">{program.nearest.name}</span>
+              ) : program.nearest.id ? (
+                <Link href={`/p/${program.nearest.id}`} className="neighbor-addr">
+                  {program.nearest.name ?? truncateAddress(program.nearest.id)}
+                </Link>
+              ) : (
+                "a peer deploy"
+              )}
+              <span className="cell-dim">
+                {" "}· {Math.round(program.nearest.similarity * 100)}% code match
+              </span>
+            </>
+          ) : (
+            <span className="cell-dim">no known relative — novel code</span>
+          )}
+        </Row>
+      </div>
+
       <SectionHeader
         title="Framework"
         info="Read off the ELF — the syscall ABI and marker strings. Confidence: 'confirmed' = provable on-chain (Anchor); 'inferred' = read from binary shape. New to a framework? Expand the explainer at the bottom of this tab."
@@ -508,6 +471,11 @@ export default async function ProgramDossierPage({
 
   const activityPanel = (
     <>
+      {usage && usage.instructions.length ? (
+        <div style={{ marginBottom: 18 }}>
+          <UsageBars usage={usage} compact />
+        </div>
+      ) : null}
       <SectionHeader title="Traction" info="Does it actually get used? Accrues over time." />
       <div className="facts-panel">
         {program.momentum ? (
@@ -640,9 +608,8 @@ export default async function ProgramDossierPage({
   );
 
   const tabs: DossierTab[] = [
-    { id: "overview", label: "Overview", panel: overviewPanel },
-    { id: "trust", label: "Trust", panel: trustPanel },
     { id: "composition", label: "Composition", panel: compositionPanel },
+    { id: "trust", label: "Trust", panel: trustPanel },
     { id: "interface", label: "Interface", panel: interfacePanel, muted: !idl },
     { id: "activity", label: "Activity", panel: activityPanel },
   ];
@@ -708,6 +675,9 @@ export default async function ProgramDossierPage({
           <div className="dossier-sub">
             <CopyAddress value={program.id} display={program.id} className="dossier-id" />
             <Ext href={orbAddress(program.id)} text="open in Orb" />
+            {program.repoUrl ? <Ext href={program.repoUrl} text="source" /> : null}
+            {program.social ? <Ext href={program.social} text="social" /> : null}
+            {program.website ? <Ext href={program.website} text="website" /> : null}
           </div>
         </div>
         <div className="dossier-head-signals">

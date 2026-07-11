@@ -19,7 +19,7 @@ import {
   serializeProgramDetail,
   type NearestMeta,
 } from "../serialize.js";
-import { computeWindowFunnel, windowHoursFor, todayKey } from "../funnel.js";
+import { computeWindowFunnel, windowHoursFor } from "../funnel.js";
 
 // ---------------------------------------------------------------------------
 // Public read API (SPEC §7). Self-contained JSON, stable ids, cursor paging.
@@ -32,7 +32,7 @@ const BANDS = new Set<NoveltyBand>(["clone", "variant", "novel"]);
 function windowStart(window: string | undefined): Date | null {
   if (window === "all") return null;
   if (window === "week") return new Date(Date.now() - 7 * 86_400_000);
-  return new Date(`${todayKey()}T00:00:00.000Z`); // default: today
+  return new Date(Date.now() - 86_400_000); // default: rolling last 24h
 }
 
 /** cursor = base64("<lastSeenMs>:<id>") for stable recency-desc, id-desc paging */
