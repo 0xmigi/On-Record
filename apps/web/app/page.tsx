@@ -151,12 +151,12 @@ function RecycledSection({
         <span className="recycled-chev" aria-hidden="true">
           ⌄
         </span>
-        <span>
+        <span
+          title="Bots and factories redeploy the same binary under new addresses — each copy teaches nothing the original doesn't. One entry per code."
+        >
           <strong>Recycled</strong> — {groupNum(count)} redeploy
-          {count === 1 ? "" : "s"} of bytecode already on record. A fresh
-          program id doesn&apos;t mean new code: bots and factories redeploy
-          the same binary under new addresses, so each copy teaches nothing
-          the original doesn&apos;t. Collapsed to one entry per code.
+          {count === 1 ? "" : "s"} not shown because the same bytecode is
+          already on record.
         </span>
       </summary>
       <div className="recycled-list">
@@ -185,13 +185,12 @@ function ClosedSection({
         <span className="recycled-chev" aria-hidden="true">
           ⌄
         </span>
-        <span>
+        <span
+          title="Closing deallocates the code and refunds the rent — deployed-then-closed same day means disposable by design, usually a bot cashing out. The code can never run again."
+        >
           <strong>Closed</strong> — {groupNum(total)} program
-          {total === 1 ? "" : "s"} already closed by their deployer. Closing
-          deallocates the code and refunds the rent deposit, so a program
-          closed within hours of shipping was disposable by design — typically
-          a bot that did its job and cashed out. The code can never run again;
-          there&apos;s nothing left to study.
+          {total === 1 ? "" : "s"} not shown because their deployer deleted
+          them and the code can never run again.
         </span>
       </summary>
       <div className="recycled-list">
