@@ -167,9 +167,16 @@ function RecycledSection({
 }
 
 /** The graveyard: programs whose ProgramData vanished (rent reclaimed). They
- *  never occupy the main tiers — they pile up here, labelled by lifespan. */
-function ClosedSection({ items }: { items: ApiProgram[] }) {
-  if (!items.length) return null;
+ *  never occupy the main tiers — they pile up here, one entry per code
+ *  family, anchored on the family's oldest dead member. */
+function ClosedSection({
+  groups,
+  total,
+}: {
+  groups: { rep: ApiProgram; size: number }[];
+  total: number;
+}) {
+  if (!groups.length) return null;
   return (
     <details className="recycled-section closed-section">
       <summary className="recycled-summary">
@@ -177,23 +184,24 @@ function ClosedSection({ items }: { items: ApiProgram[] }) {
           ⌄
         </span>
         <span>
-          <strong>Closed</strong> — {groupNum(items.length)} program
-          {items.length === 1 ? "" : "s"} deployed and already gone (rent
-          reclaimed). The churn tail, kept out of the feed.
+          <strong>Closed</strong> — {groupNum(total)} program
+          {total === 1 ? "" : "s"} deployed and already gone (rent reclaimed).
+          The churn tail, kept out of the feed.
         </span>
       </summary>
       <div className="recycled-list">
-        {items.slice(0, 30).map((p) => {
-          const life = deriveLifecycle(p);
-          const kind = botKind(p);
+        {groups.slice(0, 30).map(({ rep, size }) => {
+          const life = deriveLifecycle(rep);
+          const kind = botKind(rep);
           return (
-            <Link href={`/p/${p.id}`} className="recycled-row" key={p.id}>
+            <Link href={`/p/${rep.id}`} className="recycled-row" key={rep.id}>
               <span className="recycled-kind rk-closed">
                 closed{life.lifespanLabel ? ` within ${life.lifespanLabel}` : ""}
               </span>
-              <span className="recycled-name">{p.name ?? truncateAddress(p.id)}</span>
+              <span className="recycled-name">{rep.name ?? truncateAddress(rep.id)}</span>
+              {size > 1 ? <span className="recycled-x">×{size} of this code</span> : null}
               {kind ? <span className="recycled-x">{BOT_LABEL[kind]}</span> : null}
-              <span className="recycled-when">deployed {relativeTime(p.deployedAt)}</span>
+              <span className="recycled-when">first deployed {relativeTime(rep.deployedAt)}</span>
             </Link>
           );
         })}
@@ -240,23 +248,44 @@ export default async function RadarPage({
   const interest = (a: ApiProgram, b: ApiProgram) =>
     (b.noveltyScore ?? 0) - (a.noveltyScore ?? 0) || recency(a, b);
 
-  const closedItems = closedPages
-    .flatMap((p) => p.items)
-    .sort(recency);
+  const familyKeyOf = (p: ApiProgram) => p.bucketId ?? p.id;
+  const closedAll = closedPages.flatMap((p) => p.items);
+  const closedByFamily = new Map<string, ApiProgram[]>();
+  for (const p of closedAll) {
+    const k = familyKeyOf(p);
+    const arr = closedByFamily.get(k);
+    if (arr) arr.push(p);
+    else closedByFamily.set(k, [p]);
+  }
 
-  /** Collapse rows sharing a copy-bucket into one card (the near-copy churn:
-   *  same code family deployed ×N under fresh ids). The FIRST sighting of the
-   *  family in the window holds its spot — later duplicates stack behind it
-   *  (the ×N chip carries the count) and never re-float the family to the
-   *  top. Families then rank on that first entry's own interest. */
+  // the graveyard, collapsed by family too: oldest closed member fronts the
+  // pile entry, the count carries its dead siblings
+  const closedItems = [...closedByFamily.values()]
+    .map((ms) => {
+      ms.sort(recency);
+      return { rep: ms[ms.length - 1], size: ms.length, newestT: ts(ms[0]) };
+    })
+    .sort((a, b) => b.newestT - a.newestT);
+
+  /** Collapse rows sharing a copy-bucket into one card. The family anchors on
+   *  its FIRST sighting in the window — CLOSED OR NOT. Later duplicates only
+   *  bump the ×N; and if the window's first entry is already closed, the whole
+   *  family belongs to the graveyard — a fresher still-alive sibling never
+   *  re-floats it into the feed. */
   const collapseBuckets = (items: ApiProgram[]): ApiProgram[] => {
     const families = new Map<string, ApiProgram>();
     for (const p of items) {
-      const k = p.bucketId ?? p.id;
+      const k = familyKeyOf(p);
       const cur = families.get(k);
       if (!cur || ts(p) < ts(cur)) families.set(k, p);
     }
-    return [...families.values()].sort(interest);
+    const out: ApiProgram[] = [];
+    for (const [k, rep] of families) {
+      const deadSibs = closedByFamily.get(k) ?? [];
+      const anchorIsClosed = deadSibs.some((c) => ts(c) < ts(rep));
+      if (!anchorIsClosed) out.push(rep);
+    }
+    return out.sort(interest);
   };
 
   // recycled = byte-clones, grouped into one entry per cluster (newest is rep)
@@ -376,7 +405,7 @@ export default async function RadarPage({
         />
       ) : null}
 
-      {isDeploy ? <ClosedSection items={closedItems} /> : null}
+      {isDeploy ? <ClosedSection groups={closedItems} total={closedAll.length} /> : null}
     </>
   );
 }
