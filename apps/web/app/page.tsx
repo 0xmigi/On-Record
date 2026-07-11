@@ -152,9 +152,11 @@ function RecycledSection({
           ⌄
         </span>
         <span>
-          <strong>Recycled</strong> — {groupNum(count)} byte-clone redeploy
-          {count === 1 ? "" : "s"} across {clusters.length} program
-          {clusters.length === 1 ? "" : "s"}. Same code, fresh ids — not new.
+          <strong>Recycled</strong> — {groupNum(count)} redeploy
+          {count === 1 ? "" : "s"} of bytecode already on record. A fresh
+          program id doesn&apos;t mean new code: bots and factories redeploy
+          the same binary under new addresses, so each copy teaches nothing
+          the original doesn&apos;t. Collapsed to one entry per code.
         </span>
       </summary>
       <div className="recycled-list">
@@ -185,8 +187,11 @@ function ClosedSection({
         </span>
         <span>
           <strong>Closed</strong> — {groupNum(total)} program
-          {total === 1 ? "" : "s"} deployed and already gone (rent reclaimed).
-          The churn tail, kept out of the feed.
+          {total === 1 ? "" : "s"} already closed by their deployer. Closing
+          deallocates the code and refunds the rent deposit, so a program
+          closed within hours of shipping was disposable by design — typically
+          a bot that did its job and cashed out. The code can never run again;
+          there&apos;s nothing left to study.
         </span>
       </summary>
       <div className="recycled-list">
