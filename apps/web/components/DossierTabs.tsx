@@ -14,7 +14,7 @@ export interface DossierTab {
 
 /** Orb-style tabs under the program title. Panels are server-rendered and passed
  *  in; the client only toggles which one is visible (all stay mounted so state
- *  and scroll position survive tab switches). */
+ *  and scroll position survive tab switches). The first tab is the default. */
 export function DossierTabs({ tabs }: { tabs: DossierTab[] }) {
   const [active, setActive] = useState(tabs[0]?.id);
   return (

@@ -16,9 +16,12 @@ export function todayKey(): string {
 }
 
 const WINDOW_HOURS: Record<string, number> = { "24h": 24, "48h": 48, "7d": 168, "30d": 720 };
+// "all" = effectively unbounded (10y) so the funnel counts everything on record.
+const ALL_HOURS = 24 * 3650;
 
-/** Map the web's window key ("24h".."30d") to hours; default 48h. */
+/** Map the web's window key ("24h".."30d", "all") to hours; default 48h. */
 export function windowHoursFor(key: string | undefined): number {
+  if (key === "all") return ALL_HOURS;
   return WINDOW_HOURS[key ?? ""] ?? 48;
 }
 

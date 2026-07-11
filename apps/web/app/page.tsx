@@ -22,15 +22,23 @@ const STREAM_FILTERS: { label: string; value: RadarType }[] = [
 ];
 
 const WINDOW_FILTERS: { label: string; value: RadarWindow }[] = [
-  { label: "TODAY", value: "today" },
+  { label: "LAST 24H", value: "today" },
   { label: "THIS WEEK", value: "week" },
   { label: "ALL", value: "all" },
 ];
 
 const WINDOW_WORD: Record<RadarWindow, string> = {
-  today: "today",
+  today: "last 24h",
   week: "this week",
   all: "all time",
+};
+
+// The header total (funnel) speaks in hour keys; keep it on the same window as
+// the tier counts so the big number and the novel/variant/recycled split agree.
+const FUNNEL_WINDOW: Record<RadarWindow, string> = {
+  today: "24h",
+  week: "7d",
+  all: "all",
 };
 
 function radarHref(type: RadarType, window: RadarWindow): string {
@@ -175,7 +183,7 @@ export default async function RadarPage({
     isDeploy ? fetchRadar({ type, window, band: "variant", limit: 100 }) : Promise.resolve(EMPTY),
     isDeploy ? fetchRadar({ type, window, band: "clone", limit: 100 }) : Promise.resolve(EMPTY),
     !isDeploy ? fetchRadar({ type, window, limit: 50 }) : Promise.resolve(EMPTY),
-    fetchFunnel(),
+    fetchFunnel(FUNNEL_WINDOW[window]),
   ]);
 
   const ts = (p: ApiProgram) => (p.deployedAt ? Date.parse(p.deployedAt) : 0);
