@@ -86,6 +86,27 @@ export default async function ProgramDossierPage({
   const familyNewest = family ? family.members[0] : null;
   const familyClosed = family ? family.members.filter((m) => m.closed).length : 0;
 
+  // one timeline: this program's own loader events + sibling deploys of the
+  // same code, merged newest-first
+  type TimelineRow =
+    | { kind: "event"; t: number; ev: ApiProgramDetail["events"][number] }
+    | { kind: "sibling"; t: number; m: NonNullable<typeof family>["members"][number] };
+  const timeline: TimelineRow[] = [
+    ...program.events.map((ev) => ({
+      kind: "event" as const,
+      t: ev.blockTime ? Date.parse(ev.blockTime) : 0,
+      ev,
+    })),
+    ...(family?.members ?? [])
+      .filter((m) => m.programId !== program.id)
+      .slice(0, 20)
+      .map((m) => ({
+        kind: "sibling" as const,
+        t: m.deployedAt ? Date.parse(m.deployedAt) : 0,
+        m,
+      })),
+  ].sort((a, b) => b.t - a.t);
+
   const mutability =
     program.authorityClass === "none"
       ? "immutable (frozen)"
@@ -514,14 +535,17 @@ export default async function ProgramDossierPage({
         <>
           <SectionHeader
             title="Code family"
-            info="Other deploys of (nearly) this exact bytecode — same code under fresh ids. The deploy cadence IS the signal: a factory redeploys and closes; a fork ships once."
+            info="Other deploys of (nearly) this exact bytecode — same code under fresh ids. The deploy cadence IS the signal: a factory redeploys and closes; a fork ships once. Sibling deploys appear in the record below."
           />
           <div className="facts-panel">
             <Row label="First seen">
               {familyOldest?.deployedAt ? relativeTime(familyOldest.deployedAt) : "—"}
               <span className="cell-dim">
-                {" "}· {family.memberCount} deploys since · newest{" "}
-                {familyNewest?.deployedAt ? relativeTime(familyNewest.deployedAt) : "—"}
+                {" "}· {family.members.length} deploys tracked
+                {family.memberCount > family.members.length
+                  ? ` (${family.memberCount} recorded)`
+                  : ""}{" "}
+                · newest {familyNewest?.deployedAt ? relativeTime(familyNewest.deployedAt) : "—"}
               </span>
             </Row>
             {familyClosed > 0 ? (
@@ -531,66 +555,67 @@ export default async function ProgramDossierPage({
               </Row>
             ) : null}
           </div>
-          <details className="recycled-section family-section">
-            <summary className="recycled-summary">
-              <span className="recycled-chev" aria-hidden="true">
-                ⌄
-              </span>
-              <span>every deploy of this code, newest first</span>
-            </summary>
-            <div className="recycled-list">
-              {family.members.slice(0, 30).map((m) => (
-                <Link
-                  href={`/p/${m.programId}`}
-                  className="recycled-row"
-                  key={m.programId}
-                  aria-current={m.programId === program.id ? "page" : undefined}
-                >
-                  <span className="recycled-name">
-                    {m.name ?? truncateAddress(m.programId)}
-                    {m.programId === program.id ? (
-                      <span className="cell-dim"> · this one</span>
-                    ) : null}
-                  </span>
-                  {m.closed ? <span className="recycled-kind rk-closed">closed</span> : null}
-                  <span className="recycled-when">
-                    {m.deployedAt ? relativeTime(m.deployedAt) : "—"}
-                  </span>
-                </Link>
-              ))}
-            </div>
-          </details>
         </>
       ) : null}
-      {program.events.length > 0 ? (
-        <div className="table-scroll" style={{ marginTop: 12 }}>
-          <table className="record-table">
-            <thead>
-              <tr>
-                <th scope="col">Event</th>
-                <th scope="col">When</th>
-                <th scope="col">Slot</th>
-                <th scope="col">Signature</th>
-              </tr>
-            </thead>
-            <tbody>
-              {program.events.map((ev) => (
-                <tr key={ev.id}>
-                  <td>
-                    <span className={`evt-tag evt-${ev.type}`}>{EVENT_LABELS[ev.type]}</span>
-                  </td>
-                  <td className="cell-dim">
-                    {ev.blockTime ? relativeTime(ev.blockTime) : "—"}
-                  </td>
-                  <td>{ev.slot.toLocaleString("en-US")}</td>
-                  <td>
-                    <Ext href={orbTx(ev.signature)} text={truncateAddress(ev.signature)} />
-                  </td>
+      {timeline.length > 0 ? (
+        <>
+          <SectionHeader
+            title="The record"
+            info="One timeline: this program's loader events, plus every sibling deploy of the same code."
+          />
+          <div className="table-scroll">
+            <table className="record-table">
+              <thead>
+                <tr>
+                  <th scope="col">Event</th>
+                  <th scope="col">When</th>
+                  <th scope="col">Detail</th>
+                  <th scope="col">Receipt</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+              </thead>
+              <tbody>
+                {timeline.map((row) =>
+                  row.kind === "event" ? (
+                    <tr key={row.ev.id}>
+                      <td>
+                        <span className={`evt-tag evt-${row.ev.type}`}>
+                          {EVENT_LABELS[row.ev.type]}
+                        </span>
+                      </td>
+                      <td className="cell-dim">
+                        {row.ev.blockTime ? relativeTime(row.ev.blockTime) : "—"}
+                      </td>
+                      <td>slot {row.ev.slot.toLocaleString("en-US")}</td>
+                      <td>
+                        <Ext href={orbTx(row.ev.signature)} text={truncateAddress(row.ev.signature)} />
+                      </td>
+                    </tr>
+                  ) : (
+                    <tr key={row.m.programId} className="record-sibling">
+                      <td>
+                        <span className="evt-tag evt-sibling">SIBLING DEPLOY</span>
+                      </td>
+                      <td className="cell-dim">
+                        {row.m.deployedAt ? relativeTime(row.m.deployedAt) : "—"}
+                      </td>
+                      <td>
+                        <Link href={`/p/${row.m.programId}`} className="neighbor-addr">
+                          {row.m.name ?? truncateAddress(row.m.programId)}
+                        </Link>
+                        {row.m.closed ? (
+                          <span className="recycled-kind rk-closed"> closed</span>
+                        ) : null}
+                      </td>
+                      <td>
+                        <span className="cell-dim">same code, fresh id</span>
+                      </td>
+                    </tr>
+                  ),
+                )}
+              </tbody>
+            </table>
+          </div>
+        </>
       ) : null}
     </>
   );
