@@ -43,7 +43,20 @@ export async function generateMetadata({
   const { id } = await params;
   const program = await fetchProgram(id);
   const label = program?.name ?? truncateAddress(id);
-  return { title: `${label} — dossier` };
+  const description = program
+    ? `${program.deployType === "upgrade" ? "Upgraded" : "New"} Solana program on the radar — ${
+        program.framework && program.framework !== "unknown" ? `${program.framework}, ` : ""
+      }${program.sizeBytes ? formatBytes(program.sizeBytes) : "size unknown"}${
+        program.deployCostSol != null ? `, ${program.deployCostSol} SOL locked` : ""
+      }. See its shape: novelty, activity, openness, cost, control.`
+    : "Program dossier on On Record — the novel-program radar for Solana.";
+  return {
+    title: `${label} — dossier`,
+    description,
+    // the file-convention og image is picked up automatically; the twitter
+    // card type must be explicit or X falls back to a small summary tile
+    twitter: { card: "summary_large_image" },
+  };
 }
 
 /** one label/value row */
