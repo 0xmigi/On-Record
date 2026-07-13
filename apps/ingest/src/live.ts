@@ -32,5 +32,19 @@ if (process.env.LIVE_POLL_ENABLED !== "0") {
   logger.info("onrecord live: poller disabled (LIVE_POLL_ENABLED=0)");
 }
 
+// Devnet lineage feed (ROADMAP §1) — opt-in via env. Hourly is plenty: a
+// devnet lineage only has to be on record before its mainnet debut, and the
+// census measured ~300 programs touched/day (≈60–90K credits/mo all-in).
+if (process.env.DEVNET_POLL_ENABLED === "1") {
+  startPolling({
+    network: "devnet",
+    intervalMs: Number(process.env.DEVNET_POLL_INTERVAL_MS ?? 3_600_000),
+    bootstrapHours: Number(process.env.DEVNET_POLL_BOOTSTRAP_HOURS ?? 2),
+    max: Number(process.env.DEVNET_POLL_MAX ?? 400),
+  });
+} else {
+  logger.info("onrecord live: devnet poller off (set DEVNET_POLL_ENABLED=1 to start)");
+}
+
 startCron();
 logger.info("onrecord live: running");

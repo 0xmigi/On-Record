@@ -105,7 +105,9 @@ export async function pollDeploys(opts: PollOptions): Promise<PollResult> {
       await fingerprintStage(eventId);
       await identifyStage(eventId);
       await classifyStage(eventId);
-      await scoreStage(eventId);
+      // devnet stops at classify (SPEC §3): no interest score, and no funding
+      // trail — faucet SOL tells you nothing and the RPC walk isn't free
+      if (network !== "devnet") await scoreStage(eventId);
       ingested++;
       logger.info({ programId, type, slot: h.deployedSlot }, "poll: ingested program");
     } catch (err) {

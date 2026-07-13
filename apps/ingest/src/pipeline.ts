@@ -204,9 +204,11 @@ export async function identifyStage(eventId: string): Promise<void> {
   const entityByAuthority =
     !entity && event.authorityAfter ? await findEntityForAuthority(event.authorityAfter) : null;
 
-  const verification = programId
-    ? await checkVerification(programId, { bustCache: event.type === "upgrade" })
-    : { verified: false, repoUrl: null, commit: null };
+  // verified builds are a mainnet registry concept — skip the API call on devnet
+  const verification =
+    programId && network !== "devnet"
+      ? await checkVerification(programId, { bustCache: event.type === "upgrade" })
+      : { verified: false, repoUrl: null, commit: null };
 
   // exact-code lineage: does this bytecode match a verified build of some
   // OTHER program? (Self-matches are just the program's own verification.)
@@ -240,7 +242,8 @@ export async function identifyStage(eventId: string): Promise<void> {
 
     // Squads governance hides behind a vault PDA (classified "program" above);
     // the deploy tx itself names the multisig — decode its threshold.
-    if (dh.lastSignature && (authorityClass === "program" || authorityClass === "squads")) {
+    // Devnet skips it: nobody runs production governance on faucet SOL.
+    if (dh.lastSignature && network !== "devnet" && (authorityClass === "program" || authorityClass === "squads")) {
       multisig = await inspectSquadsAuthority(network, dh.lastSignature);
       if (multisig) authorityClass = "squads";
     }
@@ -366,6 +369,41 @@ export async function classifyStage(eventId: string): Promise<void> {
 
     if (classification.watchlistHit) {
       await markWatchlistMatched(classification.watchlistHit.watchlistId, eventId);
+
+      // incubation record (ROADMAP §1): this mainnet program was seen cooking
+      // on devnet first — stash how long and how much iteration it saw there.
+      // matchWatchlist only fires on mainnet, so this never runs for devnet.
+      const wl = await db
+        .select()
+        .from(schema.watchlist)
+        .where(eq(schema.watchlist.id, classification.watchlistHit.watchlistId));
+      if (wl[0]) {
+        const debutMs = (event.blockTime ?? new Date()).getTime();
+        const incubationDays =
+          Math.round(Math.max(0, (debutMs - wl[0].firstSeenAt.getTime()) / 86_400_000) * 10) / 10;
+        // true iteration count = devnet deploy/upgrade events for the sighted
+        // devnet program id; falls back to the fingerprint's redeploy counter
+        // for seeded rows with no event history
+        let devnetIterations = wl[0].deployCount;
+        if (wl[0].programId) {
+          const n = await db
+            .select({ n: sql<number>`count(*)` })
+            .from(schema.events)
+            .where(
+              and(eq(schema.events.network, "devnet"), eq(schema.events.programId, wl[0].programId)),
+            );
+          devnetIterations = Math.max(devnetIterations, Number(n[0]?.n ?? 0));
+        }
+        await mergeSubjectFacts(event.programId, {
+          incubation: {
+            devnetProgramId: wl[0].programId,
+            firstDevnetAt: wl[0].firstSeenAt.toISOString(),
+            incubationDays,
+            devnetIterations,
+            matchedOn: classification.watchlistHit.matchedOn,
+          },
+        });
+      }
     }
 
     // Devnet is input only (SPEC §3): novel devnet fingerprints go to the

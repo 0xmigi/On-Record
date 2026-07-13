@@ -23,7 +23,26 @@ verification failed" — fix with `ssh-keyscan ssh.railway.com >> ~/.ssh/known_h
 
 ## 1. Devnet radar + devnet→mainnet conversion rate
 
-**ON HOLD by founder decision** — wait until the data volume feels manageable.
+**GREEN-LIT 2026-07-13** after the Phase-0 census (`scripts/devnet-census.mjs`
+→ `data/devnet-census.json`, read-only, 46 credits) overturned the volume
+fear:
+- **~280–310 programs touched/day** (7d cohort 1,958) — only ~2× mainnet's
+  ~157/day, NOT the feared flood. 402,682 ProgramData accounts total
+  (historical accumulation; never backfill it all).
+- **No farms**: 1,249 distinct authorities in the 7d cohort of 1,958; top-10
+  authorities hold just 6%. Devnet churn is organic devs, not bots.
+- **Programs are big**: 85% of the 7d cohort >100KB (1,070 in 300KB–1MB).
+  Real projects iterating — the incubation story is real.
+- Cost plan (Helius free, 1M credits/mo): poll devnet HOURLY (freshness need
+  is low — lineage only has to land before its mainnet debut) using
+  getProgramAccountsV2 (1 cr/10k accounts vs 10 cr for V1) ≈ ~45 cr/cycle
+  ≈ 33K/mo; ~300 new programs/day × 2–3 cr ≈ 27K/mo. **Total ≈ 60–90K/mo,
+  under 10% of the plan.** Seed the watchlist by backfilling the 30d cohort
+  (6,214 programs ≈ 15K credits, one-off). Switch the MAINNET enumerations
+  to V2 too (10× cheaper).
+- Census caveat: header slot = last-deploy slot, so "touched/day" counts a
+  program once however many times it upgraded — a lower bound on events,
+  but the right number for enrichment-cost sizing.
 
 The pipeline is ~70% plumbed: `network` columns everywhere, devnet webhook
 route registered, classify already stops devnet at the watchlist ("became

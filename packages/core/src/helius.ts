@@ -146,27 +146,62 @@ export async function getSlot(network: Network): Promise<number> {
   return rpc<number>(network, "getSlot", [{ commitment: "confirmed" }]);
 }
 
+/** Unix seconds a slot was produced, or null for skipped/pruned slots. */
+export async function getBlockTime(network: Network, slot: number): Promise<number | null> {
+  try {
+    return await rpc<number | null>(network, "getBlockTime", [slot]);
+  } catch {
+    return null; // skipped slot — callers fall back to a default clock
+  }
+}
+
 export interface ProgramAccountRef {
   programId: string;
   programDataAddress: string;
+}
+
+type RawProgramAccount = { pubkey: string; account: { data: [string, string] } };
+
+/** Loader account enumeration, strategy per network (measured 2026-07-13):
+ *  - mainnet: monolithic V1 call. The result is small (~19k ProgramData) and
+ *    V2 would scan-page across the loader's ENTIRE owned set — millions of
+ *    leftover deploy buffers — taking minutes to return almost nothing.
+ *  - devnet: paginated V2 (1 credit / page). ~400k ProgramData accounts;
+ *    the V1 one-shot response would be enormous, while the owned set is
+ *    nearly all matches so V2 finishes in ~41 pages.
+ */
+async function programAccountsPaged(
+  network: Network,
+  config: Record<string, unknown>,
+): Promise<RawProgramAccount[]> {
+  if (network === "mainnet") {
+    return rpc<RawProgramAccount[]>(network, "getProgramAccounts", [LOADER_PROGRAM_ID, config]);
+  }
+  const out: RawProgramAccount[] = [];
+  let paginationKey: string | null = null;
+  do {
+    const page: Record<string, unknown> = { ...config, limit: 10_000 };
+    if (paginationKey) page.paginationKey = paginationKey;
+    const result: { accounts?: RawProgramAccount[]; paginationKey?: string | null } = await rpc(
+      network,
+      "getProgramAccountsV2",
+      [LOADER_PROGRAM_ID, page],
+    );
+    out.push(...(result.accounts ?? []));
+    paginationKey = result.paginationKey ?? null;
+  } while (paginationKey);
+  return out;
 }
 
 /** Enumerate Program accounts (loader enum tag 2, 36 bytes: tag + ProgramData
  *  pointer). Gives the programId ↔ ProgramData mapping the backfill joins
  *  against the ProgramData slot headers. */
 export async function enumerateProgramAccounts(network: Network): Promise<ProgramAccountRef[]> {
-  const result = await rpc<{ pubkey: string; account: { data: [string, string] } }[]>(
-    network,
-    "getProgramAccounts",
-    [
-      LOADER_PROGRAM_ID,
-      {
-        encoding: "base64",
-        filters: [{ dataSize: 36 }], // Program account is exactly 36 bytes
-        commitment: "confirmed",
-      },
-    ],
-  );
+  const result = await programAccountsPaged(network, {
+    encoding: "base64",
+    filters: [{ dataSize: 36 }], // Program account is exactly 36 bytes
+    commitment: "confirmed",
+  });
   const out: ProgramAccountRef[] = [];
   for (const row of result) {
     const buf = Buffer.from(row.account.data[0], "base64");
@@ -185,20 +220,13 @@ export async function enumerateProgramAccounts(network: Network): Promise<Progra
  *  load) so it can't drift and doesn't trip the base58Encode temporal dead zone. */
 export async function enumerateProgramData(network: Network): Promise<ProgramDataHeader[]> {
   const programDataTag = base58Encode(Buffer.from([3, 0, 0, 0]));
-  const result = await rpc<{ pubkey: string; account: { data: [string, string] } }[]>(
-    network,
-    "getProgramAccounts",
-    [
-      LOADER_PROGRAM_ID,
-      {
-        encoding: "base64",
-        // ProgramData variant tag (enum 3) at offset 0, header-only slice
-        filters: [{ memcmp: { offset: 0, bytes: programDataTag } }],
-        dataSlice: { offset: 0, length: PROGRAMDATA_HEADER_LEN },
-        commitment: "confirmed",
-      },
-    ],
-  );
+  const result = await programAccountsPaged(network, {
+    encoding: "base64",
+    // ProgramData variant tag (enum 3) at offset 0, header-only slice
+    filters: [{ memcmp: { offset: 0, bytes: programDataTag } }],
+    dataSlice: { offset: 0, length: PROGRAMDATA_HEADER_LEN },
+    commitment: "confirmed",
+  });
   const out: ProgramDataHeader[] = [];
   for (const row of result) {
     const buf = Buffer.from(row.account.data[0], "base64");
