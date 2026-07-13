@@ -44,6 +44,7 @@ export interface Interest {
   score: number;
   components: Record<string, number>;
   penalty: number;
+  sizePrior: number;
   computedAt: string;
 }
 
@@ -108,10 +109,24 @@ export function computeInterest(row: SubjectRow, familySize = 1): Interest {
     row.noveltyBand === "clone" && (row.profile?.integrations ?? []).includes("Pump.fun");
   if (isSniper) penalty = Math.min(penalty, 0.05);
 
+  // size prior (measured 2026-07-13, ROADMAP §4): confident bots cluster hard
+  // under 50KB (77%, template spike at 32,377 bytes) while named programs
+  // almost never live there (2%). A discount — never a gate — on small
+  // ANONYMOUS code only; a recovered name clears it, and Pinocchio/native are
+  // exempt because tiny is idiomatic there (the 22–71KB real programs).
+  const fw = row.profile?.framework;
+  let sizePrior = 1;
+  if (!row.name && row.sizeBytes != null && fw !== "pinocchio" && fw !== "native") {
+    if (row.sizeBytes < 25_600) sizePrior = 0.55;
+    else if (row.sizeBytes < 51_200) sizePrior = 0.7;
+    else if (row.sizeBytes < 102_400) sizePrior = 0.85;
+  }
+
   return {
-    score: Math.round(base * penalty * 10_000) / 10_000,
+    score: Math.round(base * penalty * sizePrior * 10_000) / 10_000,
     components,
     penalty,
+    sizePrior,
     computedAt: new Date().toISOString(),
   };
 }

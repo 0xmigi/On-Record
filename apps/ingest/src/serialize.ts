@@ -82,6 +82,7 @@ export function serializeProgram(
     activity?: { t: number; c: number }[];
     momentum?: { txns24h: number; growth: number | null };
     closedAt?: string;
+    interest?: ApiProgram["interest"];
   };
   return {
     id: row.id,
@@ -134,6 +135,7 @@ export function serializeProgram(
     momentum: facts.momentum
       ? { txns24h: facts.momentum.txns24h, growth: facts.momentum.growth }
       : null,
+    interest: facts.interest ?? null,
   };
 }
 

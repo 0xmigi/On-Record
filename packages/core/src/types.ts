@@ -266,6 +266,16 @@ export interface ApiProgram {
   /** hourly tx-count buckets, oldest→newest (radar: last 48h; detail: 7d) */
   activity: ApiActivityPoint[] | null;
   momentum: { txns24h: number; growth: number | null } | null;
+  /** interest-rank breakdown (interest.ts) — drives the "why is this here"
+   *  line; components are already weight-scaled contributions */
+  interest: ApiInterest | null;
+}
+
+export interface ApiInterest {
+  score: number;
+  components: Record<string, number>;
+  penalty: number;
+  sizePrior?: number;
 }
 
 export interface ApiActivityPoint {

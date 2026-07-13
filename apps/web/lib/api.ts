@@ -86,6 +86,14 @@ export interface ApiProgram {
   // sampled on-chain activity (hourly tx buckets; radar 48h, dossier 7d)
   activity: { t: number; c: number }[] | null;
   momentum: { txns24h: number; growth: number | null } | null;
+  // interest-rank breakdown — drives the "why is this here" line; components
+  // are weight-scaled contributions (absent on rows scored before it shipped)
+  interest: {
+    score: number;
+    components: Record<string, number>;
+    penalty: number;
+    sizePrior?: number;
+  } | null;
 }
 
 export interface ApiRawEvent {
