@@ -35,6 +35,12 @@ real" matching to mainnet works). Missing:
 - the headline stat: **% of devnet deploys that reach mainnet** (match by
   TLSH, not authority). No public source for this number exists anywhere —
   it's a genuine first and the strongest pitch artifact.
+- per-program **incubation stats** (founder idea 2026-07-13): once a mainnet
+  program TLSH-matches a devnet lineage, surface (a) incubation time — first
+  devnet sighting → mainnet deploy — and (b) iteration energy — how many
+  devnet upgrades/redeploys the lineage saw before the mainnet push. Both
+  derivable from devnet events + the TLSH match; candidate card/dossier
+  field ("incubated 3w · 14 devnet iterations").
 
 Helius free plan covers devnet RPC; devnet is noisier (expect ≫ mainnet's
 ~150 deploys/day), so keep `MOMENTUM_MAX_PROGRAMS`-style caps from day one.
@@ -76,9 +82,15 @@ breakdown → `facts.interest`. Refreshed at score-stage, momentum tick,
 reclassify, close-sweep.
 
 Open items:
-- **"Why is this here" one-liner on cards** (VISION §5a's real payoff) — the
-  components are already stored per program; render the dominant ones as a
-  sentence. No new data needed.
+- ❌ **"Why is this here" one-liner** built 2026-07-13, then REMOVED by
+  founder decision before shipping: templated text on cards read as
+  unreliable "generative" copy and added visual noise. The plumbing stays
+  (`facts.interest` rides `ApiProgram.interest`) for dossier-side
+  explainability later. Don't re-add card blurbs without a new decision.
+- ✅ **Size prior** shipped 2026-07-13 (in `computeInterest`): unnamed +
+  non-pinocchio/native + <25KB ×0.55 / <50KB ×0.7 / <100KB ×0.85, recorded
+  as `interest.sizePrior`. Existing rows pick it up on their next refresh
+  (momentum tick / reclassify / close-sweep).
 - Watch for wrong-feeling rankings; each is explainable from
   `facts.interest.components` — tune, don't guess.
 - Interest-ordered pages have no cursor (recency sort keeps it); add
@@ -93,6 +105,21 @@ Open items:
   +anchor, with framework=native/pinocchio exempt. NOTE: size ≈ deploy cost
   exactly (rent is linear in bytes) — cost and size are one axis; don't add
   size to the pentagon alongside cost.
+
+## 4b. GitHub search by program id (founder idea 2026-07-13 — discuss)
+
+Search GitHub for the program id itself to find the source repo of programs
+the binary probe couldn't name. Ids get committed constantly: `declare_id!()`
+in lib.rs, `Anchor.toml`, IDL json, READMEs, SDK configs. Mechanics:
+GitHub code-search API (`/search/code?q="<program-id>"`), needs an auth
+token, tight rate limits (~10 searches/min) → run as a slow enrichment pass
+for unnamed programs only, cache misses. Label matches **unverified match**
+— clearly distinct from OtterSec verified builds (the bytecode isn't proven
+to come from that repo; anyone can commit any id). Fits the mission (max
+information on new programs, "connect other APIs" is fine per founder) and
+complements the existing identity chain: binary strings → PMP → security.txt
+→ this. Devnet likely first, but this is cheap to prototype: try the top ~20
+unnamed radar programs by hand and measure the hit rate before building.
 
 ## 5. Smaller known gaps
 

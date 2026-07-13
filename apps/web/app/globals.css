@@ -1388,10 +1388,48 @@ a.copy-addr-text:hover {
 .radar-sub {
   display: flex;
   align-items: center;
-  gap: 8px;
+  flex-wrap: wrap;
+  gap: 4px 12px;
   font-family: var(--font-mono);
   font-size: 11px;
   color: var(--ink-faint);
+}
+
+/* rows under the title indent to align with the name text (18px avatar + 10px gap) */
+.radar-indent {
+  padding-left: 28px;
+}
+/* history row: deployed-when first, then upgrade count and badges.
+   Hugs the title (identity + history read as one group); the specs row
+   below gets the air, so the card has two visual blocks, not three lines */
+.radar-ident {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px 10px;
+  margin-top: -3px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--ink-faint);
+}
+.radar-row .radar-facts {
+  margin-top: 4px;
+}
+/* link icons at the bottom of the card: muted, ink on hover */
+.radar-links {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+.radar-links a {
+  display: inline-flex;
+  color: var(--ink-faint);
+}
+.radar-links a:hover {
+  color: var(--ink);
+}
+.radar-links svg {
+  display: block;
 }
 
 .radar-dot {

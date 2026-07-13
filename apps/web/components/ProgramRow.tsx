@@ -3,7 +3,7 @@ import { CopyAddress } from "@/components/CopyAddress";
 import { ProgramAvatar } from "@/components/ProgramAvatar";
 import { SignalHex } from "@/components/SignalHex";
 import { Sparkline } from "@/components/Sparkline";
-import { CATEGORY_LABELS, type ApiProgram } from "@/lib/api";
+import type { ApiProgram } from "@/lib/api";
 import { deriveSignals } from "@/lib/signals";
 import { botKind, BOT_LABEL } from "@/lib/lifecycle";
 import { formatBytes, relativeTime, truncateAddress } from "@/lib/format";
@@ -16,6 +16,30 @@ const UBIQUITOUS_INTEGRATIONS = new Set(["SPL Token", "Token-2022", "System", "A
  *  counter caps at full pages, so a round thousand means "at least"). */
 function txnCount(n: number): string {
   return n >= 1000 && n % 1000 === 0 ? `${n.toLocaleString("en-US")}+` : n.toLocaleString("en-US");
+}
+
+/* link icons (bottom of card): globe / X / GitHub, muted until hover */
+function GlobeIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true">
+      <circle cx="12" cy="12" r="9" />
+      <path d="M3 12h18M12 3c2.8 2.6 4.2 5.6 4.2 9S14.8 18.4 12 21c-2.8-2.6-4.2-5.6-4.2-9S9.2 5.6 12 3z" />
+    </svg>
+  );
+}
+function XIcon() {
+  return (
+    <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+      <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z" />
+    </svg>
+  );
+}
+function GitHubIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+      <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27s1.36.09 2 .27c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8z" />
+    </svg>
+  );
 }
 
 /** One fact chip in the compact facts row — label muted, value inked. */
@@ -41,6 +65,12 @@ export function ProgramRow({ program }: { program: ApiProgram }) {
     (i) => !UBIQUITOUS_INTEGRATIONS.has(i),
   );
   const txns24h = program.momentum?.txns24h ?? null;
+  const isFork =
+    program.band === "variant" &&
+    Boolean(program.nearest?.isReference) &&
+    (program.nearest?.similarity ?? 0) >= 0.6;
+  const resembles =
+    Boolean(program.nearest?.isReference) && (program.nearest?.similarity ?? 0) >= 0.4;
 
   return (
     <article className="radar-row">
@@ -50,6 +80,8 @@ export function ProgramRow({ program }: { program: ApiProgram }) {
         aria-label={`Open ${program.name ?? truncateAddress(program.id)}`}
       />
       <div className="radar-main">
+        {/* title: avatar + name + id + copy on ONE line, id muted next to
+            the bold name (original layout — founder decision, keep it) */}
         <div className={`radar-id-line${program.name ? " has-name" : ""}`}>
           <ProgramAvatar program={program} />
           {program.name ? (
@@ -61,39 +93,31 @@ export function ProgramRow({ program }: { program: ApiProgram }) {
             href={`/p/${program.id}`}
             className="radar-addr"
           />
-          {program.website ? (
-            <a
-              className="id-link"
-              href={program.website}
-              target="_blank"
-              rel="noopener noreferrer"
-              title={program.website}
-            >
-              site ↗
-            </a>
+          {program.website || program.social || program.repoUrl ? (
+            <span className="radar-links">
+              {program.website ? (
+                <a href={program.website} target="_blank" rel="noopener noreferrer" title={program.website} aria-label="Website">
+                  <GlobeIcon />
+                </a>
+              ) : null}
+              {program.social ? (
+                <a href={program.social} target="_blank" rel="noopener noreferrer" title={program.social} aria-label="X profile">
+                  <XIcon />
+                </a>
+              ) : null}
+              {program.repoUrl ? (
+                <a href={program.repoUrl} target="_blank" rel="noopener noreferrer" title={program.repoUrl} aria-label="GitHub repo">
+                  <GitHubIcon />
+                </a>
+              ) : null}
+            </span>
           ) : null}
-          {program.repoUrl ? (
-            <a
-              className="id-link"
-              href={program.repoUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              title={program.repoUrl}
-            >
-              github ↗
-            </a>
-          ) : null}
-          {program.social ? (
-            <a
-              className="id-link"
-              href={program.social}
-              target="_blank"
-              rel="noopener noreferrer"
-              title={program.social}
-            >
-              x ↗
-            </a>
-          ) : null}
+        </div>
+
+        {/* history row: when it arrived, then what's happened since —
+            "deployed" leads so every card's second line starts the same way */}
+        <div className="radar-ident radar-indent">
+          <span className="radar-when">deployed {relativeTime(program.deployedAt)}</span>
           {program.upgradeCount > 0 ? (
             <span className="cluster-note" title="Times this program has been re-deployed">
               upgraded ×{program.upgradeCount}
@@ -105,11 +129,11 @@ export function ProgramRow({ program }: { program: ApiProgram }) {
             </span>
           ) : null}
           {program.verified ? (
-            <span className="verified-check" title="Verified build">
+            <span className="verified-check" title="Verified build — reproduces from public source; the dossier links the repo">
               ✓ verified
             </span>
           ) : null}
-          {program.band === "variant" && program.nearest?.isReference && program.nearest.similarity >= 0.6 ? (
+          {isFork && program.nearest ? (
             <span className="fork-chip" title={`${Math.round(program.nearest.similarity * 100)}% code match to ${program.nearest.name}`}>
               fork of {program.nearest.name}
             </span>
@@ -140,29 +164,24 @@ export function ProgramRow({ program }: { program: ApiProgram }) {
           ) : null}
         </div>
 
-        <div className="radar-sub">
-          <span>deployed {relativeTime(program.deployedAt)}</span>
-        </div>
-
-        <div className="radar-facts">
-          <span className={`cat-chip cat-${program.category}`}>
-            {CATEGORY_LABELS[program.category]}
-          </span>
+        {/* specs row, most-common first: size (always) · cost · built with ·
+            talks to · resembles · auth */}
+        <div className="radar-facts radar-indent">
+          <Fact label="size" value={formatBytes(program.sizeBytes)} />
+          {program.deployCostSol != null ? (
+            <Fact label="cost" value={`${program.deployCostSol} SOL`} />
+          ) : null}
           {program.framework && program.framework !== "unknown" ? (
-            <span className="fw-chip">{program.framework}</span>
+            <Fact label="built with" value={program.framework} />
           ) : null}
           {notableIntegrations.length > 0 ? (
             <Fact label="talks to" value={notableIntegrations.slice(0, 2).join(", ")} />
           ) : null}
-          {program.nearest?.isReference && program.nearest.similarity >= 0.4 ? (
+          {resembles && program.nearest ? (
             <Fact
               label="resembles"
               value={`${program.nearest.name} ${Math.round(program.nearest.similarity * 100)}%`}
             />
-          ) : null}
-          <Fact label="size" value={formatBytes(program.sizeBytes)} />
-          {program.deployCostSol != null ? (
-            <Fact label="cost" value={`${program.deployCostSol} SOL`} />
           ) : null}
           {program.multisig ? (
             <Fact
@@ -175,10 +194,6 @@ export function ProgramRow({ program }: { program: ApiProgram }) {
             />
           ) : program.authorityClass === "none" ? (
             <Fact label="auth" value="immutable" />
-          ) : null}
-          {program.deployerFundingSource &&
-          !["fresh", "unknown"].includes(program.deployerFundingSource) ? (
-            <Fact label="funded via" value={program.deployerFundingSource} />
           ) : null}
         </div>
       </div>
