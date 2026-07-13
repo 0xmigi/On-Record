@@ -1194,7 +1194,21 @@ a.copy-addr-text:hover {
   align-items: flex-end;
   gap: 8px 24px;
   border-bottom: 1px solid var(--border);
+  margin-top: 18px;
   margin-bottom: 6px;
+}
+@media (max-width: 720px) {
+  /* stack the stream tabs and the window tabs as two clean lines instead of
+     letting them collide on one */
+  .radar-controls {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 2px;
+    margin-top: 22px;
+  }
+  .radar-controls .filter-row-end {
+    margin-left: 0;
+  }
 }
 
 .radar-controls .filter-row {
@@ -1912,48 +1926,125 @@ a.copy-addr-text:hover {
   border-color: var(--ink);
 }
 
-/* ---- flow area chart ---- */
+/* ---- stats page cards ---- */
+.stat-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+  margin-top: 14px;
+}
+.stat-card {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--card);
+  padding: 14px 16px 16px;
+  min-width: 0;
+}
+.stat-card-wide {
+  margin-top: 14px;
+}
+.stat-card .section-header {
+  margin: 0 0 12px;
+  font-size: 13px;
+}
+@media (max-width: 720px) {
+  .stat-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* ---- deploys-over-time stacked bars ----
+   series colors validated (dataviz six-checks) against both surfaces */
+:root {
+  --chart-deploy: #e8432c;
+  --chart-upgrade: #4a71c9;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --chart-deploy: #f0563e;
+    --chart-upgrade: #6c92e3;
+  }
+}
 .flow-chart {
   margin-top: 4px;
 }
-.flow-svg {
-  width: 100%;
-  height: auto;
-  display: block;
-  overflow: visible;
-}
-.flow-area {
-  fill: var(--accent);
-  opacity: 0.1;
-}
-.flow-line {
-  fill: none;
-  stroke: var(--accent);
-  stroke-width: 2;
-  stroke-linejoin: round;
-  stroke-linecap: round;
-}
-.flow-dot {
-  fill: var(--card);
-  stroke: var(--accent);
-  stroke-width: 2;
-}
-.flow-dot-now {
-  fill: var(--accent);
-  stroke: var(--accent);
-}
-.flow-val {
-  font-family: var(--font-mono);
-  font-size: 12px;
-  fill: var(--ink-soft);
-}
-.flow-axis {
+.flow-legend {
   display: flex;
-  justify-content: space-between;
-  margin-top: 4px;
+  gap: 16px;
+  margin-bottom: 6px;
   font-family: var(--font-mono);
   font-size: 11px;
+  color: var(--ink-soft);
+}
+.flow-key {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.flow-swatch {
+  width: 10px;
+  height: 10px;
+  border-radius: 2px;
+  flex-shrink: 0;
+}
+.flow-swatch-deploy {
+  background: var(--chart-deploy);
+}
+.flow-swatch-upgrade {
+  background: var(--chart-upgrade);
+}
+.flow-plot {
+  position: relative;
+}
+.flow-plot svg {
+  display: block;
+}
+.flow-bar-deploy {
+  fill: var(--chart-deploy);
+}
+.flow-bar-upgrade {
+  fill: var(--chart-upgrade);
+}
+.flow-grid {
+  stroke: var(--border);
+  stroke-width: 1;
+}
+.flow-tick {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  fill: var(--ink-faint);
+}
+.flow-hit {
+  fill: transparent;
+}
+.flow-hover-line {
+  stroke: var(--border-strong);
+  stroke-width: 1;
+}
+.flow-tip {
+  position: absolute;
+  top: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 6px 9px;
+  background: var(--card);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--ink);
+  pointer-events: none;
+  white-space: nowrap;
+  z-index: 4;
+}
+.flow-tip-time {
   color: var(--ink-faint);
+}
+.flow-tip-row {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
 }
 
 /* ---- stream status line ---- */
@@ -2735,10 +2826,11 @@ a.copy-addr-text:hover {
   margin-top: 8px;
 }
 .mod-group {
+  /* dir label is a fixed column; files wrap inside their own column so
+     overflow lines stay indented under the first chip (tree look) */
   display: flex;
   align-items: baseline;
   gap: 8px;
-  flex-wrap: wrap;
 }
 .mod-group-dir {
   font-family: var(--font-mono);
@@ -2752,6 +2844,8 @@ a.copy-addr-text:hover {
   display: inline-flex;
   flex-wrap: wrap;
   gap: 5px;
+  flex: 1;
+  min-width: 0;
 }
 .mod-chip {
   font-family: var(--font-mono);
@@ -3297,9 +3391,17 @@ a.copy-addr-text:hover {
   .comp-metrics {
     grid-template-columns: repeat(2, 1fr);
   }
+  .mod-group {
+    /* narrow screens: dir on its own line, files indented beneath it */
+    flex-direction: column;
+    gap: 3px;
+  }
   .mod-group-dir {
     min-width: 0;
     text-align: left;
+  }
+  .mod-group-files {
+    padding-left: 14px;
   }
 }
 

@@ -150,7 +150,9 @@ export interface ApiFunnel {
   byFramework?: Record<string, number>; // framework -> count among new deploys
   byIntegration?: Record<string, number>; // referenced known program -> count
   byCapability?: Record<string, number>;
-  volume?: { t: number; count: number }[]; // 30-day hourly deploy/upgrade volume
+  // 30-day hourly volume; deploys/upgrades split is absent on API builds
+  // predating the split (chart falls back to counting everything as deploys)
+  volume?: { t: number; count: number; deploys?: number; upgrades?: number }[];
   // per-vector aggregates across the window's new deploys
   identity?: { named: number; withRepo: number; opaque: number };
   lineage?: { novel: number; variant: number; fork: number };

@@ -131,116 +131,117 @@ export default async function FunnelPage({
       </div>
 
       {funnel.volume && funnel.volume.length > 0 ? (
-        <>
+        <section className="stat-card stat-card-wide">
           <SectionHeader
             title="Deploys over time"
-            info="Deploy + upgrade activity per hour. The window buttons above drive the whole page. Older buckets undercount — the loader only stores each program's last deploy slot."
+            info="New deploys and upgrades, stacked, per time bucket. The window buttons above drive the whole page. Older buckets undercount — the loader only stores each program's last deploy slot."
           />
           <FlowChart volume={funnel.volume} windowSecs={WINDOW_SECS[win]} />
-        </>
+        </section>
       ) : null}
 
-      <SectionHeader title="Deploys vs upgrades" info="New program ids vs upgrades of existing programs." />
-      <Breakdown
-        rows={[
-          ["new programs", funnel.deploys],
-          ["upgrades", funnel.upgrades],
-        ]}
-      />
-
-      <SectionHeader
-        title="Frameworks"
-        info="Framework each program was built with. Arrow = share change, first half vs second half of the window."
-      />
-      {funnel.frameworkTrend && funnel.frameworkTrend.length > 0 ? (
-        <div className="trend-list">
-          {funnel.frameworkTrend.map((t) => {
-            const dir = t.delta > 0.02 ? "up" : t.delta < -0.02 ? "down" : "flat";
-            const arrow = dir === "up" ? "▲" : dir === "down" ? "▼" : "→";
-            return (
-              <div className="trend-row" key={t.framework}>
-                <span className="trend-name">{t.framework}</span>
-                <span className="trend-count">{t.current}</span>
-                <span className="trend-share">
-                  {Math.round(t.earlyShare * 100)}% → {Math.round(t.lateShare * 100)}%
-                </span>
-                <span className={`trend-delta trend-${dir}`}>
-                  {arrow} {t.delta >= 0 ? "+" : ""}
-                  {Math.round(t.delta * 100)}pp
-                </span>
-              </div>
-            );
-          })}
-        </div>
-      ) : null}
-
-      {funnel.byIntegration && Object.keys(funnel.byIntegration).length > 0 ? (
-        <>
-          <SectionHeader title="Integrations" info="Known programs referenced in the bytecode." />
-          <Breakdown rows={sorted(funnel.byIntegration).slice(0, 10)} labelWidth={132} />
-        </>
-      ) : null}
-
-      <SectionHeader title="Categories" info="Category from the recovered name or IDL. 'unknown' = not enough to tag." />
-      <Breakdown
-        rows={CATEGORY_ORDER.map((c) => [CATEGORY_LABELS[c], funnel.byCategory[c] ?? 0])}
-        labelWidth={80}
-      />
-
-      {funnel.identity ? (
-        <>
-          <SectionHeader title="Identity" info="Programs we could name or link to source, from the binary." />
-          <Breakdown
-            rows={[
-              ["named", funnel.identity.named, "A project name was recovered from the binary."],
-              ["has repo", funnel.identity.withRepo, "A source-code repo was found in the binary or a verified build."],
-              ["opaque", funnel.identity.opaque, "No name, repo, or security.txt — anonymous bytecode."],
-            ]}
+      <div className="stat-grid">
+        <section className="stat-card">
+          <SectionHeader
+            title="Frameworks"
+            info="Framework each program was built with. Arrow = share change, first half vs second half of the window."
           />
-        </>
-      ) : null}
+          {funnel.frameworkTrend && funnel.frameworkTrend.length > 0 ? (
+            <div className="trend-list">
+              {funnel.frameworkTrend.map((t) => {
+                const dir = t.delta > 0.02 ? "up" : t.delta < -0.02 ? "down" : "flat";
+                const arrow = dir === "up" ? "▲" : dir === "down" ? "▼" : "→";
+                return (
+                  <div className="trend-row" key={t.framework}>
+                    <span className="trend-name">{t.framework}</span>
+                    <span className="trend-count">{t.current}</span>
+                    <span className="trend-share">
+                      {Math.round(t.earlyShare * 100)}% → {Math.round(t.lateShare * 100)}%
+                    </span>
+                    <span className={`trend-delta trend-${dir}`}>
+                      {arrow} {t.delta >= 0 ? "+" : ""}
+                      {Math.round(t.delta * 100)}pp
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+          ) : null}
+        </section>
 
-      {funnel.lineage ? (
-        <>
-          <SectionHeader title="Lineage" info="Novel = no known relative. Fork = ≥60% code match to a known program." />
-          <Breakdown
-            rows={[
-              ["novel", funnel.lineage.novel, "No known code relative on record — genuinely new code."],
-              ["variant", funnel.lineage.variant, "Loosely similar to a known program, but not a direct copy."],
-              ["fork", funnel.lineage.fork, "≥60% code match to a known program — a fork or close derivative."],
-            ]}
+        <section className="stat-card">
+          <SectionHeader
+            title="Categories"
+            info="Category from the recovered name or IDL. 'unknown' = not enough to tag."
           />
-        </>
-      ) : null}
+          <Breakdown
+            rows={CATEGORY_ORDER.map((c) => [CATEGORY_LABELS[c], funnel.byCategory[c] ?? 0])}
+            labelWidth={80}
+          />
+        </section>
 
-      {funnel.control ? (
-        <>
-          <SectionHeader title="Control" info="Upgrade authority. Verified = bytecode reproduces from public source." />
-          <Breakdown
-            rows={[
-              ["mutable", funnel.control.mutable, "Has an upgrade authority — the deployer can still replace the code (including to rug)."],
-              ["frozen", funnel.control.frozen, "Upgrade authority is null — the code can never be changed by anyone."],
-              ["verified build", funnel.control.verified, "The on-chain bytecode reproduces from public source code."],
-            ]}
-          />
-        </>
-      ) : null}
+        {funnel.byIntegration && Object.keys(funnel.byIntegration).length > 0 ? (
+          <section className="stat-card">
+            <SectionHeader title="Integrations" info="Known programs referenced in the bytecode." />
+            <Breakdown rows={sorted(funnel.byIntegration).slice(0, 10)} labelWidth={132} />
+          </section>
+        ) : null}
 
-      {funnel.conviction ? (
-        <>
-          <SectionHeader title="Funding" info="Where the deployer's SOL was traced to." />
-          <Breakdown
-            rows={[
-              ["known entity", funnel.conviction.knownEntity, "Deployer was funded from a labeled exchange or bridge."],
-              ["traced funder", funnel.conviction.funderTraced, "Funded from a specific wallet we could trace, but not a labeled entity."],
-              ["untraced", funnel.conviction.untraced, "Couldn't reach the funding origin."],
-            ]}
-          />
-        </>
-      ) : null}
+        {funnel.identity ? (
+          <section className="stat-card">
+            <SectionHeader title="Identity" info="Programs we could name or link to source, from the binary." />
+            <Breakdown
+              rows={[
+                ["named", funnel.identity.named, "A project name was recovered from the binary."],
+                ["has repo", funnel.identity.withRepo, "A source-code repo was found in the binary or a verified build."],
+                ["opaque", funnel.identity.opaque, "No name, repo, or security.txt — anonymous bytecode."],
+              ]}
+            />
+          </section>
+        ) : null}
+
+        {funnel.lineage ? (
+          <section className="stat-card">
+            <SectionHeader title="Lineage" info="Novel = no known relative. Fork = ≥60% code match to a known program." />
+            <Breakdown
+              rows={[
+                ["novel", funnel.lineage.novel, "No known code relative on record — genuinely new code."],
+                ["variant", funnel.lineage.variant, "Loosely similar to a known program, but not a direct copy."],
+                ["fork", funnel.lineage.fork, "≥60% code match to a known program — a fork or close derivative."],
+              ]}
+            />
+          </section>
+        ) : null}
+
+        {funnel.control ? (
+          <section className="stat-card">
+            <SectionHeader title="Control" info="Upgrade authority. Verified = bytecode reproduces from public source." />
+            <Breakdown
+              rows={[
+                ["mutable", funnel.control.mutable, "Has an upgrade authority — the deployer can still replace the code (including to rug)."],
+                ["frozen", funnel.control.frozen, "Upgrade authority is null — the code can never be changed by anyone."],
+                ["verified build", funnel.control.verified, "The on-chain bytecode reproduces from public source code."],
+              ]}
+            />
+          </section>
+        ) : null}
+
+        {funnel.conviction ? (
+          <section className="stat-card">
+            <SectionHeader title="Funding" info="Where the deployer's SOL was traced to." />
+            <Breakdown
+              rows={[
+                ["known entity", funnel.conviction.knownEntity, "Deployer was funded from a labeled exchange or bridge."],
+                ["traced funder", funnel.conviction.funderTraced, "Funded from a specific wallet we could trace, but not a labeled entity."],
+                ["untraced", funnel.conviction.untraced, "Couldn't reach the funding origin."],
+              ]}
+            />
+          </section>
+        ) : null}
+      </div>
 
       {funnel.churn && funnel.churn.redeploys > 0 ? (
-        <>
+        <section className="stat-card stat-card-wide">
           <SectionHeader
             title="Recycled — byte-clone redeploys"
             info="New deploys whose bytecode is byte-identical to code already on record — the same program under a fresh id. Not novel, so the gate strips it before ranking. Byte-identical is a fact; whether it's a bot is graded below — only the Pump.fun subset is a confident sniper signature."
@@ -269,7 +270,7 @@ export default async function FunnelPage({
             labelWidth={132}
           />
           <BotExplainer />
-        </>
+        </section>
       ) : null}
 
       <p className="funnel-updated">last {win}h · updated {utcStamp(funnel.updatedAt)}</p>

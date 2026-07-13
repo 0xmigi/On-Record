@@ -180,7 +180,12 @@ export async function computeWindowFunnel(
   const volStart = new Date(now - 30 * 24 * HOUR);
   const bucket = sql<string>`to_char(date_trunc('hour', ${eventTime}), 'YYYY-MM-DD"T"HH24:00:00"Z"')`;
   const volRows = await db
-    .select({ bucket, n: sql<number>`count(*)` })
+    .select({
+      bucket,
+      n: sql<number>`count(*)`,
+      deploys: sql<number>`count(*) filter (where ${schema.events.type} = 'deploy')`,
+      upgrades: sql<number>`count(*) filter (where ${schema.events.type} = 'upgrade')`,
+    })
     .from(schema.events)
     .where(
       and(
@@ -194,6 +199,8 @@ export async function computeWindowFunnel(
   const volume = volRows.map((r) => ({
     t: Math.floor(new Date(r.bucket).getTime() / 1000),
     count: Number(r.n),
+    deploys: Number(r.deploys),
+    upgrades: Number(r.upgrades),
   }));
 
   const raw = deploys + upgrades;
