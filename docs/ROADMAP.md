@@ -4,19 +4,22 @@
 > Prod: Railway runs `apps/ingest/dist/live.js` (API + poller + crons, no
 > Redis), Vercel serves `apps/web`; both auto-deploy from `main`.
 
-## 0. One-off ops (do first, ~5 min)
+## 0. One-off ops
 
-**Run reenrich in the Railway container** — heals every subject ingested
-before the enrichment fixes landed:
+**✅ DONE 2026-07-13** — reenrich ran in the Railway container:
+655 mainnet subjects scanned, 462 re-enriched (268 named, 358 upgrades,
+462 TLSH filled), zero failures. The ~193 skipped are closed programs whose
+ProgramData no longer exists (early `continue` — they don't count toward
+`done`, so the "complete at 462 of 655" log line is expected, not a bug).
+
+Rerun (idempotent, safe anytime):
 
 ```
 railway ssh "node apps/ingest/dist/reenrich.js"
 ```
 
-Backfills: TLSH fingerprints (rows from before the tlsh binary existed in the
-image → lineage/dedup for old rows), mojibake names (`Firstance â€"` →
-em-dash), deploy cost, structured security.txt, corpus repairs. Idempotent;
-facts are merged, names coalesced (never un-names, except corrupt ones).
+Gotcha: first `railway ssh` from a new machine fails with "Host key
+verification failed" — fix with `ssh-keyscan ssh.railway.com >> ~/.ssh/known_hosts`.
 
 ## 1. Devnet radar + devnet→mainnet conversion rate
 
@@ -82,6 +85,14 @@ Open items:
   (score, ts, id) cursor if pagination is ever needed.
 - Momentum counts **transactions** (signature count), not unique signers —
   signers need per-tx fetches; revisit with Helius enhanced API if needed.
+- **Size as a prior, not a filter** (measured 2026-07-13 on the 669-program
+  live corpus): confident bots cluster at exactly 32,377 bytes (the pump.fun
+  sniper template; 77% of bots <50KB) while named/verified programs median
+  ~457KB (2% <50KB). But small≠bot — real programs exist at 22–71KB and
+  Pinocchio is deliberately tiny. Candidate rule: penalty for small+unnamed
+  +anchor, with framework=native/pinocchio exempt. NOTE: size ≈ deploy cost
+  exactly (rent is linear in bytes) — cost and size are one axis; don't add
+  size to the pentagon alongside cost.
 
 ## 5. Smaller known gaps
 

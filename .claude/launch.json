@@ -9,6 +9,15 @@
       "autoPort": true
     },
     {
+      "name": "web-railway",
+      "runtimeExecutable": "sh",
+      "runtimeArgs": [
+        "-c",
+        "PATH=$HOME/.nvm/versions/node/v24.18.0/bin:$PATH API_URL=https://on-record-api-production.up.railway.app exec ./apps/web/node_modules/.bin/next dev apps/web -p 3012"
+      ],
+      "port": 3012
+    },
+    {
       "name": "web-verify",
       "runtimeExecutable": "sh",
       "runtimeArgs": [
