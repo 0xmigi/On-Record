@@ -169,15 +169,22 @@ type RawProgramAccount = { pubkey: string; account: { data: [string, string] } }
  *  - devnet: paginated V2 (1 credit / page). ~400k ProgramData accounts;
  *    the V1 one-shot response would be enormous, while the owned set is
  *    nearly all matches so V2 finishes in ~41 pages.
- */
+ *  Rows STREAM through `onAccount` — callers keep only their compact parse.
+ *  Accumulating 400k raw base64 rows OOM'd the Railway container (256MB heap)
+ *  on 2026-07-13; don't reintroduce an accumulator here. */
 async function programAccountsPaged(
   network: Network,
   config: Record<string, unknown>,
-): Promise<RawProgramAccount[]> {
+  onAccount: (row: RawProgramAccount) => void,
+): Promise<void> {
   if (network === "mainnet") {
-    return rpc<RawProgramAccount[]>(network, "getProgramAccounts", [LOADER_PROGRAM_ID, config]);
+    const result = await rpc<RawProgramAccount[]>(network, "getProgramAccounts", [
+      LOADER_PROGRAM_ID,
+      config,
+    ]);
+    for (const row of result) onAccount(row);
+    return;
   }
-  const out: RawProgramAccount[] = [];
   let paginationKey: string | null = null;
   do {
     const page: Record<string, unknown> = { ...config, limit: 10_000 };
@@ -187,29 +194,38 @@ async function programAccountsPaged(
       "getProgramAccountsV2",
       [LOADER_PROGRAM_ID, page],
     );
-    out.push(...(result.accounts ?? []));
+    for (const row of result.accounts ?? []) onAccount(row);
     paginationKey = result.paginationKey ?? null;
   } while (paginationKey);
-  return out;
 }
 
 /** Enumerate Program accounts (loader enum tag 2, 36 bytes: tag + ProgramData
  *  pointer). Gives the programId ↔ ProgramData mapping the backfill joins
  *  against the ProgramData slot headers. */
-export async function enumerateProgramAccounts(network: Network): Promise<ProgramAccountRef[]> {
-  const result = await programAccountsPaged(network, {
-    encoding: "base64",
-    filters: [{ dataSize: 36 }], // Program account is exactly 36 bytes
-    commitment: "confirmed",
-  });
+/** `keep`: only retain refs whose ProgramData address is in the set — callers
+ *  that already know their fresh cohort avoid holding devnet's ~400k refs
+ *  (which is most of what OOM'd the 256MB Railway container). */
+export async function enumerateProgramAccounts(
+  network: Network,
+  opts: { keep?: Set<string> } = {},
+): Promise<ProgramAccountRef[]> {
   const out: ProgramAccountRef[] = [];
-  for (const row of result) {
-    const buf = Buffer.from(row.account.data[0], "base64");
-    const parsed = parseProgramAccount(buf);
-    if (parsed) {
-      out.push({ programId: row.pubkey, programDataAddress: base58Encode(parsed.programDataAddress) });
-    }
-  }
+  await programAccountsPaged(
+    network,
+    {
+      encoding: "base64",
+      filters: [{ dataSize: 36 }], // Program account is exactly 36 bytes
+      commitment: "confirmed",
+    },
+    (row) => {
+      const buf = Buffer.from(row.account.data[0], "base64");
+      const parsed = parseProgramAccount(buf);
+      if (!parsed) return;
+      const programDataAddress = base58Encode(parsed.programDataAddress);
+      if (opts.keep && !opts.keep.has(programDataAddress)) return;
+      out.push({ programId: row.pubkey, programDataAddress });
+    },
+  );
   return out;
 }
 
@@ -218,21 +234,32 @@ export async function enumerateProgramAccounts(network: Network): Promise<Progra
  *  UpgradeableLoaderState::ProgramData is bincode enum variant 3 → u32 LE
  *  [3,0,0,0] at offset 0; the memcmp tag is computed at call time (not module
  *  load) so it can't drift and doesn't trip the base58Encode temporal dead zone. */
-export async function enumerateProgramData(network: Network): Promise<ProgramDataHeader[]> {
+/** `minSlot`: discard headers older than the cutoff DURING the stream —
+ *  devnet's 402k headers as JS objects alone blow the 256MB container heap,
+ *  and every caller slot-filters anyway. */
+export async function enumerateProgramData(
+  network: Network,
+  opts: { minSlot?: number } = {},
+): Promise<ProgramDataHeader[]> {
   const programDataTag = base58Encode(Buffer.from([3, 0, 0, 0]));
-  const result = await programAccountsPaged(network, {
-    encoding: "base64",
-    // ProgramData variant tag (enum 3) at offset 0, header-only slice
-    filters: [{ memcmp: { offset: 0, bytes: programDataTag } }],
-    dataSlice: { offset: 0, length: PROGRAMDATA_HEADER_LEN },
-    commitment: "confirmed",
-  });
   const out: ProgramDataHeader[] = [];
-  for (const row of result) {
-    const buf = Buffer.from(row.account.data[0], "base64");
-    const parsed = parseProgramDataHeader(buf);
-    if (parsed) out.push({ programDataAddress: row.pubkey, ...parsed });
-  }
+  await programAccountsPaged(
+    network,
+    {
+      encoding: "base64",
+      // ProgramData variant tag (enum 3) at offset 0, header-only slice
+      filters: [{ memcmp: { offset: 0, bytes: programDataTag } }],
+      dataSlice: { offset: 0, length: PROGRAMDATA_HEADER_LEN },
+      commitment: "confirmed",
+    },
+    (row) => {
+      const buf = Buffer.from(row.account.data[0], "base64");
+      const parsed = parseProgramDataHeader(buf);
+      if (!parsed) return;
+      if (opts.minSlot != null && parsed.deployedSlot < opts.minSlot) return;
+      out.push({ programDataAddress: row.pubkey, ...parsed });
+    },
+  );
   return out;
 }
 

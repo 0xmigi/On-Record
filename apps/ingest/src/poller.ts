@@ -65,16 +65,22 @@ export async function pollDeploys(opts: PollOptions): Promise<PollResult> {
   const bootstrapSlot = currentSlot - Math.floor(bootstrapHours * 3600 * SLOTS_PER_SECOND);
   const sinceSlot = Math.max(lastSlot, bootstrapSlot);
 
-  const [programAccounts, dataHeaders] = await Promise.all([
-    enumerateProgramAccounts(network),
-    enumerateProgramData(network),
-  ]);
-  const pdToProgram = new Map(programAccounts.map((p) => [p.programDataAddress, p.programId]));
-
-  const fresh = dataHeaders
-    .filter((h) => h.deployedSlot > sinceSlot && pdToProgram.has(h.programDataAddress))
+  // headers slot-filtered during the stream, programIds mapped only for the
+  // fresh cohort — devnet's full header/ref sets OOM the 256MB container
+  const freshHeaders = (await enumerateProgramData(network, { minSlot: sinceSlot + 1 }))
     .sort((a, b) => a.deployedSlot - b.deployedSlot) // oldest→newest so rows insert in order
     .slice(0, max);
+
+  if (!freshHeaders.length) {
+    logger.info({ network, sinceSlot, currentSlot }, "poll: no new programs");
+    return { fresh: 0, ingested: 0, sinceSlot, currentSlot };
+  }
+
+  const programAccounts = await enumerateProgramAccounts(network, {
+    keep: new Set(freshHeaders.map((h) => h.programDataAddress)),
+  });
+  const pdToProgram = new Map(programAccounts.map((p) => [p.programDataAddress, p.programId]));
+  const fresh = freshHeaders.filter((h) => pdToProgram.has(h.programDataAddress));
 
   if (!fresh.length) {
     logger.info({ network, sinceSlot, currentSlot }, "poll: no new programs");

@@ -50,20 +50,17 @@ async function run(): Promise<void> {
   const cutoff = current - Math.round((DAYS * 86_400) / slotSecs);
 
   logger.info({ current, slotSecs, cutoff, days: DAYS }, "seed-devnet: enumerating");
-  const [headers, refs] = await Promise.all([
-    enumerateProgramData("devnet"),
-    enumerateProgramAccounts("devnet"),
-  ]);
-  const idByProgramData = new Map(refs.map((r) => [r.programDataAddress, r.programId]));
-
-  const cohort = headers
-    .filter((h) => h.deployedSlot >= cutoff)
+  // headers slot-filtered during the stream, programIds mapped only for the
+  // cohort — devnet's full header/ref sets OOM the 256MB container
+  const cohort = (await enumerateProgramData("devnet", { minSlot: cutoff }))
     .sort((a, b) => b.deployedSlot - a.deployedSlot)
     .slice(0, MAX);
-  logger.info(
-    { total: headers.length, cohort: cohort.length, capped: cohort.length === MAX },
-    "seed-devnet: start",
-  );
+
+  const refs = await enumerateProgramAccounts("devnet", {
+    keep: new Set(cohort.map((h) => h.programDataAddress)),
+  });
+  const idByProgramData = new Map(refs.map((r) => [r.programDataAddress, r.programId]));
+  logger.info({ cohort: cohort.length, capped: cohort.length === MAX }, "seed-devnet: start");
 
   let added = 0;
   let bumped = 0;
