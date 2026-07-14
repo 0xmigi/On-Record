@@ -36,10 +36,11 @@ const EVENT_LABELS: Record<ApiRawEvent["type"], string> = {
 };
 
 // how a mainnet program was tied back to its devnet sighting
-const INCUBATION_MATCH: Record<"sha256" | "tlsh" | "authority", string> = {
+const INCUBATION_MATCH: Record<"sha256" | "tlsh" | "authority" | "program_id", string> = {
   sha256: "identical bytecode",
   tlsh: "near-identical bytecode",
   authority: "same upgrade authority",
+  program_id: "same program address",
 };
 
 export async function generateMetadata({
@@ -318,10 +319,20 @@ export default async function ProgramDossierPage({
             </span>
             {program.incubation.devnetProgramId ? (
               <div style={{ marginTop: 4 }}>
-                <Link href={`/p/${program.incubation.devnetProgramId}`} className="neighbor-addr">
-                  → {truncateAddress(program.incubation.devnetProgramId)}
-                </Link>
-                <span className="cell-dim"> · the devnet program</span>
+                {program.incubation.matchedOn === "program_id" ? (
+                  // same address on both clusters — link out to the devnet explorer
+                  <Ext
+                    href={`https://explorer.solana.com/address/${program.incubation.devnetProgramId}?cluster=devnet`}
+                    text={`${truncateAddress(program.incubation.devnetProgramId)} · same address on devnet`}
+                  />
+                ) : (
+                  <>
+                    <Link href={`/p/${program.incubation.devnetProgramId}`} className="neighbor-addr">
+                      → {truncateAddress(program.incubation.devnetProgramId)}
+                    </Link>
+                    <span className="cell-dim"> · the devnet program</span>
+                  </>
+                )}
               </div>
             ) : null}
           </Row>

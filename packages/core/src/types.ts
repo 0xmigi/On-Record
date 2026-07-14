@@ -293,7 +293,9 @@ export interface ApiIncubation {
   firstDevnetAt: string; // ISO — first devnet sighting
   incubationDays: number; // devnet→mainnet gap, days (0.1 precision)
   devnetIterations: number; // devnet deploy/upgrade count before debut
-  matchedOn: "sha256" | "tlsh" | "authority";
+  // how the mainnet program was tied to devnet: bytecode (sha256/tlsh),
+  // upgrade authority, or the same program address on both clusters
+  matchedOn: "sha256" | "tlsh" | "authority" | "program_id";
 }
 
 /** Nearest bytecode relative, resolved for display (SPEC §7). */

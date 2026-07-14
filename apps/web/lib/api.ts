@@ -82,7 +82,7 @@ export interface ApiProgram {
     firstDevnetAt: string; // ISO — first devnet sighting
     incubationDays: number; // devnet→mainnet gap, days
     devnetIterations: number; // devnet deploy/upgrade count before debut
-    matchedOn: "sha256" | "tlsh" | "authority";
+    matchedOn: "sha256" | "tlsh" | "authority" | "program_id";
   } | null;
   // Squads governance decoded from the deploy tx
   multisig: {
