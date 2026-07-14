@@ -135,20 +135,19 @@ export default async function OgImage({ params }: { params: Promise<{ id: string
     program.deployCostSol != null ? `${program.deployCostSol} SOL rent` : null,
   ].filter(Boolean) as string[];
 
-  // one traction line — real usage keeps the card about the program, not a pitch
+  // one traction line — same label→figure shape as the dossier's Traction rows
   const num = (n: number): string => n.toLocaleString("en-US");
-  let tractionValue: string | null = null;
   let tractionLabel: string | null = null;
+  let tractionValue: string | null = null;
   if (program.momentum?.txns24h) {
-    tractionValue = `${num(program.momentum.txns24h)} txns`;
-    tractionLabel =
-      program.momentum.growth != null
-        ? `in the last 24h · ×${program.momentum.growth} vs prior day`
-        : "in the last 24h";
+    tractionLabel = "LAST 24H";
+    tractionValue = `${num(program.momentum.txns24h)} txns${
+      program.momentum.growth != null ? ` · ×${program.momentum.growth} vs prior day` : ""
+    }`;
   } else if (program.earlySigners) {
     const e = program.earlySigners;
-    tractionValue = `${num(e)}${e >= 1000 && e % 1000 === 0 ? "+" : ""} txns`;
-    tractionLabel = "in the first 24h";
+    tractionLabel = "EARLY ACTIVITY";
+    tractionValue = `${num(e)}${e >= 1000 && e % 1000 === 0 ? "+" : ""} txns in the first 24h`;
   }
 
   // pentagon geometry: 340px box, labels placed around it
@@ -267,15 +266,23 @@ export default async function OgImage({ params }: { params: Promise<{ id: string
                 </div>
               ) : null}
 
-              {/* one traction line — keeps the card about the program's real usage */}
+              {/* one traction line — label → figure on one row, like the dossier */}
               {tractionValue ? (
-                <div style={{ display: "flex", flexDirection: "column", gap: 6, marginTop: 36 }}>
-                  <div style={{ display: "flex", fontSize: 40, fontWeight: 600, color: INK }}>
-                    {tractionValue}
-                  </div>
-                  <div style={{ display: "flex", fontSize: 22, color: INK_FAINT }}>
+                <div style={{ display: "flex", alignItems: "baseline", gap: 16, marginTop: 36 }}>
+                  <span
+                    style={{
+                      display: "flex",
+                      fontSize: 18,
+                      letterSpacing: 1.5,
+                      color: INK_FAINT,
+                      whiteSpace: "nowrap",
+                    }}
+                  >
                     {tractionLabel}
-                  </div>
+                  </span>
+                  <span style={{ display: "flex", fontSize: 24, color: INK, whiteSpace: "nowrap" }}>
+                    {tractionValue}
+                  </span>
                 </div>
               ) : null}
             </div>
