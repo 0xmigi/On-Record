@@ -3371,26 +3371,20 @@ a.copy-addr-text:hover {
   padding: 2px 6px;
   white-space: nowrap;
 }
-/* closest-relative direction — ancestor (older, a possible source) vs descendant */
+/* closest-relative direction — predecessor (older) vs fork (newer). Plain,
+   uncoloured: the word carries the meaning, no traffic-light needed. */
 .rel-tag {
   font-family: var(--font-mono);
   font-size: 10px;
   letter-spacing: 0.04em;
   text-transform: uppercase;
+  color: var(--ink-faint);
+  border: 1px solid var(--border);
+  background: var(--bg);
   border-radius: 2px;
   padding: 2px 6px;
   margin-left: 8px;
   white-space: nowrap;
-}
-.rel-ancestor {
-  color: var(--accent);
-  border: 1px solid color-mix(in srgb, var(--accent) 35%, transparent);
-  background: color-mix(in srgb, var(--accent) 8%, transparent);
-}
-.rel-descendant {
-  color: var(--ink-faint);
-  border: 1px solid var(--border);
-  background: var(--bg);
 }
 
 /* devnet → mainnet lineage — a program that "became real" (positive signal) */

@@ -356,7 +356,7 @@ export default async function ProgramDossierPage({
             ((n) => {
               const simPct = Math.round(n.similarity * 100);
               const tt =
-                "Structural similarity of the compiled bytecode (TLSH fuzzy hash) — a lead, not proof of copied code. Ancestor / descendant is deploy order plus similarity, not confirmed derivation.";
+                "Structural similarity of the compiled bytecode (TLSH fuzzy hash) — a lead, not proof of copied code. Predecessor / fork is inferred from deploy order and similarity, not confirmed derivation.";
               // a pack of similar-shaped programs → no single source to trace to
               if (n.peersWithin5 != null && n.peersWithin5 >= 6) {
                 return (
@@ -384,9 +384,7 @@ export default async function ProgramDossierPage({
                     {simPct}% structural match
                   </span>
                   {older != null ? (
-                    <span className={`rel-tag ${older ? "rel-ancestor" : "rel-descendant"}`}>
-                      {older ? "ancestor" : "descendant"}
-                    </span>
+                    <span className="rel-tag">{older ? "predecessor" : "fork"}</span>
                   ) : null}
                 </span>
               );
