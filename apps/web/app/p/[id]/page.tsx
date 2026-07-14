@@ -351,9 +351,9 @@ export default async function ProgramDossierPage({
             <Ext href={program.codeMatch.repository} text={shortUrl(program.codeMatch.repository)} />
           </Row>
         ) : null}
-        <Row label="Nearest known program">
+        <Row label="Nearest match">
           {program.nearest ? (
-            <>
+            <span title="Structural similarity of the compiled bytecode (TLSH fuzzy hash) — not proof that code was copied, and no direction of derivation. Programs on the same framework/toolchain and similar size score high on shared boilerplate alone.">
               {program.nearest.isReference ? (
                 <span className="dossier-name">{program.nearest.name}</span>
               ) : program.nearest.id ? (
@@ -363,12 +363,16 @@ export default async function ProgramDossierPage({
               ) : (
                 "a peer deploy"
               )}
+              {!program.nearest.name && !program.nearest.isReference ? (
+                <span className="cell-dim"> · unnamed peer</span>
+              ) : null}
               <span className="cell-dim">
-                {" "}· {Math.round(program.nearest.similarity * 100)}% code match
+                {" · "}
+                {Math.round(program.nearest.similarity * 100)}% structural match
               </span>
-            </>
+            </span>
           ) : (
-            <span className="cell-dim">no known relative — novel code</span>
+            <span className="cell-dim">no close match — novel code</span>
           )}
         </Row>
       </div>
