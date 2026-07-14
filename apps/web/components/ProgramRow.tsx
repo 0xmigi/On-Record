@@ -168,7 +168,9 @@ export function ProgramRow({ program }: { program: ApiProgram }) {
             talks to · resembles · auth */}
         <div className="radar-facts radar-indent">
           <Fact label="size" value={formatBytes(program.sizeBytes)} />
-          {program.deployCostSol != null ? (
+          {/* devnet rent is faucet SOL — showing a "cost" there would be
+              misleading, so the fact is mainnet-only */}
+          {program.deployCostSol != null && program.network !== "devnet" ? (
             <Fact label="cost" value={`${program.deployCostSol} SOL`} />
           ) : null}
           {program.framework && program.framework !== "unknown" ? (

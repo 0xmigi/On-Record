@@ -183,6 +183,65 @@ a {
   margin-left: auto;
 }
 
+/* gear settings menu (Orb-style): NETWORK section, check on active cluster */
+.net-menu {
+  position: relative;
+  display: inline-flex;
+}
+.net-menu-btn {
+  display: inline-flex;
+  align-items: center;
+  padding: 3px;
+  border: none;
+  background: none;
+  color: var(--ink-faint);
+  cursor: pointer;
+}
+.net-menu-btn:hover,
+.net-menu-btn[aria-expanded="true"] {
+  color: var(--ink);
+}
+.net-menu-panel {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  min-width: 150px;
+  padding: 6px;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.08);
+  z-index: 30;
+}
+.net-menu-head {
+  padding: 4px 8px 5px;
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+}
+.topnav .net-menu-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  padding: 6px 8px;
+  border-radius: 3px;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--ink-soft);
+  text-decoration: none;
+}
+.topnav .net-menu-item:hover {
+  background: var(--bg);
+  color: var(--ink);
+}
+.net-menu-check {
+  color: var(--accent);
+  font-size: 11px;
+}
+
 .topnav a {
   font-family: var(--font-mono);
   font-size: 13px;

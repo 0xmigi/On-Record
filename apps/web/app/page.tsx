@@ -8,6 +8,7 @@ import {
   isRadarType,
   isWindow,
   type ApiProgram,
+  type Network,
   type RadarType,
   type RadarWindow,
 } from "@/lib/api";
@@ -44,10 +45,11 @@ const FUNNEL_WINDOW: Record<RadarWindow, string> = {
   all: "all",
 };
 
-function radarHref(type: RadarType, window: RadarWindow): string {
+function radarHref(type: RadarType, window: RadarWindow, network: Network = "mainnet"): string {
   const params = new URLSearchParams();
   if (type !== "deploy") params.set("type", type);
   if (window !== "today") params.set("window", window);
+  if (network === "devnet") params.set("network", "devnet");
   const qs = params.toString();
   return qs ? `/?${qs}` : "/";
 }
@@ -217,11 +219,13 @@ function ClosedSection({
 export default async function RadarPage({
   searchParams,
 }: {
-  searchParams: Promise<{ type?: string; window?: string; view?: string }>;
+  searchParams: Promise<{ type?: string; window?: string; view?: string; network?: string }>;
 }) {
   const sp = await searchParams;
   const type: RadarType = isRadarType(sp.type) ? sp.type : "deploy";
   const window: RadarWindow = isWindow(sp.window) ? sp.window : "today";
+  const network: Network = sp.network === "devnet" ? "devnet" : "mainnet";
+  const isDevnet = network === "devnet";
   const isDeploy = type === "deploy";
   const view: View | undefined =
     isDeploy && (sp.view === "novel" || sp.view === "variant" || sp.view === "recycled")
@@ -230,19 +234,21 @@ export default async function RadarPage({
 
   const EMPTY = { items: [] as ApiProgram[], nextCursor: null };
   const [novelPage, variantPage, clonePage, closedPages, upgradePage, funnel] = await Promise.all([
-    isDeploy ? fetchRadar({ type, window, band: "novel", limit: 100 }) : Promise.resolve(EMPTY),
-    isDeploy ? fetchRadar({ type, window, band: "variant", limit: 100 }) : Promise.resolve(EMPTY),
-    isDeploy ? fetchRadar({ type, window, band: "clone", limit: 100 }) : Promise.resolve(EMPTY),
-    // the graveyard: closed programs across all bands (rent reclaimed)
-    isDeploy
+    isDeploy ? fetchRadar({ type, window, band: "novel", limit: 100, network }) : Promise.resolve(EMPTY),
+    isDeploy ? fetchRadar({ type, window, band: "variant", limit: 100, network }) : Promise.resolve(EMPTY),
+    isDeploy && !isDevnet ? fetchRadar({ type, window, band: "clone", limit: 100 }) : Promise.resolve(EMPTY),
+    // the graveyard: closed programs across all bands (rent reclaimed).
+    // Devnet skips it — pre-launch churn there is expected, not a story.
+    isDeploy && !isDevnet
       ? Promise.all(
           (["novel", "variant", "clone"] as const).map((band) =>
             fetchRadar({ type, window, band, closed: "only", limit: 100 }),
           ),
         )
       : Promise.resolve([]),
-    !isDeploy ? fetchRadar({ type, window, limit: 50 }) : Promise.resolve(EMPTY),
-    fetchFunnel(FUNNEL_WINDOW[window]),
+    !isDeploy ? fetchRadar({ type, window, limit: 50, network }) : Promise.resolve(EMPTY),
+    // the spectrum header is mainnet funnel data; devnet has no funnel yet
+    isDevnet ? Promise.resolve(null) : fetchFunnel(FUNNEL_WINDOW[window]),
   ]);
 
   const ts = (p: ApiProgram) => (p.deployedAt ? Date.parse(p.deployedAt) : 0);
@@ -330,9 +336,13 @@ export default async function RadarPage({
           ? []
           : notable;
 
-  const showRecycled = isDeploy && (view === undefined || view === "recycled");
+  const showRecycled = isDeploy && !isDevnet && (view === undefined || view === "recycled");
 
-  const header = !isDeploy
+  const header = isDevnet
+    ? !isDeploy
+      ? { title: "Devnet upgrades — programs being iterated", info: "Existing devnet programs whose code changed in this window. Heavy iteration is the strongest pre-launch signal — this is where teams do the work." }
+      : { title: "Devnet — new programs in incubation", info: "Fresh deployments to devnet, newest first. These are pre-launch: no real users or money yet. Their code fingerprints go on the watchlist, and if one later deploys to mainnet, the radar links the two." }
+    : !isDeploy
     ? { title: "Upgrades — existing programs changed", info: "Existing programs whose code changed in this window. Trust already exists — what matters is the magnitude of what was changed." }
     : view === "novel"
       ? { title: "Novel — no known relative", info: "Bytecode with no match in the corpus. The genuinely new programs — the core signal." }
@@ -344,13 +354,15 @@ export default async function RadarPage({
 
   return (
     <>
-      <SpectrumBar
-        deploys={funnel?.deploys ?? null}
-        upgrades={funnel?.upgrades ?? null}
-        counts={counts}
-        view={view}
-        window={window}
-      />
+      {!isDevnet ? (
+        <SpectrumBar
+          deploys={funnel?.deploys ?? null}
+          upgrades={funnel?.upgrades ?? null}
+          counts={counts}
+          view={view}
+          window={window}
+        />
+      ) : null}
 
       <div className="radar-controls">
         <nav className="filter-row" aria-label="New deploys or upgrades">
@@ -358,7 +370,7 @@ export default async function RadarPage({
             <Link
               key={f.value}
               className="filter-link"
-              href={radarHref(f.value, window)}
+              href={radarHref(f.value, window, network)}
               aria-current={type === f.value ? "page" : undefined}
             >
               {f.label}
@@ -370,7 +382,7 @@ export default async function RadarPage({
             <Link
               key={f.value}
               className="filter-link"
-              href={radarHref(type, f.value)}
+              href={radarHref(type, f.value, network)}
               aria-current={window === f.value ? "page" : undefined}
             >
               {f.label}
@@ -409,7 +421,7 @@ export default async function RadarPage({
         />
       ) : null}
 
-      {isDeploy ? <ClosedSection groups={closedItems} total={closedAll.length} /> : null}
+      {isDeploy && !isDevnet ? <ClosedSection groups={closedItems} total={closedAll.length} /> : null}
     </>
   );
 }

@@ -88,14 +88,17 @@ async function clusterSizes(bucketIds: (string | null)[]): Promise<Map<string, n
 
 export function registerPublicRoutes(app: FastifyInstance): void {
   // --- the radar: ranked programs -----------------------------------------
-  app.get<{ Querystring: { window?: string; band?: string; type?: string; cursor?: string; limit?: string; closed?: string; sort?: string } }>(
+  app.get<{ Querystring: { window?: string; band?: string; type?: string; cursor?: string; limit?: string; closed?: string; sort?: string; network?: string } }>(
     "/api/radar",
     async (req): Promise<ApiCursorPage<ApiProgram>> => {
       const limit = Math.min(Number(req.query.limit ?? 30) || 30, 100);
+      const network = req.query.network === "devnet" ? "devnet" : "mainnet";
       // interest ordering (interest.ts v0.1 blend, stored on noveltyScore) is
       // the default — "most worth seeing first". ?sort=recent restores the
       // plain stream (and keeps cursor paging; interest pages have no cursor).
-      const sort = req.query.sort === "recent" ? "recent" : "interest";
+      // Devnet has no interest scores by design (no usage/money signals —
+      // pipeline stops at classify), so it always serves the recency stream.
+      const sort = req.query.sort === "recent" || network === "devnet" ? "recent" : "interest";
       const band = req.query.band && BANDS.has(req.query.band as NoveltyBand) ? req.query.band : "novel";
       const type = req.query.type === "upgrade" ? "upgrade" : "deploy";
       const start = windowStart(req.query.window);
@@ -104,7 +107,7 @@ export function registerPublicRoutes(app: FastifyInstance): void {
       const closedMode = req.query.closed === "1" ? "include" : req.query.closed === "only" ? "only" : "hide";
 
       const conditions = [
-        eq(schema.subjects.network, "mainnet"),
+        eq(schema.subjects.network, network),
         eq(schema.subjects.kind, "program"),
         eq(schema.subjects.noveltyBand, band),
       ];

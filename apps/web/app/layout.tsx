@@ -1,8 +1,10 @@
 import type { Metadata } from "next";
+import { Suspense } from "react";
 import { IBM_Plex_Mono, IBM_Plex_Sans } from "next/font/google";
 import Link from "next/link";
 import { Analytics } from "@vercel/analytics/next";
 import { Mark } from "@/components/Mark";
+import { NetworkToggle } from "@/components/NetworkToggle";
 import { SearchBox } from "@/components/SearchBox";
 import "./globals.css";
 
@@ -48,6 +50,10 @@ export default function RootLayout({
             <nav className="topnav" aria-label="Main">
               <Link href="/">Radar</Link>
               <Link href="/funnel">Stats</Link>
+              {/* useSearchParams needs a Suspense boundary in a layout */}
+              <Suspense fallback={null}>
+                <NetworkToggle />
+              </Suspense>
             </nav>
           </div>
         </header>
