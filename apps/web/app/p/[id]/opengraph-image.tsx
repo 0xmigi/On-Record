@@ -135,17 +135,6 @@ export default async function OgImage({ params }: { params: Promise<{ id: string
     program.deployCostSol != null ? `${program.deployCostSol} SOL rent` : null,
   ].filter(Boolean) as string[];
 
-  // one traction line: early activity only — it's fixed from deploy, so a cached
-  // share card never goes stale (a "last 24h" number would expire once shared)
-  const num = (n: number): string => n.toLocaleString("en-US");
-  let tractionLabel: string | null = null;
-  let tractionValue: string | null = null;
-  if (program.earlySigners) {
-    const e = program.earlySigners;
-    tractionLabel = "EARLY ACTIVITY";
-    tractionValue = `${num(e)}${e >= 1000 && e % 1000 === 0 ? "+" : ""} txns in the first 24h`;
-  }
-
   // pentagon geometry: 340px box, labels placed around it
   const box = 340;
   const c = box / 2;
@@ -262,25 +251,6 @@ export default async function OgImage({ params }: { params: Promise<{ id: string
                 </div>
               ) : null}
 
-              {/* one traction line — label → figure on one row, like the dossier */}
-              {tractionValue ? (
-                <div style={{ display: "flex", alignItems: "baseline", gap: 16, marginTop: 36 }}>
-                  <span
-                    style={{
-                      display: "flex",
-                      fontSize: 18,
-                      letterSpacing: 1.5,
-                      color: INK_FAINT,
-                      whiteSpace: "nowrap",
-                    }}
-                  >
-                    {tractionLabel}
-                  </span>
-                  <span style={{ display: "flex", fontSize: 24, color: INK, whiteSpace: "nowrap" }}>
-                    {tractionValue}
-                  </span>
-                </div>
-              ) : null}
             </div>
 
             {/* right column: the pentagon */}
