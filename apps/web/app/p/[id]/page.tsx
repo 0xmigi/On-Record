@@ -56,12 +56,13 @@ export async function generateMetadata({
   const { id } = await params;
   const program = await fetchProgram(id);
   const label = program?.name ?? truncateAddress(id);
+  // kept ≲125 chars so social previews don't truncate it (og:description)
   const description = program
-    ? `${program.deployType === "upgrade" ? "Upgraded" : "New"} Solana program on the radar — ${
+    ? `${program.deployType === "upgrade" ? "Upgraded" : "New"} Solana program — ${
         program.framework && program.framework !== "unknown" ? `${program.framework}, ` : ""
       }${program.sizeBytes ? formatBytes(program.sizeBytes) : "size unknown"}${
         program.deployCostSol != null ? `, ${program.deployCostSol} SOL locked` : ""
-      }. See its shape: novelty, activity, openness, cost, control.`
+      }. Novelty, control, activity & cost, decoded on-chain.`
     : "Program dossier on On Record — the novel-program radar for Solana.";
   return {
     title: `${label} — dossier`,
@@ -801,14 +802,6 @@ export default async function ProgramDossierPage({
             ) : null}
             {program.deployType === "upgrade" && program.upgradeCount > 0 ? (
               <span className="cluster-note">upgraded ×{program.upgradeCount}</span>
-            ) : null}
-            {program.incubation ? (
-              <span
-                className="incubation-chip"
-                title="Seen incubating on devnet before this mainnet deploy — the radar linked the two"
-              >
-                devnet → mainnet
-              </span>
             ) : null}
             {botClass === "recycled" ? (
               <span className="dup-chip" title="Byte-identical bytecode to other deploys on record — same code, fresh id">

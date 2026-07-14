@@ -22,12 +22,15 @@ const plexMono = IBM_Plex_Mono({
 });
 
 export const metadata: Metadata = {
+  metadataBase: new URL("https://on-record.azuolas.xyz"),
   title: {
     default: "On Record — the novel-program radar for Solana",
     template: "%s — On Record",
   },
   description:
     "On Record watches every program deployed or upgraded on Solana mainnet, strips out the copy-paste clones, and ranks what's left by a novelty score.",
+  // og:site_name — Discord/Slack show this above the title; without it the card reads anonymous
+  openGraph: { siteName: "On Record", type: "website" },
 };
 
 export default function RootLayout({

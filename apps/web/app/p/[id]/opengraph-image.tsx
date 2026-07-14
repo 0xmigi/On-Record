@@ -23,8 +23,6 @@ const INK = "#171717";
 const INK_SOFT = "#525252";
 const INK_FAINT = "#8f8f8f";
 const ACCENT = "#e8432c";
-const ACCENT_LINE = "rgba(232,67,44,0.35)";
-const ACCENT_TINT = "rgba(232,67,44,0.07)";
 
 function pentagonPoints(signals: Signal[], r: number, c: number, scaleFor: (s: Signal) => number): string {
   const n = signals.length;
@@ -136,38 +134,6 @@ export default async function OgImage({ params }: { params: Promise<{ id: string
     program.sizeBytes ? formatBytes(program.sizeBytes) : null,
     program.deployCostSol != null ? `${program.deployCostSol} SOL rent` : null,
   ].filter(Boolean) as string[];
-
-  // the pentagon's signals as terse chips (not prose) — scannable at unfurl
-  // size. Cost is omitted: the facts row above already carries rent.
-  const abbrevTxns = (n: number): string =>
-    n >= 1000 ? `${(n / 1000).toFixed(n >= 10000 ? 0 : 1).replace(/\.0$/, "")}k` : String(n);
-  const txns = program.momentum?.txns24h ?? program.earlySigners ?? 0;
-  const disclosed = [
-    program.name,
-    program.repoUrl,
-    program.website ?? program.social,
-    program.idlPresent,
-    program.hasSecurityTxt,
-    program.verified,
-  ].filter(Boolean).length;
-  const signalChips = [
-    program.band === "clone"
-      ? "exact clone"
-      : program.nearest
-        ? `${Math.round(Math.max(0, 1 - program.nearest.similarity) * 100)}% novel`
-        : "novel code",
-    program.multisig
-      ? `${program.multisig.threshold}/${program.multisig.members} multisig`
-      : program.authorityClass === "none"
-        ? "immutable"
-        : program.authorityClass === "program"
-          ? "program-owned"
-          : program.authorityClass === "hot_wallet"
-            ? "hot-wallet auth"
-            : null,
-    txns > 0 ? `${abbrevTxns(txns)} txns/24h` : null,
-    `${disclosed}/6 disclosed`,
-  ].filter((c): c is string => Boolean(c));
 
   // pentagon geometry: 340px box, labels placed around it
   const box = 340;
@@ -285,23 +251,14 @@ export default async function OgImage({ params }: { params: Promise<{ id: string
                 </div>
               ) : null}
 
-              <div style={{ display: "flex", gap: 14, marginTop: 34, flexWrap: "wrap" }}>
-                {signalChips.map((chip) => (
-                  <span
-                    key={chip}
-                    style={{
-                      display: "flex",
-                      border: `2px solid ${ACCENT_LINE}`,
-                      background: ACCENT_TINT,
-                      borderRadius: 6,
-                      padding: "12px 22px",
-                      fontSize: 28,
-                      color: INK,
-                    }}
-                  >
-                    {chip}
-                  </span>
-                ))}
+              {/* call-to-action (the pentagon carries the signal; this invites the click) */}
+              <div style={{ display: "flex", flexDirection: "column", gap: 10, marginTop: 36 }}>
+                <div style={{ display: "flex", fontSize: 34, fontWeight: 600, color: INK }}>
+                  See the full dossier →
+                </div>
+                <div style={{ display: "flex", fontSize: 22, color: INK_FAINT }}>
+                  novelty · control · activity · cost, decoded on-chain
+                </div>
               </div>
             </div>
 
