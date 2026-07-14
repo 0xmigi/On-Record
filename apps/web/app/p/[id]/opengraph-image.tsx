@@ -135,6 +135,22 @@ export default async function OgImage({ params }: { params: Promise<{ id: string
     program.deployCostSol != null ? `${program.deployCostSol} SOL rent` : null,
   ].filter(Boolean) as string[];
 
+  // one traction line — real usage keeps the card about the program, not a pitch
+  const num = (n: number): string => n.toLocaleString("en-US");
+  let tractionValue: string | null = null;
+  let tractionLabel: string | null = null;
+  if (program.momentum?.txns24h) {
+    tractionValue = `${num(program.momentum.txns24h)} txns`;
+    tractionLabel =
+      program.momentum.growth != null
+        ? `in the last 24h · ×${program.momentum.growth} vs prior day`
+        : "in the last 24h";
+  } else if (program.earlySigners) {
+    const e = program.earlySigners;
+    tractionValue = `${num(e)}${e >= 1000 && e % 1000 === 0 ? "+" : ""} txns`;
+    tractionLabel = "in the first 24h";
+  }
+
   // pentagon geometry: 340px box, labels placed around it
   const box = 340;
   const c = box / 2;
@@ -251,15 +267,17 @@ export default async function OgImage({ params }: { params: Promise<{ id: string
                 </div>
               ) : null}
 
-              {/* call-to-action (the pentagon carries the signal; this invites the click) */}
-              <div style={{ display: "flex", flexDirection: "column", gap: 10, marginTop: 36 }}>
-                <div style={{ display: "flex", fontSize: 34, fontWeight: 600, color: INK }}>
-                  See the full dossier →
+              {/* one traction line — keeps the card about the program's real usage */}
+              {tractionValue ? (
+                <div style={{ display: "flex", flexDirection: "column", gap: 6, marginTop: 36 }}>
+                  <div style={{ display: "flex", fontSize: 40, fontWeight: 600, color: INK }}>
+                    {tractionValue}
+                  </div>
+                  <div style={{ display: "flex", fontSize: 22, color: INK_FAINT }}>
+                    {tractionLabel}
+                  </div>
                 </div>
-                <div style={{ display: "flex", fontSize: 22, color: INK_FAINT }}>
-                  novelty · control · activity · cost, decoded on-chain
-                </div>
-              </div>
+              ) : null}
             </div>
 
             {/* right column: the pentagon */}

@@ -63,9 +63,9 @@ export async function generateMetadata({
       }${program.sizeBytes ? formatBytes(program.sizeBytes) : "size unknown"}${
         program.deployCostSol != null ? `, ${program.deployCostSol} SOL locked` : ""
       }. Novelty, control, activity & cost, decoded on-chain.`
-    : "Program dossier on On Record — the novel-program radar for Solana.";
+    : "A Solana program on On Record — the novel-program radar for Solana.";
   return {
-    title: `${label} — dossier`,
+    title: label,
     description,
     // the file-convention og image is picked up automatically; the twitter
     // card type must be explicit or X falls back to a small summary tile
