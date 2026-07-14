@@ -306,6 +306,7 @@ export interface ApiNearest {
   name: string | null;
   similarity: number; // 0..1, from TLSH distance
   isReference: boolean; // true = registry/verified protocol, false = a peer deploy
+  deployedAt: string | null; // neighbor's first deploy (ISO) — for before/after-this direction
 }
 
 export interface ApiProgramDetail extends ApiProgram {

@@ -25,6 +25,7 @@ interface NearestFact {
 export interface NearestMeta {
   name: string | null;
   isReference: boolean;
+  deployedAt: string | null; // neighbor's first deploy — for the before/after-this hint
 }
 
 /** TLSH distance → display similarity. 0 = identical code, ≥300 = unrelated
@@ -42,6 +43,7 @@ function nearestOf(facts: { nearest?: NearestFact }, meta?: Map<string, NearestM
     name: m?.name ?? null,
     similarity: Math.round(similarityFromDistance(n.distance) * 100) / 100,
     isReference: m?.isReference ?? false,
+    deployedAt: m?.deployedAt ?? null,
   };
 }
 

@@ -68,11 +68,20 @@ async function nearestMetaFor(rows: { facts: unknown }[]): Promise<Map<string, N
       name: schema.subjects.name,
       entityKey: schema.subjects.entityKey,
       verified: schema.subjects.verified,
+      firstDeployAt: schema.subjects.firstDeployAt,
+      firstSeenAt: schema.subjects.firstSeenAt,
     })
     .from(schema.subjects)
     .where(inArray(schema.subjects.id, ids));
   return new Map(
-    relatives.map((r) => [r.id, { name: r.name, isReference: Boolean(r.entityKey) || r.verified }]),
+    relatives.map((r) => [
+      r.id,
+      {
+        name: r.name,
+        isReference: Boolean(r.entityKey) || r.verified,
+        deployedAt: (r.firstDeployAt ?? r.firstSeenAt)?.toISOString() ?? null,
+      },
+    ]),
   );
 }
 

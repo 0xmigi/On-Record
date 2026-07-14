@@ -370,6 +370,18 @@ export default async function ProgramDossierPage({
                 {" · "}
                 {Math.round(program.nearest.similarity * 100)}% structural match
               </span>
+              {(() => {
+                // direction, not derivation: did the match deploy before or after this?
+                const self = program.firstDeployAt ?? program.deployedAt;
+                const rel = program.nearest?.deployedAt;
+                if (!self || !rel) return null;
+                const before = new Date(rel).getTime() < new Date(self).getTime();
+                return (
+                  <span className="cell-dim">
+                    {" · "}deployed {fmtDay(rel)}, {before ? "before this" : "after this"}
+                  </span>
+                );
+              })()}
             </span>
           ) : (
             <span className="cell-dim">no close match — novel code</span>

@@ -69,6 +69,7 @@ export interface ApiProgram {
     id: string | null;
     similarity: number; // 0..1
     isReference: boolean; // true = a famous protocol, false = a peer deploy
+    deployedAt: string | null; // neighbor's first deploy — for before/after-this direction
   } | null;
   // exact lineage — byte-identical to a verified build of a known program
   codeMatch: {
