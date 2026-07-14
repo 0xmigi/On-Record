@@ -23,7 +23,22 @@ verification failed" — fix with `ssh-keyscan ssh.railway.com >> ~/.ssh/known_h
 
 ## 1. Devnet radar + devnet→mainnet conversion rate
 
-**GREEN-LIT 2026-07-13** after the Phase-0 census (`scripts/devnet-census.mjs`
+**INGESTION LIVE since 2026-07-14 00:08 UTC** — hourly devnet poller running
+in prod (`DEVNET_POLL_ENABLED=1` on Railway; also `DEVNET_POLL_INTERVAL_MS`
+/ `_BOOTSTRAP_HOURS` / `_MAX`). Watchlist seeded with the 30d cohort: 5,933
+lineages (source `devnet_seed`, TLSH included — ran in the container via
+`railway ssh "node apps/ingest/dist/seed-devnet.js"`). First cycle: 47/47
+ingested, all stopping at classify. Mainnet deploys matching a watched
+lineage now get `facts.incubation` (first devnet sighting, days, iteration
+count) automatically. REMAINING (Phase 3, UI): network param on
+/api/radar + /api/funnel, the devnet view (tab vs page — undecided),
+incubation display on cards/dossier (demo before shipping), and the
+conversion-rate stat on the stats page once matches accumulate.
+Gotcha: enumeration must stream — the container heap is 256MB (see
+59e9400); and `railway variables --set` needs an explicit
+`railway redeploy -y` to take effect.
+
+**Phase-0 census 2026-07-13** (`scripts/devnet-census.mjs`
 → `data/devnet-census.json`, read-only, 46 credits) overturned the volume
 fear:
 - **~280–310 programs touched/day** (7d cohort 1,958) — only ~2× mainnet's
