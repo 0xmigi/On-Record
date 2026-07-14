@@ -147,9 +147,8 @@ export default async function OgImage({ params }: { params: Promise<{ id: string
     program.deployedAt ??
     program.firstDeployAt ??
     null;
-  const stamp = stampIso
-    ? `${program.deployType === "upgrade" ? "Upgraded" : "Deployed"} ${fmtUTC(stampIso)}`
-    : null;
+  const stampLabel = program.deployType === "upgrade" ? "UPGRADED" : "DEPLOYED";
+  const stampDate = stampIso ? fmtUTC(stampIso) : null;
 
   // pentagon geometry: 340px box, labels placed around it
   const box = 340;
@@ -267,13 +266,34 @@ export default async function OgImage({ params }: { params: Promise<{ id: string
                 </div>
               ) : null}
 
-              {stamp ? (
-                <>
-                  <div style={{ display: "flex", height: 2, background: BORDER, marginTop: 40 }} />
-                  <div style={{ display: "flex", fontSize: 24, color: INK_SOFT, marginTop: 24 }}>
-                    {stamp}
+              {stampDate ? (
+                <div style={{ display: "flex", flexDirection: "column", marginTop: 40 }}>
+                  {/* section-header style: label + the triple-line rule from the page */}
+                  <div style={{ display: "flex", alignItems: "center" }}>
+                    <span
+                      style={{
+                        display: "flex",
+                        fontSize: 19,
+                        letterSpacing: 1.5,
+                        fontWeight: 600,
+                        color: INK_SOFT,
+                        whiteSpace: "nowrap",
+                      }}
+                    >
+                      {stampLabel}
+                    </span>
+                    <div
+                      style={{ display: "flex", flexDirection: "column", flex: 1, marginLeft: 16, gap: 5 }}
+                    >
+                      <div style={{ display: "flex", height: 2, background: BORDER }} />
+                      <div style={{ display: "flex", height: 2, background: BORDER }} />
+                      <div style={{ display: "flex", height: 2, background: BORDER }} />
+                    </div>
                   </div>
-                </>
+                  <div style={{ display: "flex", fontSize: 26, color: INK, marginTop: 18 }}>
+                    {stampDate}
+                  </div>
+                </div>
               ) : null}
             </div>
 
