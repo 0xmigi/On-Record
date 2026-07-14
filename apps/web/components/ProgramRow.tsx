@@ -164,10 +164,10 @@ export function ProgramRow({ program }: { program: ApiProgram }) {
           ) : null}
           {program.incubation ? (
             <span
-              className="incubation-chip"
-              title={`Seen incubating on devnet ${program.incubation.incubationDays >= 1 ? `${program.incubation.incubationDays} days` : "under a day"} before this mainnet deploy`}
+              className="radar-devnet"
+              title={`Seen on devnet ${program.incubation.incubationDays >= 1 ? `${program.incubation.incubationDays} days` : "under a day"} before this mainnet deploy — less likely a throwaway`}
             >
-              devnet →
+              · seen on devnet
             </span>
           ) : null}
         </div>

@@ -1400,6 +1400,15 @@ a.copy-addr-text:hover {
   white-space: nowrap;
 }
 
+/* seen-on-devnet: a quiet merit line (cooked on devnet first, less likely a
+   throwaway) — deliberately plain, not a loud tag */
+.radar-devnet {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--ink-faint);
+  white-space: nowrap;
+}
+
 .id-link {
   font-family: var(--font-mono);
   font-size: 10px;
