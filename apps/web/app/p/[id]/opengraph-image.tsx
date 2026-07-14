@@ -135,6 +135,22 @@ export default async function OgImage({ params }: { params: Promise<{ id: string
     program.deployCostSol != null ? `${program.deployCostSol} SOL rent` : null,
   ].filter(Boolean) as string[];
 
+  // the deploy / upgrade moment, full UTC — a fixed point in time, never stale
+  const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+  const fmtUTC = (iso: string): string => {
+    const d = new Date(iso);
+    const p = (n: number): string => String(n).padStart(2, "0");
+    return `${d.getUTCDate()} ${MONTHS[d.getUTCMonth()]} ${d.getUTCFullYear()}, ${p(d.getUTCHours())}:${p(d.getUTCMinutes())} UTC`;
+  };
+  const stampIso =
+    (program.deployType === "upgrade" ? program.lastEventAt : null) ??
+    program.deployedAt ??
+    program.firstDeployAt ??
+    null;
+  const stamp = stampIso
+    ? `${program.deployType === "upgrade" ? "Upgraded" : "Deployed"} ${fmtUTC(stampIso)}`
+    : null;
+
   // pentagon geometry: 340px box, labels placed around it
   const box = 340;
   const c = box / 2;
@@ -199,8 +215,8 @@ export default async function OgImage({ params }: { params: Promise<{ id: string
             <span>{program.deployType === "upgrade" ? "UPGRADED PROGRAM" : "NEW PROGRAM"}</span>
           </div>
 
-          <div style={{ display: "flex", flex: 1, alignItems: "center", gap: 40 }}>
-            {/* left column: name, id, facts, signal chips */}
+          <div style={{ display: "flex", flex: 1, alignItems: "flex-start", gap: 40 }}>
+            {/* left column: name is the title up top, a divider, then the timestamp */}
             <div style={{ display: "flex", flexDirection: "column", flex: 1, minWidth: 0 }}>
               <div style={{ display: "flex", alignItems: "center", gap: 20, marginTop: 8 }}>
                 {logo ? (
@@ -251,9 +267,17 @@ export default async function OgImage({ params }: { params: Promise<{ id: string
                 </div>
               ) : null}
 
+              {stamp ? (
+                <>
+                  <div style={{ display: "flex", height: 2, background: BORDER, marginTop: 40 }} />
+                  <div style={{ display: "flex", fontSize: 24, color: INK_SOFT, marginTop: 24 }}>
+                    {stamp}
+                  </div>
+                </>
+              ) : null}
             </div>
 
-            {/* right column: the pentagon */}
+            {/* right column: the pentagon (kept vertically centred) */}
             <div
               style={{
                 display: "flex",
@@ -263,6 +287,7 @@ export default async function OgImage({ params }: { params: Promise<{ id: string
                 alignItems: "center",
                 justifyContent: "center",
                 flexShrink: 0,
+                alignSelf: "center",
               }}
             >
               <svg width={box} height={box} viewBox={`0 0 ${box} ${box}`}>
