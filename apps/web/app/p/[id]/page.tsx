@@ -311,7 +311,7 @@ export default async function ProgramDossierPage({
               first seen on devnet <strong>{fmtDay(program.incubation.firstDevnetAt)}</strong> —{" "}
               <strong>
                 {program.incubation.incubationDays >= 1
-                  ? `${program.incubation.incubationDays} day${program.incubation.incubationDays >= 2 ? "s" : ""}`
+                  ? `${program.incubation.incubationDays} day${program.incubation.incubationDays === 1 ? "" : "s"}`
                   : "under a day"}
               </strong>{" "}
               before its mainnet debut
