@@ -292,7 +292,9 @@ export interface ApiIncubation {
   devnetProgramId: string | null; // the devnet program it was sighted as
   firstDevnetAt: string; // ISO — first devnet sighting
   incubationDays: number; // devnet→mainnet gap, days (0.1 precision)
-  devnetIterations: number; // devnet deploy/upgrade count before debut
+  devnetIterations: number; // devnet deploys BEFORE the mainnet debut (pre-launch effort)
+  devnetDeploysTotal?: number; // lifetime devnet deploys (incl. post-launch staging)
+  lastDevnetAt?: string | null; // ISO — last devnet deploy/upgrade (ongoing-activity signal)
   // how the mainnet program was tied to devnet: bytecode (sha256/tlsh),
   // upgrade authority, or the same program address on both clusters
   matchedOn: "sha256" | "tlsh" | "authority" | "program_id";

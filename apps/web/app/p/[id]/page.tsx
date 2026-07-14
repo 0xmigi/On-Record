@@ -35,6 +35,11 @@ const EVENT_LABELS: Record<ApiRawEvent["type"], string> = {
   close: "CLOSE",
 };
 
+// absolute short date for lineage timestamps (server-rendered, locale-stable)
+function fmtDay(iso: string): string {
+  return new Date(iso).toLocaleDateString("en-US", { year: "numeric", month: "short", day: "numeric" });
+}
+
 // how a mainnet program was tied back to its devnet sighting
 const INCUBATION_MATCH: Record<"sha256" | "tlsh" | "authority" | "program_id", string> = {
   sha256: "identical bytecode",
@@ -303,20 +308,26 @@ export default async function ProgramDossierPage({
         {program.incubation ? (
           <Row label="Devnet origin">
             <span className="incubation-line">
-              seen on devnet{" "}
+              first seen on devnet <strong>{fmtDay(program.incubation.firstDevnetAt)}</strong> —{" "}
               <strong>
                 {program.incubation.incubationDays >= 1
                   ? `${program.incubation.incubationDays} day${program.incubation.incubationDays >= 2 ? "s" : ""}`
-                  : "<1 day"}
+                  : "under a day"}
               </strong>{" "}
-              before mainnet
-              {program.incubation.devnetIterations > 1 ? (
-                <span className="cell-dim">
-                  {" "}· {program.incubation.devnetIterations} iterations there
-                </span>
-              ) : null}
-              <span className="cell-dim"> · matched on {INCUBATION_MATCH[program.incubation.matchedOn]}</span>
+              before its mainnet debut
             </span>
+            <div className="cell-dim" style={{ marginTop: 2 }}>
+              <strong>{program.incubation.devnetIterations}</strong> devnet deploy
+              {program.incubation.devnetIterations === 1 ? "" : "s"} before launch
+              {program.incubation.devnetDeploysTotal != null &&
+              program.incubation.devnetDeploysTotal > program.incubation.devnetIterations ? (
+                <>
+                  {" "}· still iterating on devnet after — {program.incubation.devnetDeploysTotal} total
+                  {program.incubation.lastDevnetAt ? `, through ${fmtDay(program.incubation.lastDevnetAt)}` : ""}
+                </>
+              ) : null}
+              {" "}· matched on {INCUBATION_MATCH[program.incubation.matchedOn]}
+            </div>
             {program.incubation.devnetProgramId ? (
               <div style={{ marginTop: 4 }}>
                 {program.incubation.matchedOn === "program_id" ? (

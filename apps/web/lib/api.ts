@@ -81,7 +81,9 @@ export interface ApiProgram {
     devnetProgramId: string | null; // the devnet program it was sighted as
     firstDevnetAt: string; // ISO — first devnet sighting
     incubationDays: number; // devnet→mainnet gap, days
-    devnetIterations: number; // devnet deploy/upgrade count before debut
+    devnetIterations: number; // devnet deploys BEFORE the mainnet debut (pre-launch effort)
+    devnetDeploysTotal?: number; // lifetime devnet deploys (incl. post-launch staging)
+    lastDevnetAt?: string | null; // ISO — last devnet deploy/upgrade
     matchedOn: "sha256" | "tlsh" | "authority" | "program_id";
   } | null;
   // Squads governance decoded from the deploy tx
