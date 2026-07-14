@@ -23,6 +23,8 @@ const INK = "#171717";
 const INK_SOFT = "#525252";
 const INK_FAINT = "#8f8f8f";
 const ACCENT = "#e8432c";
+const ACCENT_LINE = "rgba(232,67,44,0.35)";
+const ACCENT_TINT = "rgba(232,67,44,0.07)";
 
 function pentagonPoints(signals: Signal[], r: number, c: number, scaleFor: (s: Signal) => number): string {
   const n = signals.length;
@@ -284,22 +286,31 @@ export default async function OgImage({ params }: { params: Promise<{ id: string
               ) : null}
 
               {signalChips.length ? (
-                <div style={{ display: "flex", gap: 14, marginTop: 34, flexWrap: "wrap" }}>
-                  {signalChips.map((chip) => (
-                    <span
-                      key={chip}
-                      style={{
-                        display: "flex",
-                        border: `2px solid ${BORDER}`,
-                        borderRadius: 6,
-                        padding: "12px 22px",
-                        fontSize: 28,
-                        color: INK,
-                      }}
-                    >
-                      {chip}
-                    </span>
-                  ))}
+                <div style={{ display: "flex", flexDirection: "column", gap: 14, marginTop: 34 }}>
+                  {[signalChips.slice(0, 2), signalChips.slice(2, 4)]
+                    .filter((row) => row.length)
+                    .map((row, i) => (
+                      <div key={i} style={{ display: "flex", gap: 14 }}>
+                        {row.map((chip) => (
+                          <span
+                            key={chip}
+                            style={{
+                              display: "flex",
+                              flex: 1,
+                              justifyContent: "center",
+                              border: `2px solid ${ACCENT_LINE}`,
+                              background: ACCENT_TINT,
+                              borderRadius: 6,
+                              padding: "12px 0",
+                              fontSize: 28,
+                              color: INK,
+                            }}
+                          >
+                            {chip}
+                          </span>
+                        ))}
+                      </div>
+                    ))}
                 </div>
               ) : null}
             </div>
