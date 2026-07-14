@@ -35,6 +35,13 @@ const EVENT_LABELS: Record<ApiRawEvent["type"], string> = {
   close: "CLOSE",
 };
 
+// how a mainnet program was tied back to its devnet sighting
+const INCUBATION_MATCH: Record<"sha256" | "tlsh" | "authority", string> = {
+  sha256: "identical bytecode",
+  tlsh: "near-identical bytecode",
+  authority: "same upgrade authority",
+};
+
 export async function generateMetadata({
   params,
 }: {
@@ -292,6 +299,33 @@ export default async function ProgramDossierPage({
     <>
       <SectionHeader title="Lineage" info="Is it new code, or derived from something known?" />
       <div className="facts-panel">
+        {program.incubation ? (
+          <Row label="Devnet origin">
+            <span className="incubation-line">
+              seen on devnet{" "}
+              <strong>
+                {program.incubation.incubationDays >= 1
+                  ? `${program.incubation.incubationDays} day${program.incubation.incubationDays >= 2 ? "s" : ""}`
+                  : "<1 day"}
+              </strong>{" "}
+              before mainnet
+              {program.incubation.devnetIterations > 1 ? (
+                <span className="cell-dim">
+                  {" "}· {program.incubation.devnetIterations} iterations there
+                </span>
+              ) : null}
+              <span className="cell-dim"> · matched on {INCUBATION_MATCH[program.incubation.matchedOn]}</span>
+            </span>
+            {program.incubation.devnetProgramId ? (
+              <div style={{ marginTop: 4 }}>
+                <Link href={`/p/${program.incubation.devnetProgramId}`} className="neighbor-addr">
+                  → {truncateAddress(program.incubation.devnetProgramId)}
+                </Link>
+                <span className="cell-dim"> · the devnet program</span>
+              </div>
+            ) : null}
+          </Row>
+        ) : null}
         {program.codeMatch ? (
           <Row label="Exact code match">
             <Link href={`/p/${program.codeMatch.programId}`} className="neighbor-addr">
@@ -729,6 +763,14 @@ export default async function ProgramDossierPage({
             ) : null}
             {program.deployType === "upgrade" && program.upgradeCount > 0 ? (
               <span className="cluster-note">upgraded ×{program.upgradeCount}</span>
+            ) : null}
+            {program.incubation ? (
+              <span
+                className="incubation-chip"
+                title="Seen incubating on devnet before this mainnet deploy — the radar linked the two"
+              >
+                devnet → mainnet
+              </span>
             ) : null}
             {botClass === "recycled" ? (
               <span className="dup-chip" title="Byte-identical bytecode to other deploys on record — same code, fresh id">

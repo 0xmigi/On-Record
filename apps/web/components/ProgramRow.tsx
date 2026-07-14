@@ -162,6 +162,14 @@ export function ProgramRow({ program }: { program: ApiProgram }) {
               closed
             </span>
           ) : null}
+          {program.incubation ? (
+            <span
+              className="incubation-chip"
+              title={`Seen incubating on devnet ${program.incubation.incubationDays >= 1 ? `${program.incubation.incubationDays} days` : "under a day"} before this mainnet deploy`}
+            >
+              devnet →
+            </span>
+          ) : null}
         </div>
 
         {/* specs row, most-common first: size (always) · cost · built with ·

@@ -78,6 +78,7 @@ export function serializeProgram(
     idlSource?: "pmp" | "anchor-legacy";
     logoUrl?: string;
     codeMatch?: ApiProgram["codeMatch"];
+    incubation?: ApiProgram["incubation"];
     multisig?: ApiProgram["multisig"];
     activity?: { t: number; c: number }[];
     momentum?: { txns24h: number; growth: number | null };
@@ -129,6 +130,7 @@ export function serializeProgram(
         : null,
     nearest: nearestOf(facts, nearestMeta),
     codeMatch: facts.codeMatch ?? null,
+    incubation: facts.incubation ?? null,
     multisig: facts.multisig ?? null,
     // radar rows carry a 48h sparkline; the detail serializer widens to 7d
     activity: facts.activity?.slice(-48) ?? null,

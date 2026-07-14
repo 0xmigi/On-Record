@@ -260,6 +260,9 @@ export interface ApiProgram {
   nearest: ApiNearest | null;
   /** exact lineage: byte-identical to a verified build of a known program */
   codeMatch: ApiCodeMatch | null;
+  /** devnet→mainnet lineage: this program was seen incubating on devnet before
+   *  its mainnet debut (fingerprint/authority match against the watchlist) */
+  incubation: ApiIncubation | null;
   /** Squads governance decoded from the deploy tx ("2-of-3") */
   multisig: ApiMultisig | null;
   // --- momentum: sampled on-chain activity (methodology v0) ---
@@ -281,6 +284,16 @@ export interface ApiInterest {
 export interface ApiActivityPoint {
   t: number; // hour bucket, epoch ms
   c: number; // transactions observed in that hour
+}
+
+/** devnet→mainnet incubation link, stored on subjects.facts by the pipeline
+ *  when a mainnet deploy matches a devnet watchlist sighting. */
+export interface ApiIncubation {
+  devnetProgramId: string | null; // the devnet program it was sighted as
+  firstDevnetAt: string; // ISO — first devnet sighting
+  incubationDays: number; // devnet→mainnet gap, days (0.1 precision)
+  devnetIterations: number; // devnet deploy/upgrade count before debut
+  matchedOn: "sha256" | "tlsh" | "authority";
 }
 
 /** Nearest bytecode relative, resolved for display (SPEC §7). */

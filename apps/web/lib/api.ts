@@ -76,6 +76,14 @@ export interface ApiProgram {
     repository: string;
     trusted: boolean;
   } | null;
+  // devnet→mainnet lineage — seen incubating on devnet before its mainnet debut
+  incubation: {
+    devnetProgramId: string | null; // the devnet program it was sighted as
+    firstDevnetAt: string; // ISO — first devnet sighting
+    incubationDays: number; // devnet→mainnet gap, days
+    devnetIterations: number; // devnet deploy/upgrade count before debut
+    matchedOn: "sha256" | "tlsh" | "authority";
+  } | null;
   // Squads governance decoded from the deploy tx
   multisig: {
     address: string;
