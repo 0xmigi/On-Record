@@ -135,20 +135,37 @@ export default async function OgImage({ params }: { params: Promise<{ id: string
     program.deployCostSol != null ? `${program.deployCostSol} SOL rent` : null,
   ].filter(Boolean) as string[];
 
-  // the deploy / upgrade moment, full UTC — a fixed point in time, never stale
-  const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-  const fmtUTC = (iso: string): string => {
-    const d = new Date(iso);
-    const p = (n: number): string => String(n).padStart(2, "0");
-    return `${d.getUTCDate()} ${MONTHS[d.getUTCMonth()]} ${d.getUTCFullYear()}, ${p(d.getUTCHours())}:${p(d.getUTCMinutes())} UTC`;
-  };
-  const stampIso =
-    (program.deployType === "upgrade" ? program.lastEventAt : null) ??
-    program.deployedAt ??
-    program.firstDeployAt ??
-    null;
-  const stampLabel = program.deployType === "upgrade" ? "UPGRADED" : "DEPLOYED";
-  const stampDate = stampIso ? fmtUTC(stampIso) : null;
+  // the pentagon's signals as terse chips — neutral (not accent) so they read
+  // as facts, not as part of the graph
+  const abbrevTxns = (n: number): string =>
+    n >= 1000 ? `${(n / 1000).toFixed(n >= 10000 ? 0 : 1).replace(/\.0$/, "")}k` : String(n);
+  const txns = program.momentum?.txns24h ?? program.earlySigners ?? 0;
+  const disclosed = [
+    program.name,
+    program.repoUrl,
+    program.website ?? program.social,
+    program.idlPresent,
+    program.hasSecurityTxt,
+    program.verified,
+  ].filter(Boolean).length;
+  const signalChips = [
+    program.band === "clone"
+      ? "exact clone"
+      : program.nearest
+        ? `${Math.round(Math.max(0, 1 - program.nearest.similarity) * 100)}% novel`
+        : "novel code",
+    program.multisig
+      ? `${program.multisig.threshold}/${program.multisig.members} multisig`
+      : program.authorityClass === "none"
+        ? "immutable"
+        : program.authorityClass === "program"
+          ? "program-owned"
+          : program.authorityClass === "hot_wallet"
+            ? "hot-wallet auth"
+            : null,
+    txns > 0 ? `${abbrevTxns(txns)} txns/24h` : null,
+    `${disclosed}/6 disclosed`,
+  ].filter((c): c is string => Boolean(c));
 
   // pentagon geometry: 340px box, labels placed around it
   const box = 340;
@@ -266,33 +283,23 @@ export default async function OgImage({ params }: { params: Promise<{ id: string
                 </div>
               ) : null}
 
-              {stampDate ? (
-                <div style={{ display: "flex", flexDirection: "column", marginTop: 40 }}>
-                  {/* section-header style: label + the triple-line rule from the page */}
-                  <div style={{ display: "flex", alignItems: "center" }}>
+              {signalChips.length ? (
+                <div style={{ display: "flex", gap: 14, marginTop: 34, flexWrap: "wrap" }}>
+                  {signalChips.map((chip) => (
                     <span
+                      key={chip}
                       style={{
                         display: "flex",
-                        fontSize: 19,
-                        letterSpacing: 1.5,
-                        fontWeight: 600,
-                        color: INK_SOFT,
-                        whiteSpace: "nowrap",
+                        border: `2px solid ${BORDER}`,
+                        borderRadius: 6,
+                        padding: "12px 22px",
+                        fontSize: 28,
+                        color: INK,
                       }}
                     >
-                      {stampLabel}
+                      {chip}
                     </span>
-                    <div
-                      style={{ display: "flex", flexDirection: "column", flex: 1, marginLeft: 16, gap: 5 }}
-                    >
-                      <div style={{ display: "flex", height: 2, background: BORDER }} />
-                      <div style={{ display: "flex", height: 2, background: BORDER }} />
-                      <div style={{ display: "flex", height: 2, background: BORDER }} />
-                    </div>
-                  </div>
-                  <div style={{ display: "flex", fontSize: 26, color: INK, marginTop: 18 }}>
-                    {stampDate}
-                  </div>
+                  ))}
                 </div>
               ) : null}
             </div>
