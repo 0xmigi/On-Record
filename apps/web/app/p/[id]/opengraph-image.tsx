@@ -23,8 +23,6 @@ const INK = "#171717";
 const INK_SOFT = "#525252";
 const INK_FAINT = "#8f8f8f";
 const ACCENT = "#e8432c";
-const ACCENT_LINE = "rgba(232,67,44,0.35)";
-const ACCENT_TINT = "rgba(232,67,44,0.07)";
 
 function pentagonPoints(signals: Signal[], r: number, c: number, scaleFor: (s: Signal) => number): string {
   const n = signals.length;
@@ -137,37 +135,21 @@ export default async function OgImage({ params }: { params: Promise<{ id: string
     program.deployCostSol != null ? `${program.deployCostSol} SOL rent` : null,
   ].filter(Boolean) as string[];
 
-  // the pentagon's signals as terse chips — neutral (not accent) so they read
-  // as facts, not as part of the graph
-  const abbrevTxns = (n: number): string =>
-    n >= 1000 ? `${(n / 1000).toFixed(n >= 10000 ? 0 : 1).replace(/\.0$/, "")}k` : String(n);
-  const txns = program.momentum?.txns24h ?? program.earlySigners ?? 0;
-  const disclosed = [
-    program.name,
-    program.repoUrl,
-    program.website ?? program.social,
-    program.idlPresent,
-    program.hasSecurityTxt,
-    program.verified,
-  ].filter(Boolean).length;
-  const signalChips = [
-    program.band === "clone"
-      ? "exact clone"
-      : program.nearest
-        ? `${Math.round(Math.max(0, 1 - program.nearest.similarity) * 100)}% novel`
-        : "novel code",
-    program.multisig
-      ? `${program.multisig.threshold}/${program.multisig.members} multisig`
-      : program.authorityClass === "none"
-        ? "immutable"
-        : program.authorityClass === "program"
-          ? "program-owned"
-          : program.authorityClass === "hot_wallet"
-            ? "hot-wallet auth"
-            : null,
-    txns > 0 ? `${abbrevTxns(txns)} txns/24h` : null,
-    `${disclosed}/6 disclosed`,
-  ].filter((c): c is string => Boolean(c));
+  // deploy / upgrade moment, full UTC — a fixed point in time, never stale
+  const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+  const stampIso =
+    (program.deployType === "upgrade" ? program.lastEventAt : null) ??
+    program.deployedAt ??
+    program.firstDeployAt ??
+    null;
+  const stampLabel = program.deployType === "upgrade" ? "UPGRADED" : "DEPLOYED";
+  const stampDate = stampIso
+    ? (() => {
+        const d = new Date(stampIso);
+        const p = (n: number): string => String(n).padStart(2, "0");
+        return `${d.getUTCDate()} ${MONTHS[d.getUTCMonth()]} ${d.getUTCFullYear()}, ${p(d.getUTCHours())}:${p(d.getUTCMinutes())} UTC`;
+      })()
+    : null;
 
   // pentagon geometry: 340px box, labels placed around it
   const box = 340;
@@ -233,8 +215,8 @@ export default async function OgImage({ params }: { params: Promise<{ id: string
             <span>{program.deployType === "upgrade" ? "UPGRADED PROGRAM" : "NEW PROGRAM"}</span>
           </div>
 
-          <div style={{ display: "flex", flex: 1, alignItems: "flex-start", gap: 40 }}>
-            {/* left column: name is the title up top, a divider, then the timestamp */}
+          <div style={{ display: "flex", flex: 1, alignItems: "center", gap: 40 }}>
+            {/* left column: name + facts, vertically centred against the pentagon */}
             <div style={{ display: "flex", flexDirection: "column", flex: 1, minWidth: 0 }}>
               <div style={{ display: "flex", alignItems: "center", gap: 20, marginTop: 8 }}>
                 {logo ? (
@@ -285,32 +267,28 @@ export default async function OgImage({ params }: { params: Promise<{ id: string
                 </div>
               ) : null}
 
-              {signalChips.length ? (
-                <div style={{ display: "flex", flexDirection: "column", gap: 14, marginTop: 34 }}>
-                  {[signalChips.slice(0, 2), signalChips.slice(2, 4)]
-                    .filter((row) => row.length)
-                    .map((row, i) => (
-                      <div key={i} style={{ display: "flex", gap: 14 }}>
-                        {row.map((chip) => (
-                          <span
-                            key={chip}
-                            style={{
-                              display: "flex",
-                              flex: 1,
-                              justifyContent: "center",
-                              border: `2px solid ${ACCENT_LINE}`,
-                              background: ACCENT_TINT,
-                              borderRadius: 6,
-                              padding: "12px 0",
-                              fontSize: 28,
-                              color: INK,
-                            }}
-                          >
-                            {chip}
-                          </span>
-                        ))}
-                      </div>
-                    ))}
+              {stampDate ? (
+                <div style={{ display: "flex", flexDirection: "column", marginTop: 34 }}>
+                  <div style={{ display: "flex", alignItems: "center" }}>
+                    <span
+                      style={{
+                        display: "flex",
+                        fontSize: 19,
+                        letterSpacing: 1.5,
+                        fontWeight: 600,
+                        color: INK_SOFT,
+                        whiteSpace: "nowrap",
+                      }}
+                    >
+                      {stampLabel}
+                    </span>
+                    <div
+                      style={{ display: "flex", flex: 1, height: 2, background: BORDER, marginLeft: 16 }}
+                    />
+                  </div>
+                  <div style={{ display: "flex", fontSize: 26, color: INK, marginTop: 28 }}>
+                    {stampDate}
+                  </div>
                 </div>
               ) : null}
             </div>
@@ -361,12 +339,11 @@ export default async function OgImage({ params }: { params: Promise<{ id: string
           <div
             style={{
               display: "flex",
-              justifyContent: "space-between",
+              justifyContent: "flex-end",
               color: INK_FAINT,
               fontSize: 19,
             }}
           >
-            <span>Strip the copy-paste. Rank what&apos;s new.</span>
             <span style={{ color: INK_SOFT }}>the novel-program radar for Solana</span>
           </div>
         </div>
