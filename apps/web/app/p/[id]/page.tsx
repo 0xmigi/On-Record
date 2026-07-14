@@ -351,28 +351,23 @@ export default async function ProgramDossierPage({
             <Ext href={program.codeMatch.repository} text={shortUrl(program.codeMatch.repository)} />
           </Row>
         ) : null}
-        <Row label="Nearest match">
+        <Row label="Closest relative">
           {program.nearest ? (
             ((n) => {
               const simPct = Math.round(n.similarity * 100);
               const tt =
-                "Structural similarity of the compiled bytecode (TLSH fuzzy hash) — not proof that code was copied, and no direction of derivation. Programs on the same framework/toolchain and similar size score high on shared boilerplate alone.";
-              // a pack of similar-shaped programs → don't crown one arbitrary match
+                "Structural similarity of the compiled bytecode (TLSH fuzzy hash) — a lead, not proof of copied code. Ancestor / descendant is deploy order plus similarity, not confirmed derivation.";
+              // a pack of similar-shaped programs → no single source to trace to
               if (n.peersWithin5 != null && n.peersWithin5 >= 6) {
                 return (
                   <span className="cell-dim" title={tt}>
-                    structurally generic — one of {n.peersWithin5} programs within 5% at ~{simPct}%
-                    (shared framework shape, no single relative)
+                    no distinct source · {n.peersWithin5} lookalikes at ~{simPct}%
                   </span>
                 );
               }
               const self = program.firstDeployAt ?? program.deployedAt;
-              const dir =
-                self && n.deployedAt
-                  ? new Date(n.deployedAt).getTime() < new Date(self).getTime()
-                    ? "before this"
-                    : "after this"
-                  : null;
+              const older =
+                self && n.deployedAt ? new Date(n.deployedAt).getTime() < new Date(self).getTime() : null;
               return (
                 <span title={tt}>
                   {n.isReference ? (
@@ -384,17 +379,13 @@ export default async function ProgramDossierPage({
                   ) : (
                     "a peer deploy"
                   )}
-                  {!n.name && !n.isReference ? <span className="cell-dim"> · unnamed peer</span> : null}
                   <span className="cell-dim">
                     {" · "}
                     {simPct}% structural match
-                    {n.runnerUpSimilarity != null
-                      ? `, next-closest ${Math.round(n.runnerUpSimilarity * 100)}%`
-                      : ""}
                   </span>
-                  {dir && n.deployedAt ? (
-                    <span className="cell-dim">
-                      {" · "}deployed {fmtDay(n.deployedAt)}, {dir}
+                  {older != null ? (
+                    <span className={`rel-tag ${older ? "rel-ancestor" : "rel-descendant"}`}>
+                      {older ? "ancestor" : "descendant"}
                     </span>
                   ) : null}
                 </span>
