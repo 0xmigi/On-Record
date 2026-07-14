@@ -53,6 +53,43 @@ async function loadFont(file: string): Promise<Buffer> {
   throw new Error(`og font not found: ${file}`);
 }
 
+/** Best icon URL for a program: its developer-declared on-chain logo, else a
+ *  favicon sourced from its linked site/social/repo (same fallback the site's
+ *  ProgramAvatar uses). null when there's nothing to source. */
+function logoSource(p: {
+  logoUrl: string | null;
+  website: string | null;
+  social: string | null;
+  repoUrl: string | null;
+}): string | null {
+  if (p.logoUrl) return p.logoUrl;
+  const src = p.website ?? p.social ?? p.repoUrl;
+  if (!src) return null;
+  try {
+    return `https://www.google.com/s2/favicons?domain=${new URL(src).hostname}&sz=128`;
+  } catch {
+    return null;
+  }
+}
+
+/** Fetch an icon and inline it as a data URI — Satori renders remote images
+ *  unreliably, so we embed the bytes. Skips SVG (not rasterized), oversized
+ *  images, and any failure — the card just renders without a logo. */
+async function loadLogo(url: string | null): Promise<string | null> {
+  if (!url) return null;
+  try {
+    const res = await fetch(url, { signal: AbortSignal.timeout(2500) });
+    if (!res.ok) return null;
+    const type = res.headers.get("content-type") ?? "";
+    if (!type.startsWith("image/") || type.includes("svg")) return null;
+    const buf = Buffer.from(await res.arrayBuffer());
+    if (buf.length === 0 || buf.length > 512_000) return null;
+    return `data:${type};base64,${buf.toString("base64")}`;
+  } catch {
+    return null;
+  }
+}
+
 export default async function OgImage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const [program, fontRegular, fontSemiBold] = await Promise.all([
@@ -65,6 +102,8 @@ export default async function OgImage({ params }: { params: Promise<{ id: string
     { name: "Plex Mono", data: fontRegular, weight: 400 as const, style: "normal" as const },
     { name: "Plex Mono", data: fontSemiBold, weight: 600 as const, style: "normal" as const },
   ];
+
+  const logo = program ? await loadLogo(logoSource(program)) : null;
 
   if (!program) {
     return new ImageResponse(
@@ -197,18 +236,34 @@ export default async function OgImage({ params }: { params: Promise<{ id: string
           <div style={{ display: "flex", flex: 1, alignItems: "center", gap: 40 }}>
             {/* left column: name, id, facts, signal chips */}
             <div style={{ display: "flex", flexDirection: "column", flex: 1, minWidth: 0 }}>
-              <div
-                style={{
-                  fontSize: name.length > 18 ? 44 : 58,
-                  fontWeight: 600,
-                  color: INK,
-                  marginTop: 8,
-                }}
-              >
-                {name}
-              </div>
-              <div style={{ fontSize: 20, color: INK_FAINT, marginTop: 6 }}>
-                {truncateAddress(program.id)}
+              <div style={{ display: "flex", alignItems: "center", gap: 20, marginTop: 8 }}>
+                {logo ? (
+                  <img
+                    width={72}
+                    height={72}
+                    src={logo}
+                    style={{
+                      borderRadius: 14,
+                      border: `2px solid ${BORDER}`,
+                      objectFit: "cover",
+                      flexShrink: 0,
+                    }}
+                  />
+                ) : null}
+                <div style={{ display: "flex", flexDirection: "column", minWidth: 0 }}>
+                  <div
+                    style={{
+                      fontSize: name.length > 18 ? (logo ? 40 : 44) : logo ? 50 : 58,
+                      fontWeight: 600,
+                      color: INK,
+                    }}
+                  >
+                    {name}
+                  </div>
+                  <div style={{ fontSize: 20, color: INK_FAINT, marginTop: 6 }}>
+                    {truncateAddress(program.id)}
+                  </div>
+                </div>
               </div>
 
               {facts.length ? (
