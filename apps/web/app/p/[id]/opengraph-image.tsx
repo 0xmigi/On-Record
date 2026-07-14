@@ -270,23 +270,27 @@ export default async function OgImage({ params }: { params: Promise<{ id: string
               {stampDate ? (
                 <div style={{ display: "flex", flexDirection: "column", marginTop: 34 }}>
                   <div style={{ display: "flex", alignItems: "center" }}>
+                    {/* the event badge from THE RECORD — accent pill, the top signal */}
                     <span
                       style={{
                         display: "flex",
-                        fontSize: 19,
-                        letterSpacing: 1.5,
+                        fontSize: 20,
                         fontWeight: 600,
-                        color: INK_SOFT,
+                        letterSpacing: 1.2,
+                        padding: "6px 16px",
+                        border: `2px solid ${ACCENT}`,
+                        borderRadius: 8,
+                        color: ACCENT,
                         whiteSpace: "nowrap",
                       }}
                     >
                       {stampLabel}
                     </span>
                     <div
-                      style={{ display: "flex", flex: 1, height: 2, background: BORDER, marginLeft: 16 }}
+                      style={{ display: "flex", flex: 1, height: 2, background: BORDER, marginLeft: 18 }}
                     />
                   </div>
-                  <div style={{ display: "flex", fontSize: 26, color: INK, marginTop: 28 }}>
+                  <div style={{ display: "flex", fontSize: 30, color: INK, marginTop: 28 }}>
                     {stampDate}
                   </div>
                 </div>
