@@ -135,16 +135,12 @@ export default async function OgImage({ params }: { params: Promise<{ id: string
     program.deployCostSol != null ? `${program.deployCostSol} SOL rent` : null,
   ].filter(Boolean) as string[];
 
-  // one traction line — same label→figure shape as the dossier's Traction rows
+  // one traction line: early activity only — it's fixed from deploy, so a cached
+  // share card never goes stale (a "last 24h" number would expire once shared)
   const num = (n: number): string => n.toLocaleString("en-US");
   let tractionLabel: string | null = null;
   let tractionValue: string | null = null;
-  if (program.momentum?.txns24h) {
-    tractionLabel = "LAST 24H";
-    tractionValue = `${num(program.momentum.txns24h)} txns${
-      program.momentum.growth != null ? ` · ×${program.momentum.growth} vs prior day` : ""
-    }`;
-  } else if (program.earlySigners) {
+  if (program.earlySigners) {
     const e = program.earlySigners;
     tractionLabel = "EARLY ACTIVITY";
     tractionValue = `${num(e)}${e >= 1000 && e % 1000 === 0 ? "+" : ""} txns in the first 24h`;
