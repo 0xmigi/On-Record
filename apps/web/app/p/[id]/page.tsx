@@ -307,44 +307,38 @@ export default async function ProgramDossierPage({
       <div className="facts-panel">
         {program.incubation ? (
           <Row label="Devnet origin">
-            <span className="incubation-line">
-              first seen on devnet <strong>{fmtDay(program.incubation.firstDevnetAt)}</strong> —{" "}
+            <span
+              className="incubation-line"
+              title={`first seen on devnet ${fmtDay(program.incubation.firstDevnetAt)}${program.incubation.lastDevnetAt ? `, last ${fmtDay(program.incubation.lastDevnetAt)}` : ""} · matched on ${INCUBATION_MATCH[program.incubation.matchedOn]}`}
+            >
               <strong>
                 {program.incubation.incubationDays >= 1
                   ? `${program.incubation.incubationDays} day${program.incubation.incubationDays === 1 ? "" : "s"}`
                   : "under a day"}
               </strong>{" "}
-              before its mainnet debut
+              on devnet before mainnet
+              <span className="cell-dim">
+                {" · "}
+                {program.incubation.devnetDeploysTotal != null &&
+                program.incubation.devnetDeploysTotal > program.incubation.devnetIterations
+                  ? `${program.incubation.devnetIterations} of ${program.incubation.devnetDeploysTotal} deploys pre-launch`
+                  : `${program.incubation.devnetIterations} deploy${program.incubation.devnetIterations === 1 ? "" : "s"} pre-launch`}
+              </span>
             </span>
-            <div className="cell-dim" style={{ marginTop: 2 }}>
-              <strong>{program.incubation.devnetIterations}</strong> devnet deploy
-              {program.incubation.devnetIterations === 1 ? "" : "s"} before launch
-              {program.incubation.devnetDeploysTotal != null &&
-              program.incubation.devnetDeploysTotal > program.incubation.devnetIterations ? (
-                <>
-                  {" "}· still iterating on devnet after — {program.incubation.devnetDeploysTotal} total
-                  {program.incubation.lastDevnetAt ? `, through ${fmtDay(program.incubation.lastDevnetAt)}` : ""}
-                </>
-              ) : null}
-              {" "}· matched on {INCUBATION_MATCH[program.incubation.matchedOn]}
-            </div>
             {program.incubation.devnetProgramId ? (
-              <div style={{ marginTop: 4 }}>
+              <>
+                <span className="cell-dim">{" · "}</span>
                 {program.incubation.matchedOn === "program_id" ? (
-                  // same address on both clusters — link out to the devnet explorer
                   <Ext
                     href={`https://explorer.solana.com/address/${program.incubation.devnetProgramId}?cluster=devnet`}
-                    text={`${truncateAddress(program.incubation.devnetProgramId)} · same address on devnet`}
+                    text="same address on devnet"
                   />
                 ) : (
-                  <>
-                    <Link href={`/p/${program.incubation.devnetProgramId}`} className="neighbor-addr">
-                      → {truncateAddress(program.incubation.devnetProgramId)}
-                    </Link>
-                    <span className="cell-dim"> · the devnet program</span>
-                  </>
+                  <Link href={`/p/${program.incubation.devnetProgramId}`} className="neighbor-addr">
+                    devnet {truncateAddress(program.incubation.devnetProgramId)}
+                  </Link>
                 )}
-              </div>
+              </>
             ) : null}
           </Row>
         ) : null}
