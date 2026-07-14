@@ -76,13 +76,20 @@ export async function classifyFingerprint(
       bucketId,
       nearestDistance: 0,
       nearestProgramId: priorCopy[0]?.programId ?? null,
+      nearestPeersWithin5: 0,
+      nearestRunnerUpDistance: null,
       structuralNovelty: 0,
       watchlistHit: await matchWatchlist(network, programId, fp, null),
     };
   }
 
-  // 2/3. nearest neighbor over the corpus (size ±20% prefilter)
+  // 2/3. nearest neighbor over the corpus (size ±20% prefilter). We also measure
+  // the *crowd* — how many distinct programs cluster within 5 similarity points of
+  // the nearest — so the UI can flag a generic framework-shape match (a pack) vs a
+  // genuine relative (a standout), instead of crowning one arbitrary tie-winner.
   let nearest: { distance: number; sha256: string; programId: string } | null = null;
+  let peersWithin5 = 0;
+  let runnerUpDistance: number | null = null;
   if (fp.tlsh) {
     const lo = Math.floor(fp.sizeBytes * 0.8);
     const hi = Math.ceil(fp.sizeBytes * 1.2);
@@ -100,12 +107,23 @@ export async function classifyFingerprint(
           lte(schema.fingerprintCorpus.sizeBytes, hi),
         ),
       );
+    // min distance per distinct program (corpus is append-only → many rows/program)
+    const minByProgram = new Map<string, { distance: number; sha256: string }>();
     for (const c of candidates) {
       if (!c.tlsh || c.sha256 === fp.sha256 || c.programId === programId) continue;
       const d = tlshDistance(fp.tlsh, c.tlsh);
-      if (d !== null && (nearest === null || d < nearest.distance)) {
-        nearest = { distance: d, sha256: c.sha256, programId: c.programId };
-      }
+      if (d === null) continue;
+      const prev = minByProgram.get(c.programId);
+      if (!prev || d < prev.distance) minByProgram.set(c.programId, { distance: d, sha256: c.sha256 });
+    }
+    const ranked = [...minByProgram.entries()]
+      .map(([pid, v]) => ({ programId: pid, distance: v.distance, sha256: v.sha256 }))
+      .sort((a, b) => a.distance - b.distance);
+    if (ranked[0]) {
+      nearest = ranked[0];
+      runnerUpDistance = ranked[1]?.distance ?? null;
+      // 5 similarity points = 15 TLSH distance units (similarity = 1 − d/300)
+      peersWithin5 = ranked.filter((r) => r.distance <= ranked[0]!.distance + 15).length;
     }
   }
 
@@ -132,6 +150,8 @@ export async function classifyFingerprint(
     bucketId,
     nearestDistance: nearest?.distance ?? null,
     nearestProgramId: nearest?.programId ?? null,
+    nearestPeersWithin5: peersWithin5,
+    nearestRunnerUpDistance: runnerUpDistance,
     structuralNovelty,
     watchlistHit: await matchWatchlist(network, programId, fp, null),
   };

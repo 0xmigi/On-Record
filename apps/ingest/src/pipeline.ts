@@ -363,7 +363,12 @@ export async function classifyStage(eventId: string): Promise<void> {
     // persist lineage so the radar/dossier can show "nearest relative" cheaply
     if (classification.nearestProgramId !== null && classification.nearestDistance !== null) {
       await mergeSubjectFacts(event.programId, {
-        nearest: { id: classification.nearestProgramId, distance: classification.nearestDistance },
+        nearest: {
+          id: classification.nearestProgramId,
+          distance: classification.nearestDistance,
+          peersWithin5: classification.nearestPeersWithin5,
+          runnerUpDistance: classification.nearestRunnerUpDistance,
+        },
       });
     }
 

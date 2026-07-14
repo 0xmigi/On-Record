@@ -353,36 +353,53 @@ export default async function ProgramDossierPage({
         ) : null}
         <Row label="Nearest match">
           {program.nearest ? (
-            <span title="Structural similarity of the compiled bytecode (TLSH fuzzy hash) — not proof that code was copied, and no direction of derivation. Programs on the same framework/toolchain and similar size score high on shared boilerplate alone.">
-              {program.nearest.isReference ? (
-                <span className="dossier-name">{program.nearest.name}</span>
-              ) : program.nearest.id ? (
-                <Link href={`/p/${program.nearest.id}`} className="neighbor-addr">
-                  {program.nearest.name ?? truncateAddress(program.nearest.id)}
-                </Link>
-              ) : (
-                "a peer deploy"
-              )}
-              {!program.nearest.name && !program.nearest.isReference ? (
-                <span className="cell-dim"> · unnamed peer</span>
-              ) : null}
-              <span className="cell-dim">
-                {" · "}
-                {Math.round(program.nearest.similarity * 100)}% structural match
-              </span>
-              {(() => {
-                // direction, not derivation: did the match deploy before or after this?
-                const self = program.firstDeployAt ?? program.deployedAt;
-                const rel = program.nearest?.deployedAt;
-                if (!self || !rel) return null;
-                const before = new Date(rel).getTime() < new Date(self).getTime();
+            ((n) => {
+              const simPct = Math.round(n.similarity * 100);
+              const tt =
+                "Structural similarity of the compiled bytecode (TLSH fuzzy hash) — not proof that code was copied, and no direction of derivation. Programs on the same framework/toolchain and similar size score high on shared boilerplate alone.";
+              // a pack of similar-shaped programs → don't crown one arbitrary match
+              if (n.peersWithin5 != null && n.peersWithin5 >= 6) {
                 return (
-                  <span className="cell-dim">
-                    {" · "}deployed {fmtDay(rel)}, {before ? "before this" : "after this"}
+                  <span className="cell-dim" title={tt}>
+                    structurally generic — one of {n.peersWithin5} programs within 5% at ~{simPct}%
+                    (shared framework shape, no single relative)
                   </span>
                 );
-              })()}
-            </span>
+              }
+              const self = program.firstDeployAt ?? program.deployedAt;
+              const dir =
+                self && n.deployedAt
+                  ? new Date(n.deployedAt).getTime() < new Date(self).getTime()
+                    ? "before this"
+                    : "after this"
+                  : null;
+              return (
+                <span title={tt}>
+                  {n.isReference ? (
+                    <span className="dossier-name">{n.name}</span>
+                  ) : n.id ? (
+                    <Link href={`/p/${n.id}`} className="neighbor-addr">
+                      {n.name ?? truncateAddress(n.id)}
+                    </Link>
+                  ) : (
+                    "a peer deploy"
+                  )}
+                  {!n.name && !n.isReference ? <span className="cell-dim"> · unnamed peer</span> : null}
+                  <span className="cell-dim">
+                    {" · "}
+                    {simPct}% structural match
+                    {n.runnerUpSimilarity != null
+                      ? `, next-closest ${Math.round(n.runnerUpSimilarity * 100)}%`
+                      : ""}
+                  </span>
+                  {dir && n.deployedAt ? (
+                    <span className="cell-dim">
+                      {" · "}deployed {fmtDay(n.deployedAt)}, {dir}
+                    </span>
+                  ) : null}
+                </span>
+              );
+            })(program.nearest)
           ) : (
             <span className="cell-dim">no close match — novel code</span>
           )}

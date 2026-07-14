@@ -1,6 +1,8 @@
 import { and, desc, eq, gte, lte } from "drizzle-orm";
 import { db, schema, tlshDistance, logger } from "@onrecord/core";
 
+const WRITE = process.argv.includes("--write"); // persist stats into facts.nearest
+
 // ---------------------------------------------------------------------------
 // Read-only diagnostic: is a program's "nearest match" a genuine standout or
 // one of a crowd of framework-boilerplate lookalikes? For each program id,
@@ -64,6 +66,25 @@ async function analyze(programId: string): Promise<void> {
   const runner = ranked[1];
   const within5 = nearest ? ranked.filter((r) => r.sim >= nearest.sim - 0.05).length : 0;
   const within85 = ranked.filter((r) => r.sim >= 0.85).length;
+
+  // backfill: merge the crowd stats into the existing facts.nearest (the classify
+  // stage now computes these natively for new deploys; this catches old subjects)
+  if (WRITE && nearest) {
+    const rows = await db
+      .select({ facts: schema.subjects.facts })
+      .from(schema.subjects)
+      .where(eq(schema.subjects.id, programId));
+    const facts = (rows[0]?.facts ?? {}) as Record<string, unknown>;
+    const near = facts.nearest as Record<string, unknown> | undefined;
+    if (near && typeof near === "object") {
+      facts.nearest = { ...near, peersWithin5: within5, runnerUpDistance: runner ? runner.d : null };
+      await db
+        .update(schema.subjects)
+        .set({ facts, updatedAt: new Date() })
+        .where(eq(schema.subjects.id, programId));
+      logger.info({ programId, peersWithin5: within5 }, "nearest-crowd: wrote stats to facts.nearest");
+    }
+  }
 
   logger.info(
     {

@@ -76,6 +76,11 @@ export interface Classification {
   nearestDistance: number | null;
   /** the corpus program the fingerprint sits closest to (lineage anchor) */
   nearestProgramId: string | null;
+  /** distinct programs within 5 similarity points of the nearest — a crowd (high
+   *  count) means the match is generic framework shape, not a specific relative */
+  nearestPeersWithin5: number;
+  /** 2nd-nearest distinct program's distance — the gap that says "standout" */
+  nearestRunnerUpDistance: number | null;
   /** structural novelty from bytecode distance: clamp((minDist − NOVEL) / 300, 0, 1) */
   structuralNovelty: number;
   watchlistHit: { watchlistId: string; matchedOn: "sha256" | "tlsh" | "authority" } | null;
@@ -307,6 +312,11 @@ export interface ApiNearest {
   similarity: number; // 0..1, from TLSH distance
   isReference: boolean; // true = registry/verified protocol, false = a peer deploy
   deployedAt: string | null; // neighbor's first deploy (ISO) — for before/after-this direction
+  /** distinct programs within 5 similarity points of this match — high = the match
+   *  is generic framework shape (a crowd), not a specific relative */
+  peersWithin5: number | null;
+  /** 2nd-nearest program's similarity (0..1) — the gap that marks a standout */
+  runnerUpSimilarity: number | null;
 }
 
 export interface ApiProgramDetail extends ApiProgram {

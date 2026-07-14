@@ -70,6 +70,8 @@ export interface ApiProgram {
     similarity: number; // 0..1
     isReference: boolean; // true = a famous protocol, false = a peer deploy
     deployedAt: string | null; // neighbor's first deploy — for before/after-this direction
+    peersWithin5: number | null; // distinct programs within 5 pts — high = generic crowd
+    runnerUpSimilarity: number | null; // 2nd-nearest similarity (0..1) — gap = standout
   } | null;
   // exact lineage — byte-identical to a verified build of a known program
   codeMatch: {

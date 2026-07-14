@@ -19,6 +19,8 @@ type EventRow = typeof schema.events.$inferSelect;
 interface NearestFact {
   id: string;
   distance: number;
+  peersWithin5?: number; // distinct programs within 5 similarity points of the nearest
+  runnerUpDistance?: number | null; // 2nd-nearest distance
 }
 
 /** What the serializer needs to know about a nearest-relative program. */
@@ -44,6 +46,11 @@ function nearestOf(facts: { nearest?: NearestFact }, meta?: Map<string, NearestM
     similarity: Math.round(similarityFromDistance(n.distance) * 100) / 100,
     isReference: m?.isReference ?? false,
     deployedAt: m?.deployedAt ?? null,
+    peersWithin5: n.peersWithin5 ?? null,
+    runnerUpSimilarity:
+      typeof n.runnerUpDistance === "number"
+        ? Math.round(similarityFromDistance(n.runnerUpDistance) * 100) / 100
+        : null,
   };
 }
 
