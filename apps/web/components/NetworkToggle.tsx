@@ -10,10 +10,28 @@ export function NetworkToggle() {
   const pathname = usePathname();
   const search = useSearchParams();
   const [open, setOpen] = useState(false);
+  const [cookieNet, setCookieNet] = useState<"mainnet" | "devnet" | null>(null);
   const rootRef = useRef<HTMLDivElement>(null);
 
   const onRadar = pathname === "/";
-  const isDevnet = onRadar && search.get("network") === "devnet";
+  // active cluster: an explicit ?network= wins, else the persisted cookie
+  const paramNet = search.get("network");
+  const current: "mainnet" | "devnet" =
+    paramNet === "devnet" ? "devnet" : paramNet === "mainnet" ? "mainnet" : cookieNet ?? "mainnet";
+  const isDevnet = current === "devnet";
+
+  // read the persisted cluster after mount (document.cookie is client-only)
+  useEffect(() => {
+    const m = document.cookie.match(/(?:^|;\s*)network=(devnet|mainnet)/);
+    if (m) setCookieNet(m[1] as "mainnet" | "devnet");
+  }, []);
+
+  // persist the choice so leaving the radar and returning keeps the cluster
+  const choose = (net: "mainnet" | "devnet") => {
+    document.cookie = `network=${net}; path=/; max-age=31536000; samesite=lax`;
+    setCookieNet(net);
+    setOpen(false);
+  };
 
   const href = (net: "mainnet" | "devnet"): string => {
     const params = new URLSearchParams(onRadar ? search : undefined);
@@ -43,7 +61,7 @@ export function NetworkToggle() {
   const Item = ({ net, label }: { net: "mainnet" | "devnet"; label: string }) => {
     const active = net === "devnet" ? isDevnet : !isDevnet;
     return (
-      <Link className="net-menu-item" href={href(net)} onClick={() => setOpen(false)}>
+      <Link className="net-menu-item" href={href(net)} onClick={() => choose(net)}>
         <span>{label}</span>
         {active ? (
           <span className="net-menu-check" aria-hidden="true">

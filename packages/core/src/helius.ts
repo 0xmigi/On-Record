@@ -310,6 +310,8 @@ export async function getSignaturesForAddress(
 export interface DeployHistory {
   firstDeployAt: Date | null;
   firstDeploySlot: number | null;
+  /** oldest deploy/upgrade transaction — the original deploy (genesis) */
+  firstSignature: string | null;
   lastDeploySlot: number | null;
   /** newest deploy/upgrade transaction — the tx that shipped the current code */
   lastSignature: string | null;
@@ -336,12 +338,20 @@ export async function getDeployHistory(
     before = sigs[sigs.length - 1]!.signature;
   }
   if (!all.length) {
-    return { firstDeployAt: null, firstDeploySlot: null, lastDeploySlot: null, lastSignature: null, txCount: 0 };
+    return {
+      firstDeployAt: null,
+      firstDeploySlot: null,
+      firstSignature: null,
+      lastDeploySlot: null,
+      lastSignature: null,
+      txCount: 0,
+    };
   }
   const oldest = all[all.length - 1]!;
   return {
     firstDeployAt: oldest.blockTime ? new Date(oldest.blockTime * 1000) : null,
     firstDeploySlot: oldest.slot,
+    firstSignature: oldest.signature,
     lastDeploySlot: all[0]!.slot,
     lastSignature: all[0]!.signature,
     txCount: all.length,

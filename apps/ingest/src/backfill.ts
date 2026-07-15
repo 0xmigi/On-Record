@@ -91,7 +91,7 @@ export async function runBackfill(opts: Options): Promise<{ scanned: number; ing
 
 /** Insert a synthetic deploy event for a backfilled program (idempotent on a
  *  synthetic signature keyed by ProgramData address + slot). */
-async function recordDeploy(
+export async function recordDeploy(
   network: Network,
   programId: string,
   header: { programDataAddress: string; deployedSlot: number; upgradeAuthority: string | null },

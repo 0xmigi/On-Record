@@ -330,9 +330,15 @@ export async function fetchUsage(id: string): Promise<InstructionUsage | null> {
   return res?.usage ?? null;
 }
 
-export async function fetchFunnel(window?: string): Promise<ApiFunnel | null> {
-  const qs = window ? `?window=${encodeURIComponent(window)}` : "";
-  return getJson<ApiFunnel>(`/api/funnel${qs}`);
+export async function fetchFunnel(
+  window?: string,
+  network?: Network
+): Promise<ApiFunnel | null> {
+  const params = new URLSearchParams();
+  if (window) params.set("window", window);
+  if (network === "devnet") params.set("network", "devnet");
+  const qs = params.toString();
+  return getJson<ApiFunnel>(`/api/funnel${qs ? `?${qs}` : ""}`);
 }
 
 export async function fetchCluster(id: string): Promise<ApiCluster | null> {

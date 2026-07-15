@@ -338,6 +338,37 @@ a {
   );
 }
 
+/* devnet cluster banner — a full-width strip under the topbar, shown app-wide
+   whenever the selected cluster is devnet (Orb-style) */
+.cluster-banner {
+  background: var(--accent);
+  color: #fff;
+  text-align: center;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  letter-spacing: 0.02em;
+  padding: 7px 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.cluster-banner strong {
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+.cluster-banner-switch {
+  color: #fff;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  opacity: 0.9;
+}
+.cluster-banner-switch:hover {
+  opacity: 1;
+}
+
 .info-dot {
   flex: none;
   display: inline-flex;
@@ -770,6 +801,13 @@ a {
   font-size: 11px;
   color: var(--ink-faint);
   text-decoration: none;
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+}
+.back-link:hover {
+  color: var(--ink);
 }
 
 .back-link:hover {
@@ -1277,6 +1315,364 @@ a.copy-addr-text:hover {
 
 .filter-row-end {
   margin-left: auto;
+}
+
+/* ---- attribute filters (one button → modal: verified · sec.txt · fw · size) ---- */
+.radar-filters {
+  margin: 6px 0 2px;
+}
+
+.filters-btn-group {
+  display: inline-flex;
+  align-items: stretch;
+}
+
+/* the trigger reads like the radar's mono tab vocabulary, boxed so it stands
+   apart as an action rather than a nav link */
+.filters-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--ink-soft);
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 5px 12px 5px 10px;
+  cursor: pointer;
+  transition: border-color 0.12s ease, color 0.12s ease, background 0.12s ease;
+}
+/* when a clear-× is attached, the button gives up its right edge to join them */
+.filters-btn-group.has-active .filters-btn {
+  border-top-right-radius: 0;
+  border-bottom-right-radius: 0;
+}
+
+/* the attached one-click clear */
+.filters-clear-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 8px;
+  color: var(--ink-faint);
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-left: none;
+  border-top-right-radius: var(--radius);
+  border-bottom-right-radius: var(--radius);
+  cursor: pointer;
+  transition: border-color 0.12s ease, color 0.12s ease, background 0.12s ease;
+}
+.filters-btn-group.has-active .filters-clear-btn {
+  border-color: color-mix(in srgb, var(--accent) 45%, var(--border));
+}
+.filters-clear-btn:hover {
+  color: #fff;
+  background: var(--accent);
+  border-color: var(--accent);
+}
+.filters-btn:hover {
+  color: var(--ink);
+  border-color: var(--border-strong);
+}
+.filters-btn svg {
+  color: var(--ink-faint);
+  transition: color 0.12s ease;
+}
+.filters-btn:hover svg {
+  color: var(--accent);
+}
+/* lit state — carries active filters */
+.filters-btn.has-active {
+  color: var(--ink);
+  border-color: color-mix(in srgb, var(--accent) 45%, var(--border));
+}
+.filters-btn.has-active svg {
+  color: var(--accent);
+}
+.filters-btn-count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 17px;
+  height: 17px;
+  padding: 0 5px;
+  border-radius: 9px;
+  background: var(--accent);
+  color: #fff;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0;
+}
+
+/* ---- filters modal ---- */
+.filters-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  background: color-mix(in srgb, var(--ink) 38%, transparent);
+  backdrop-filter: blur(2px);
+  animation: filters-fade 0.14s ease;
+}
+@keyframes filters-fade {
+  from {
+    opacity: 0;
+  }
+}
+@keyframes filters-rise {
+  from {
+    opacity: 0;
+    transform: translateY(6px) scale(0.985);
+  }
+}
+
+.filters-modal {
+  width: 100%;
+  max-width: 384px;
+  background: var(--card);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius);
+  box-shadow:
+    0 1px 0 color-mix(in srgb, var(--ink) 4%, transparent),
+    0 18px 48px -12px color-mix(in srgb, var(--ink) 30%, transparent);
+  overflow: hidden;
+  animation: filters-rise 0.16s ease;
+}
+/* the signature accent hairline across the top, like the mark's target red */
+.filters-modal::before {
+  content: "";
+  display: block;
+  height: 2px;
+  background: var(--accent);
+}
+
+.filters-modal-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 16px 12px;
+}
+/* section-header vocabulary: bold display caps + the dashed-hatch rule */
+.filters-modal-title {
+  font-family: var(--font-head);
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--ink);
+}
+.filters-rule {
+  flex: 1;
+  height: 9px;
+  background: repeating-linear-gradient(
+    to bottom,
+    var(--border) 0,
+    var(--border) 1px,
+    transparent 1px,
+    transparent 4px
+  );
+}
+.filters-modal-close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  color: var(--ink-faint);
+  font-size: 12px;
+  line-height: 1;
+  border-radius: 3px;
+  transition: color 0.12s ease, background 0.12s ease;
+}
+.filters-modal-close:hover {
+  color: var(--ink);
+  background: var(--bg);
+}
+
+.filters-modal-body {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 6px 16px 18px;
+  max-height: min(64vh, 560px);
+  overflow-y: auto;
+}
+
+.facet-group {
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+}
+.facet-label {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--ink-soft);
+}
+.facet-label-icon {
+  display: inline-flex;
+  color: var(--ink-faint);
+}
+.facet-label-icon svg {
+  width: 13px;
+  height: 13px;
+}
+/* the section-header hatch, shrunk — ties each group to the app's vocabulary
+   and visually separates the rows */
+.facet-label-rule {
+  flex: 1;
+  height: 7px;
+  margin-left: 3px;
+  background: repeating-linear-gradient(
+    to bottom,
+    var(--border) 0,
+    var(--border) 1px,
+    transparent 1px,
+    transparent 4px
+  );
+}
+.facet-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+}
+
+.facet-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  letter-spacing: 0.01em;
+  color: var(--ink-soft);
+  background: transparent;
+  cursor: pointer;
+  padding: 5px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  white-space: nowrap;
+  transition: border-color 0.12s ease, color 0.12s ease, background 0.12s ease;
+}
+.facet-chip:hover {
+  color: var(--ink);
+  border-color: var(--border-strong);
+  background: var(--bg);
+}
+.facet-chip.active {
+  color: var(--accent);
+  border-color: color-mix(in srgb, var(--accent) 55%, transparent);
+  background: color-mix(in srgb, var(--accent) 9%, transparent);
+  font-weight: 500;
+}
+
+/* --- semantic tones (the app's meaning-colors) --------------------------- */
+/* good = green (safe / lean) and warn = accent (risky / heavy) are colored at
+   rest, mirroring the dossier's size bands — the axis reads before you select.
+   merit = a quality signal: neutral until you switch it on, then green. */
+.facet-chip.tone-good {
+  color: var(--green);
+  border-color: color-mix(in srgb, var(--green) 24%, var(--border));
+}
+.facet-chip.tone-good:hover {
+  color: var(--green);
+  border-color: color-mix(in srgb, var(--green) 55%, transparent);
+  background: color-mix(in srgb, var(--green) 6%, transparent);
+}
+.facet-chip.tone-good.active {
+  color: var(--green);
+  border-color: color-mix(in srgb, var(--green) 55%, transparent);
+  background: color-mix(in srgb, var(--green) 13%, transparent);
+}
+
+.facet-chip.tone-warn {
+  color: var(--accent);
+  border-color: color-mix(in srgb, var(--accent) 24%, var(--border));
+}
+.facet-chip.tone-warn:hover {
+  color: var(--accent);
+  border-color: color-mix(in srgb, var(--accent) 55%, transparent);
+  background: color-mix(in srgb, var(--accent) 6%, transparent);
+}
+
+.facet-chip.tone-merit.active {
+  color: var(--green);
+  border-color: color-mix(in srgb, var(--green) 55%, transparent);
+  background: color-mix(in srgb, var(--green) 11%, transparent);
+}
+
+.filters-modal-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px;
+  border-top: 1px solid var(--border);
+  background: color-mix(in srgb, var(--bg) 55%, var(--card));
+}
+.filters-clear {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  padding: 4px 2px;
+  transition: color 0.12s ease;
+}
+.filters-clear:hover:not(:disabled) {
+  color: var(--ink);
+}
+.filters-clear:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+.filters-apply {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #fff;
+  background: var(--accent);
+  border: 1px solid color-mix(in srgb, var(--accent) 80%, #000);
+  border-radius: var(--radius);
+  cursor: pointer;
+  padding: 7px 15px;
+  transition: filter 0.12s ease;
+}
+.filters-apply:hover {
+  filter: brightness(1.06);
+}
+.filters-apply-count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 15px;
+  height: 15px;
+  padding: 0 4px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.22);
+  color: #fff;
+  font-size: 9.5px;
+  font-weight: 600;
+  letter-spacing: 0;
 }
 
 /* ---- radar rows ---- */

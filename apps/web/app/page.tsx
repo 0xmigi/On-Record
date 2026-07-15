@@ -1,6 +1,8 @@
+import { cookies } from "next/headers";
 import Link from "next/link";
 import { Mark } from "@/components/Mark";
 import { ProgramRow } from "@/components/ProgramRow";
+import { RadarFilters } from "@/components/RadarFilters";
 import { SectionHeader } from "@/components/SectionHeader";
 import {
   fetchFunnel,
@@ -12,10 +14,21 @@ import {
   type RadarType,
   type RadarWindow,
 } from "@/lib/api";
+import {
+  buildRadarHref,
+  hasActiveFacets,
+  isView,
+  matchesFacets,
+  parseAuthority,
+  parseCategory,
+  parseFramework,
+  parseSize,
+  withPatch,
+  type RadarParams,
+  type View,
+} from "@/lib/radar-url";
 import { botKind, BOT_LABEL, deriveLifecycle } from "@/lib/lifecycle";
 import { groupNum, relativeTime, truncateAddress } from "@/lib/format";
-
-type View = "novel" | "variant" | "recycled";
 
 const STREAM_FILTERS: { label: string; value: RadarType }[] = [
   { label: "NEW DEPLOYS", value: "deploy" },
@@ -45,44 +58,26 @@ const FUNNEL_WINDOW: Record<RadarWindow, string> = {
   all: "all",
 };
 
-function radarHref(type: RadarType, window: RadarWindow, network: Network = "mainnet"): string {
-  const params = new URLSearchParams();
-  if (type !== "deploy") params.set("type", type);
-  if (window !== "today") params.set("window", window);
-  if (network === "devnet") params.set("network", "devnet");
-  const qs = params.toString();
-  return qs ? `/?${qs}` : "/";
-}
-
-function viewHref(view: View | undefined, window: RadarWindow): string {
-  const params = new URLSearchParams();
-  if (window !== "today") params.set("window", window);
-  if (view) params.set("view", view);
-  const qs = params.toString();
-  return qs ? `/?${qs}` : "/";
-}
-
 /** The spectrum header — the daily total, then novelty tiers that double as
  *  filters (novel · variant · recycled), then a link into the funnel/stats. */
 function SpectrumBar({
   deploys,
   upgrades,
   counts,
-  view,
-  window,
+  params,
 }: {
   deploys: number | null;
   upgrades: number | null;
   counts: { novel: number; variant: number; recycled: number } | null;
-  view: View | undefined;
-  window: RadarWindow;
+  params: RadarParams;
 }) {
+  const view = params.view;
   const Tier = ({ k, n }: { k: View; n: number }) => {
     const active = view === k;
     return (
       <Link
         className={`tier tier-${k}${active ? " active" : ""}`}
-        href={viewHref(active ? undefined : k, window)}
+        href={withPatch(params, { view: active ? undefined : k })}
         scroll={false}
       >
         <span className="tier-n">{groupNum(n)}</span>
@@ -94,7 +89,7 @@ function SpectrumBar({
     <div className="spectrum-bar">
       <div className="spectrum-total">
         <span className="spectrum-num">{groupNum(deploys)}</span>
-        <span className="spectrum-lbl">new programs {WINDOW_WORD[window]}</span>
+        <span className="spectrum-lbl">new programs {WINDOW_WORD[params.window]}</span>
       </div>
       {counts ? (
         <div className="spectrum-tiers" role="group" aria-label="Filter by novelty">
@@ -219,24 +214,63 @@ function ClosedSection({
 export default async function RadarPage({
   searchParams,
 }: {
-  searchParams: Promise<{ type?: string; window?: string; view?: string; network?: string }>;
+  searchParams: Promise<{
+    type?: string;
+    window?: string;
+    view?: string;
+    network?: string;
+    verified?: string;
+    sectxt?: string;
+    idl?: string;
+    repo?: string;
+    active?: string;
+    authority?: string;
+    category?: string;
+    framework?: string;
+    size?: string;
+  }>;
 }) {
   const sp = await searchParams;
   const type: RadarType = isRadarType(sp.type) ? sp.type : "deploy";
   const window: RadarWindow = isWindow(sp.window) ? sp.window : "today";
-  const network: Network = sp.network === "devnet" ? "devnet" : "mainnet";
+  // network is sticky: an explicit ?network= wins, else the persisted cookie
+  // (set by the toggle), else mainnet — so leaving and returning keeps cluster.
+  const cookieNetwork = (await cookies()).get("network")?.value;
+  const network: Network =
+    sp.network === "devnet"
+      ? "devnet"
+      : sp.network === "mainnet"
+        ? "mainnet"
+        : cookieNetwork === "devnet"
+          ? "devnet"
+          : "mainnet";
   const isDevnet = network === "devnet";
   const isDeploy = type === "deploy";
-  const view: View | undefined =
-    isDeploy && (sp.view === "novel" || sp.view === "variant" || sp.view === "recycled")
-      ? sp.view
-      : undefined;
+  const view: View | undefined = isDeploy && isView(sp.view) ? sp.view : undefined;
+
+  // full radar state — every control serializes through this so filters compose
+  // and each view stays a shareable URL
+  const params: RadarParams = {
+    type,
+    window,
+    view,
+    network,
+    verified: sp.verified === "1",
+    sectxt: sp.sectxt === "1",
+    idl: sp.idl === "1",
+    repo: sp.repo === "1",
+    active: sp.active === "1",
+    authority: parseAuthority(sp.authority),
+    category: parseCategory(sp.category),
+    framework: parseFramework(sp.framework),
+    size: parseSize(sp.size),
+  };
 
   const EMPTY = { items: [] as ApiProgram[], nextCursor: null };
   const [novelPage, variantPage, clonePage, closedPages, upgradePage, funnel] = await Promise.all([
     isDeploy ? fetchRadar({ type, window, band: "novel", limit: 100, network }) : Promise.resolve(EMPTY),
     isDeploy ? fetchRadar({ type, window, band: "variant", limit: 100, network }) : Promise.resolve(EMPTY),
-    isDeploy && !isDevnet ? fetchRadar({ type, window, band: "clone", limit: 100 }) : Promise.resolve(EMPTY),
+    isDeploy ? fetchRadar({ type, window, band: "clone", limit: 100, network }) : Promise.resolve(EMPTY),
     // the graveyard: closed programs across all bands (rent reclaimed).
     // Devnet skips it — pre-launch churn there is expected, not a story.
     isDeploy && !isDevnet
@@ -247,9 +281,21 @@ export default async function RadarPage({
         )
       : Promise.resolve([]),
     !isDeploy ? fetchRadar({ type, window, limit: 50, network }) : Promise.resolve(EMPTY),
-    // the spectrum header is mainnet funnel data; devnet has no funnel yet
-    isDevnet ? Promise.resolve(null) : fetchFunnel(FUNNEL_WINDOW[window]),
+    // funnel is per-cluster now — devnet gets its own live-computed stats
+    fetchFunnel(FUNNEL_WINDOW[window], network),
   ]);
+
+  // attribute facets narrow every downstream view — the band pages, the tier
+  // counts, the recycled clusters, and the main list all read from these same
+  // arrays, so filtering here keeps the whole page consistent. The default
+  // (no facets) path is untouched: nothing filters, nothing regresses.
+  if (hasActiveFacets(params)) {
+    const keep = (p: ApiProgram) => matchesFacets(p, params);
+    novelPage.items = novelPage.items.filter(keep);
+    variantPage.items = variantPage.items.filter(keep);
+    clonePage.items = clonePage.items.filter(keep);
+    upgradePage.items = upgradePage.items.filter(keep);
+  }
 
   const ts = (p: ApiProgram) => (p.deployedAt ? Date.parse(p.deployedAt) : 0);
   const recency = (a: ApiProgram, b: ApiProgram) => ts(b) - ts(a);
@@ -336,12 +382,12 @@ export default async function RadarPage({
           ? []
           : notable;
 
-  const showRecycled = isDeploy && !isDevnet && (view === undefined || view === "recycled");
+  const showRecycled = isDeploy && (view === undefined || view === "recycled");
 
   const header = isDevnet
     ? !isDeploy
-      ? { title: "Devnet upgrades — programs being iterated", info: "Existing devnet programs whose code changed in this window. Heavy iteration is the strongest pre-launch signal — this is where teams do the work." }
-      : { title: "Devnet — new programs in incubation", info: "Fresh deployments to devnet, newest first. These are pre-launch: no real users or money yet. Their code fingerprints go on the watchlist, and if one later deploys to mainnet, the radar links the two." }
+      ? { title: "Upgrades — programs being iterated", info: "Existing devnet programs whose code changed in this window. Heavy iteration is the strongest pre-launch signal — this is where teams do the work." }
+      : { title: "New programs in incubation", info: "Fresh deployments to devnet, newest first. These are pre-launch: no real users or money yet. Their code fingerprints go on the watchlist, and if one later deploys to mainnet, the radar links the two." }
     : !isDeploy
     ? { title: "Upgrades — existing programs changed", info: "Existing programs whose code changed in this window. Trust already exists — what matters is the magnitude of what was changed." }
     : view === "novel"
@@ -354,15 +400,13 @@ export default async function RadarPage({
 
   return (
     <>
-      {!isDevnet ? (
-        <SpectrumBar
-          deploys={funnel?.deploys ?? null}
-          upgrades={funnel?.upgrades ?? null}
-          counts={counts}
-          view={view}
-          window={window}
-        />
-      ) : null}
+      <SpectrumBar
+        deploys={funnel?.deploys ?? null}
+        upgrades={funnel?.upgrades ?? null}
+        counts={counts}
+        params={params}
+      />
+
 
       <div className="radar-controls">
         <nav className="filter-row" aria-label="New deploys or upgrades">
@@ -370,7 +414,7 @@ export default async function RadarPage({
             <Link
               key={f.value}
               className="filter-link"
-              href={radarHref(f.value, window, network)}
+              href={withPatch(params, { type: f.value, view: undefined })}
               aria-current={type === f.value ? "page" : undefined}
             >
               {f.label}
@@ -382,7 +426,7 @@ export default async function RadarPage({
             <Link
               key={f.value}
               className="filter-link"
-              href={radarHref(type, f.value, network)}
+              href={withPatch(params, { window: f.value })}
               aria-current={window === f.value ? "page" : undefined}
             >
               {f.label}
@@ -390,6 +434,8 @@ export default async function RadarPage({
           ))}
         </nav>
       </div>
+
+      <RadarFilters params={params} />
 
       <SectionHeader title={header.title} info={header.info} />
 

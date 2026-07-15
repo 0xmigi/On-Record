@@ -5,12 +5,14 @@ import {
   db,
   schema,
   env,
+  logger,
   getConfig,
   newId,
   updateConfig,
   type RuntimeConfig,
 } from "@onrecord/core";
 import { addManualWatch } from "@onrecord/enrich";
+import { runVerifiedBackfill } from "../backfill-verified.js";
 
 // ---------------------------------------------------------------------------
 // Operator levers (SPEC §5). The radar runs itself; these are the controls:
@@ -98,6 +100,25 @@ export async function registerAdminRoutes(app: FastifyInstance): Promise<void> {
         const id = await addManualWatch({ programId, authority, note });
         await log("watchlist.add", id, null, { programId, authority, note });
         return { ok: true, id };
+      },
+    );
+
+    // --- seed the index with OtterSec verified programs ----------------------
+    // pass { wait: true, max: N } for a synchronous smoke test; omit wait to
+    // kick off the full run in the background (logs carry progress).
+    admin.post<{ Body: { max?: number; wait?: boolean; reenrich?: boolean } }>(
+      "/admin/backfill-verified",
+      async (req) => {
+        const { max, wait, reenrich } = req.body ?? {};
+        if (wait) {
+          const result = await runVerifiedBackfill({ network: "mainnet", max, reenrich });
+          await log("backfill.verified", null, null, result);
+          return { ok: true, ...result };
+        }
+        void runVerifiedBackfill({ network: "mainnet", max, reenrich })
+          .then((r) => log("backfill.verified", null, null, r))
+          .catch((err) => logger.error({ err: String(err) }, "verified-backfill route failed"));
+        return { ok: true, started: true, max: max ?? "all", reenrich: !!reenrich };
       },
     );
 
