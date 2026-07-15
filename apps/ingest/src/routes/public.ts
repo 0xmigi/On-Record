@@ -257,8 +257,9 @@ export function registerPublicRoutes(app: FastifyInstance): void {
   });
 
   // --- the funnel / program stats (windowed) -------------------------------
-  app.get<{ Querystring: { window?: string } }>("/api/funnel", async (req) => {
-    return computeWindowFunnel(windowHoursFor(req.query.window), "mainnet");
+  app.get<{ Querystring: { window?: string; network?: string } }>("/api/funnel", async (req) => {
+    const network = req.query.network === "devnet" ? "devnet" : "mainnet";
+    return computeWindowFunnel(windowHoursFor(req.query.window), network);
   });
 
   // --- a clone cluster -----------------------------------------------------

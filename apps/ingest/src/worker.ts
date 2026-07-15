@@ -1,4 +1,4 @@
-import { Worker } from "bullmq";
+import { Worker, type ConnectionOptions } from "bullmq";
 import { makeRedis, logger, QUEUES, type EventJob, type QueueName } from "@onrecord/core";
 import { classifyStage, fingerprintStage, identifyStage, scoreStage } from "./pipeline.js";
 import { startCron } from "./cron.js";
@@ -20,7 +20,8 @@ function stageWorker<T>(
     async (job) => {
       await handler(job.data as T);
     },
-    { connection: makeRedis(), concurrency },
+    // cast past the version-skewed ioredis/BullMQ type mismatch (see queue.ts)
+    { connection: makeRedis() as unknown as ConnectionOptions, concurrency },
   );
   worker.on("failed", (job, err) => {
     logger.error({ queue: name, jobId: job?.id, err: err.message }, "stage failed");

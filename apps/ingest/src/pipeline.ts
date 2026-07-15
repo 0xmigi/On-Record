@@ -2,6 +2,7 @@ import { and, desc, eq, gte, isNotNull, sql } from "drizzle-orm";
 import {
   db,
   schema,
+  newId,
   enqueue,
   getQueue,
   getAccountBytes,
@@ -239,6 +240,45 @@ export async function identifyStage(eventId: string): Promise<void> {
       deployType: upgradeCount > 0 ? "upgrade" : "deploy",
       upgradeCount,
     };
+
+    // Materialize the timeline. THE RECORD renders event rows, but a program
+    // first seen mid-life (backfilled, or a poller sighting of an old program)
+    // has only its capture event — labelled "deploy" though it's really a later
+    // upgrade. When the ProgramData's oldest signature predates this event, the
+    // capture is an upgrade: relabel it and seed a genesis "deploy" row from the
+    // oldest signature, so the dossier shows first + last (deploy → upgrade).
+    if (
+      upgradeCount > 0 &&
+      dh.firstDeploySlot != null &&
+      dh.firstSignature &&
+      dh.firstDeploySlot < event.slot
+    ) {
+      if (event.type === "deploy") {
+        await db
+          .update(schema.events)
+          .set({ type: "upgrade" })
+          .where(eq(schema.events.id, eventId));
+      }
+      await db
+        .insert(schema.events)
+        .values({
+          id: newId("evt"),
+          network,
+          type: "deploy",
+          signature: dh.firstSignature,
+          instructionIndex: 0,
+          slot: dh.firstDeploySlot,
+          blockTime: dh.firstDeployAt,
+          programId: event.programId,
+          programDataAddress: event.programDataAddress,
+          authorityBefore: null,
+          authorityAfter: null,
+          pipelineStage: "genesis", // a timeline marker, not for reprocessing
+        })
+        .onConflictDoNothing({
+          target: [schema.events.signature, schema.events.instructionIndex],
+        });
+    }
 
     // Squads governance hides behind a vault PDA (classified "program" above);
     // the deploy tx itself names the multisig — decode its threshold.

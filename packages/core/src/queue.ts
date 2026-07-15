@@ -1,4 +1,4 @@
-import { Queue } from "bullmq";
+import { Queue, type ConnectionOptions } from "bullmq";
 import { Redis } from "ioredis";
 import { env } from "./config.js";
 
@@ -28,7 +28,10 @@ export function getQueue(name: QueueName): Queue {
   let q = queues.get(name);
   if (!q) {
     q = new Queue(name, {
-      connection: makeRedis(),
+      // BullMQ bundles its own ioredis types; a version-skewed installed ioredis
+      // produces a structurally-divergent `Redis` type. The instance is valid at
+      // runtime, so cast past the type mismatch (survives ioredis drift).
+      connection: makeRedis() as unknown as ConnectionOptions,
       defaultJobOptions: {
         attempts: 3,
         backoff: { type: "exponential", delay: 5_000 },
