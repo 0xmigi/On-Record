@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { BackToRadar } from "@/components/BackToRadar";
 import { CopyAddress } from "@/components/CopyAddress";
 import { ProgramAvatar } from "@/components/ProgramAvatar";
 import { IdlViewer } from "@/components/IdlViewer";
@@ -787,9 +788,7 @@ export default async function ProgramDossierPage({
 
   return (
     <>
-      <Link className="back-link" href="/">
-        ← the radar
-      </Link>
+      <BackToRadar fallbackHref={program.network === "devnet" ? "/?network=devnet" : "/"} />
 
       <div className="dossier-head">
         <div className="dossier-head-main">

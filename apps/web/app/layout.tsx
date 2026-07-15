@@ -3,6 +3,7 @@ import { Suspense } from "react";
 import { IBM_Plex_Mono, IBM_Plex_Sans } from "next/font/google";
 import Link from "next/link";
 import { Analytics } from "@vercel/analytics/next";
+import { ClusterBanner } from "@/components/ClusterBanner";
 import { Mark } from "@/components/Mark";
 import { NetworkToggle } from "@/components/NetworkToggle";
 import { SearchBox } from "@/components/SearchBox";
@@ -60,6 +61,10 @@ export default function RootLayout({
             </nav>
           </div>
         </header>
+
+        <Suspense fallback={null}>
+          <ClusterBanner />
+        </Suspense>
 
         <main className="page" id="main">
           {children}
