@@ -222,6 +222,18 @@ export default async function ProgramDossierPage({
             info="Embedded in the binary by the developer — their own declaration, verbatim."
           />
           <div className="facts-panel">
+            {program.securityTxt.project_url ? (
+              <Row label="Project URL">
+                {/^https?:\/\//.test(program.securityTxt.project_url) ? (
+                  <Ext
+                    href={program.securityTxt.project_url}
+                    text={shortUrl(program.securityTxt.project_url)}
+                  />
+                ) : (
+                  program.securityTxt.project_url
+                )}
+              </Row>
+            ) : null}
             {program.securityTxt.contacts ? (
               <Row label="Contacts">{program.securityTxt.contacts}</Row>
             ) : null}
