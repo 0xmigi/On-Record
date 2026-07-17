@@ -1,4 +1,5 @@
 import type { ApiProgramDetail, Framework } from "@/lib/api";
+import { derivePrimitives, type Primitives } from "@/lib/primitives";
 import {
   DETECTION_RELIABLE,
   FRAMEWORK_INFO,
@@ -37,6 +38,7 @@ export interface Composition {
   rentSol: number | null;
   syscallCount: number | null;
   capabilities: string[];
+  primitives: Primitives; // runtime asks (syscalls), rarity-tiered — the external-facing half
   // recovered identity + architecture
   crate: string | null;
   moduleGroups: ModuleGroup[]; // the program's own source tree, stdlib filtered
@@ -193,6 +195,7 @@ export function deriveComposition(p: ApiProgramDetail): Composition {
     rentSol: p.deployCostSol,
     syscallCount: p.syscallCount,
     capabilities: p.capabilities ?? [],
+    primitives: derivePrimitives(p.syscalls ?? [], p.capabilities ?? []),
     crate,
     moduleGroups,
     instructions,

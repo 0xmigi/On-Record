@@ -327,6 +327,8 @@ export interface ApiProgramDetail extends ApiProgram {
   neighbors: { programId: string; distance: number; name: string | null }[];
   idlInstructions: string[];
   strings: string[];
+  /** sol_* syscall imports read off the ELF — the evidence behind capabilities */
+  syscalls: string[];
   /** the developer's embedded security.txt, verbatim fields */
   securityTxt: SecurityTxt | null;
 }

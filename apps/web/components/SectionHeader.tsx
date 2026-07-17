@@ -6,7 +6,7 @@ export function SectionHeader({ title, info }: { title: string; info: string }) 
   return (
     <h2 className="section-header">
       <span>{title}</span>
-      <span className="info-dot" title={info} tabIndex={0} aria-label={info} role="note">
+      <span className="info-dot" data-tip={info} tabIndex={0} aria-label={info} role="note">
         i
       </span>
     </h2>

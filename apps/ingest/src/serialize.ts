@@ -181,6 +181,7 @@ export function serializeProgramDetail(
     neighbors,
     idlInstructions,
     strings,
+    syscalls: row.profile?.syscalls ?? [],
     securityTxt: facts.securityTxt ?? null,
     activity: facts.activity ?? null, // full 7-day series on the dossier
   };

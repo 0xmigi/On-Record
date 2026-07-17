@@ -2,6 +2,7 @@ import zlib from "node:zlib";
 import bs58 from "bs58";
 import { anchorIdlAddress, findProgramAddress, type IdlProbe } from "./fingerprint.js";
 import { getMultipleAccountBytes } from "./helius.js";
+import { logger } from "./logger.js";
 import type { Network } from "./types.js";
 
 // ---------------------------------------------------------------------------
@@ -16,7 +17,14 @@ import type { Network } from "./types.js";
 //
 // One getMultipleAccounts round-trip covers all three candidate accounts —
 // cheaper than the old single-account legacy probe, and future-proof as PMP
-// adoption grows. Layout verified against mainnet (Drift's PMP IDL) 2026-07-09.
+// adoption grows. Layout verified against mainnet (Drift's PMP IDL) 2026-07-09
+// and the program's generated types at a41788e (2026-07-17).
+//
+// PMP payloads carry a data_source: Direct (inline on-chain) resolves in
+// process; Url (an off-chain link) is followed with a guarded fetch so we don't
+// drop official metadata that merely lives behind a link. External (a pointer
+// to another account) is still skipped. Only canonical (upgrade-authority) PDAs
+// are read — third-party/non-canonical metadata is intentionally not surfaced.
 // ---------------------------------------------------------------------------
 
 export const PROGRAM_METADATA_PROGRAM_ID = "ProgM6JCCvbYkfKqJYHePx4xxSUSqJp7rh8Lyv7nk7S";
@@ -43,15 +51,48 @@ export function pmpCanonicalAddress(programId: string, seed: "idl" | "security")
 const PMP_HEADER_LEN = 96;
 const PMP_DISCRIMINATOR_METADATA = 2;
 
-/** Decode a PMP metadata account's payload to text. Handles the compression
- *  (none/gzip/zlib) and encoding (utf8/base58/base64) header bytes. Returns
- *  null for layouts we don't support (url/external data sources, non-JSON). */
-function decodePmpContent(data: Buffer): string | null {
+// data_source byte (offset 86): 0=Direct (inline on-chain), 1=Url (payload is
+// an off-chain link), 2=External (pointer to another account). Verified against
+// the program's generated DataSource enum at a41788e (2026-07-17).
+const DATA_SOURCE_DIRECT = 0;
+const DATA_SOURCE_URL = 1;
+
+/** Off-chain content following the URL data source. Guarded: https/http only,
+ *  short timeout, and a size cap so a hostile or huge link can't stall or bloat
+ *  ingestion. Returns null on any failure — the program just loses this signal. */
+const URL_FETCH_TIMEOUT_MS = 5000;
+const URL_MAX_BYTES = 2 * 1024 * 1024; // IDLs run to a few hundred KB; 2MB is slack
+
+async function fetchOffchainContent(url: string): Promise<string | null> {
+  if (!/^https?:\/\//i.test(url)) return null;
+  try {
+    const res = await fetch(url, {
+      signal: AbortSignal.timeout(URL_FETCH_TIMEOUT_MS),
+      headers: { accept: "application/json, text/plain, */*" },
+    });
+    if (!res.ok) return null;
+    const declared = Number(res.headers.get("content-length"));
+    if (Number.isFinite(declared) && declared > URL_MAX_BYTES) return null;
+    const text = await res.text();
+    if (text.length > URL_MAX_BYTES) return null;
+    return text;
+  } catch (err) {
+    logger.warn({ url, err: String(err) }, "pmp off-chain metadata fetch failed");
+    return null;
+  }
+}
+
+/** Decode a PMP metadata account header + payload. Handles compression
+ *  (none/gzip/zlib) and encoding (utf8/base58/base64), returning the decoded
+ *  text alongside the data_source so the caller knows whether that text is the
+ *  content itself (Direct) or a link to follow (Url). Returns null for the
+ *  External data source (account pointer — not supported). */
+function decodePmpPayload(data: Buffer): { text: string; dataSource: number } | null {
   if (data.length <= PMP_HEADER_LEN || data[0] !== PMP_DISCRIMINATOR_METADATA) return null;
   const encoding = data[83]!;
   const compression = data[84]!;
   const dataSource = data[86]!;
-  if (dataSource !== 0) return null; // url/external payloads: not yet supported
+  if (dataSource !== DATA_SOURCE_DIRECT && dataSource !== DATA_SOURCE_URL) return null; // External: unsupported
   const declaredLen = data.readUInt32LE(87);
   const end =
     declaredLen > 0 && PMP_HEADER_LEN + declaredLen <= data.length
@@ -62,7 +103,17 @@ function decodePmpContent(data: Buffer): string | null {
   else if (compression === 2) payload = zlib.inflateSync(payload);
   if (encoding === 2) payload = Buffer.from(bs58.decode(payload.toString("ascii")));
   else if (encoding === 3) payload = Buffer.from(payload.toString("ascii"), "base64");
-  return payload.toString("utf8");
+  return { text: payload.toString("utf8"), dataSource };
+}
+
+/** Decode a PMP metadata account to its final text content, following the URL
+ *  data source off-chain when needed. Direct payloads resolve synchronously
+ *  in-process; Url payloads incur one guarded off-chain fetch. */
+async function resolvePmpContent(data: Buffer): Promise<string | null> {
+  const decoded = decodePmpPayload(data);
+  if (!decoded) return null;
+  if (decoded.dataSource === DATA_SOURCE_URL) return fetchOffchainContent(decoded.text.trim());
+  return decoded.text;
 }
 
 /** Legacy Anchor IdlAccount: 8-byte discriminator + 32-byte authority +
@@ -120,10 +171,16 @@ export async function fetchProgramMetadata(
       anchorIdlAddress(programId),
     ]);
 
+    // Resolve both PMP accounts in parallel — either may follow a URL off-chain.
+    const [pmpIdlText, pmpSecText] = await Promise.all([
+      pmpIdlAcc ? resolvePmpContent(pmpIdlAcc) : Promise.resolve(null),
+      pmpSecAcc ? resolvePmpContent(pmpSecAcc) : Promise.resolve(null),
+    ]);
+
     let idl: unknown | null = null;
     let idlSource: IdlSource | null = null;
-    if (pmpIdlAcc) {
-      idl = parseJson(decodePmpContent(pmpIdlAcc));
+    if (pmpIdlText) {
+      idl = parseJson(pmpIdlText);
       if (idl !== null) idlSource = "pmp";
     }
     if (idl === null && legacyAcc) {
@@ -131,7 +188,7 @@ export async function fetchProgramMetadata(
       if (idl !== null) idlSource = "anchor-legacy";
     }
 
-    const security = pmpSecAcc ? parseJson<PmpSecurityMeta>(decodePmpContent(pmpSecAcc)) : null;
+    const security = pmpSecText ? parseJson<PmpSecurityMeta>(pmpSecText) : null;
     return { idl, idlSource, security };
   } catch {
     return { idl: null, idlSource: null, security: null };

@@ -152,6 +152,7 @@ export interface ApiProgramDetail extends ApiProgram {
   neighbors: ApiNeighbor[]; // nearest bytecode fingerprints
   idlInstructions: string[];
   strings: string[]; // notable printable strings from bytecode
+  syscalls: string[]; // sol_* imports read off the ELF (the capability evidence)
   securityTxt: SecurityTxt | null; // embedded security.txt, verbatim
 }
 

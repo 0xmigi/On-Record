@@ -11,6 +11,7 @@ import { SignalHex } from "@/components/SignalHex";
 import { Sparkline } from "@/components/Sparkline";
 import { deriveSignals } from "@/lib/signals";
 import { deriveComposition } from "@/lib/composition";
+import { TIER_ORDER } from "@/lib/primitives";
 import { deriveLifecycle, botKind, BOT_LABEL } from "@/lib/lifecycle";
 import { OTHER_FRAMEWORKS_NOTE } from "@/lib/frameworks";
 import { SectionExplainer } from "@/components/SectionExplainer";
@@ -39,6 +40,17 @@ const EVENT_LABELS: Record<ApiRawEvent["type"], string> = {
 // absolute short date for lineage timestamps (server-rendered, locale-stable)
 function fmtDay(iso: string): string {
   return new Date(iso).toLocaleDateString("en-US", { year: "numeric", month: "short", day: "numeric" });
+}
+
+// Size bar fill: log scale across the range programs actually occupy (~8 KB to
+// ~4 MiB), NOT the 10 MiB account ceiling almost nothing reaches. This keeps the
+// fill aligned with the lean/moderate/heavy/extra-heavy bands; true whales (4 MiB+)
+// cap at full.
+function sizeFillPct(bytes: number): number {
+  const FLOOR = Math.log10(8 * 1024);
+  const CEIL = Math.log10(4 * 1024 * 1024);
+  const p = (Math.log10(bytes) - FLOOR) / (CEIL - FLOOR);
+  return Math.max(3, Math.min(100, p * 100));
 }
 
 // how a mainnet program was tied back to its devnet sighting
@@ -473,6 +485,14 @@ export default async function ProgramDossierPage({
               </span>
             ) : null}
           </span>
+          {comp.sizeBytes != null ? (
+            <div className="fp-track">
+              <div
+                className={`fp-fill size-fill-${comp.sizeBand ?? "moderate"}`}
+                style={{ width: `${sizeFillPct(comp.sizeBytes)}%` }}
+              />
+            </div>
+          ) : null}
         </div>
         <div className="comp-metric">
           <span className="comp-metric-v">
@@ -492,17 +512,31 @@ export default async function ProgramDossierPage({
           <span className="comp-metric-k">instructions</span>
         </div>
       </div>
-      {comp.capabilities.length ? (
+      {comp.primitives.items.length ? (
         <div className="facts-panel" style={{ marginTop: 8 }}>
-          <Row label="Capabilities">
-            <span className="chip-inline">
-              {comp.capabilities.map((c) => (
-                <span className="ix-chip" key={c}>
-                  {c}
-                </span>
-              ))}
-            </span>
-          </Row>
+          <div className="fact-row">
+            <span className="fact-label">Primitives</span>
+            <div className="fact-value">
+              <div className="prim-groups">
+                {TIER_ORDER.map((tier) => {
+                  const inTier = comp.primitives.items.filter((p) => p.tier === tier);
+                  if (!inTier.length) return null;
+                  return (
+                    <div className="prim-group" key={tier}>
+                      <span className={`prim-group-tier tier-${tier}`}>{tier}</span>
+                      <span className="chip-inline">
+                        {inTier.map((p) => (
+                          <span className="ix-chip" key={p.label} title={p.explain}>
+                            {p.label}
+                          </span>
+                        ))}
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
         </div>
       ) : null}
 

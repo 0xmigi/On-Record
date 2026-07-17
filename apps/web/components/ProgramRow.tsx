@@ -155,7 +155,9 @@ export function ProgramRow({ program }: { program: ApiProgram }) {
             </span>
           ) : null}
           {inCluster ? (
-            <span className="cluster-note">×{program.clusterSize} today</span>
+            <span className="cluster-note" title="Byte/structurally similar programs on record — its copy-paste cluster (all-time, not today)">
+              ×{program.clusterSize} in cluster
+            </span>
           ) : null}
           {program.closed ? (
             <span className="closed-chip" title="Program closed — ProgramData deallocated, rent reclaimed">

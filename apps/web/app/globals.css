@@ -370,6 +370,7 @@ a {
 }
 
 .info-dot {
+  position: relative;
   flex: none;
   display: inline-flex;
   align-items: center;
@@ -385,6 +386,38 @@ a {
   font-weight: 400;
   color: var(--ink-faint);
   cursor: help;
+}
+/* styled tooltip — reliable on hover/focus, replaces the dead native title */
+.info-dot::after {
+  content: attr(data-tip);
+  position: absolute;
+  top: calc(100% + 8px);
+  left: 0;
+  z-index: 60;
+  width: max-content;
+  max-width: 300px;
+  padding: 8px 11px;
+  background: var(--ink);
+  color: var(--bg);
+  border-radius: 4px;
+  font-family: var(--font-sans);
+  font-size: 12px;
+  font-style: normal;
+  font-weight: 400;
+  letter-spacing: normal;
+  text-transform: none;
+  line-height: 1.45;
+  text-align: left;
+  white-space: normal;
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transition: opacity 0.12s ease;
+}
+.info-dot:hover::after,
+.info-dot:focus-visible::after {
+  opacity: 1;
+  visibility: visible;
 }
 
 .page-lede {
@@ -3308,11 +3341,83 @@ a.copy-addr-text:hover {
 .size-band {
   text-transform: none;
 }
+/* footprint size fill — a thin bar at the bottom of the image-size card */
+.fp-track {
+  position: relative;
+  height: 3px;
+  border-radius: 2px;
+  background: var(--bg);
+  overflow: hidden;
+  margin-top: 8px;
+}
+.fp-fill {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+}
+.size-fill-lean {
+  background: var(--green);
+}
+.size-fill-moderate {
+  background: #d9a441;
+}
+.size-fill-heavy {
+  background: var(--accent);
+}
 .size-band-lean {
   color: var(--green);
 }
 .size-band-heavy {
   color: var(--accent);
+}
+
+/* primitives — the program's runtime asks (syscalls), rarity-tiered like a
+   game inventory. Tier colors are theme-agnostic mid-tones. */
+/* primitives: light color-coded line entries inside the footprint tile */
+/* primitives: chips grouped by rarity (lowercase muted label + chips per row) */
+.prim-groups {
+  display: flex;
+  flex-direction: column;
+}
+.prim-group {
+  display: grid;
+  grid-template-columns: 68px 1fr;
+  gap: 12px;
+  align-items: center;
+  padding: 8px 0;
+  border-top: 1px solid var(--border);
+}
+.prim-group:first-child {
+  border-top: none;
+  padding-top: 0;
+}
+.prim-group:last-child {
+  padding-bottom: 0;
+}
+.prim-group-tier {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.02em; /* tier color via tier-* */
+}
+/* rarity tier colors */
+.tier-mythical {
+  color: #12b5b0;
+}
+.tier-legendary {
+  color: #e0a338;
+}
+.tier-epic {
+  color: #b072f0;
+}
+.tier-rare {
+  color: #4c8dff;
+}
+.tier-uncommon {
+  color: #3fb27f;
+}
+.tier-common {
+  color: var(--ink-faint);
 }
 
 /* recovered architecture */
