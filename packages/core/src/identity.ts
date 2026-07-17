@@ -34,7 +34,17 @@ export function parseSecurityTxt(bytecode: Uint8Array): Record<string, string> |
   if (begin < 0) return null;
   const end = latin.indexOf(SEC_END, begin);
   if (end < 0) return null;
-  const parts = latin.slice(begin + SEC_BEGIN.length, end).split("\0").filter(Boolean);
+  // The block is a strict key\0value\0… stream, wrapped in a boundary \0 right
+  // after BEGIN and right before END. Strip only those boundary NULs — NOT
+  // interior empties. A field the developer left blank (e.g. an unset
+  // `contacts`) still occupies its slot as an empty value; dropping it would
+  // shift every following key/value pair by one, binding each label to the
+  // next field's value (e.g. `contacts: policy`).
+  const parts = latin
+    .slice(begin + SEC_BEGIN.length, end)
+    .replace(/^\0+/, "")
+    .replace(/\0+$/, "")
+    .split("\0");
   const out: Record<string, string> = {};
   for (let i = 0; i + 1 < parts.length; i += 2) {
     const key = parts[i]!;
