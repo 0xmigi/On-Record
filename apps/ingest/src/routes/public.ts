@@ -108,7 +108,8 @@ export function registerPublicRoutes(app: FastifyInstance): void {
       // Devnet has no interest scores by design (no usage/money signals —
       // pipeline stops at classify), so it always serves the recency stream.
       const sort = req.query.sort === "recent" || network === "devnet" ? "recent" : "interest";
-      const band = req.query.band && BANDS.has(req.query.band as NoveltyBand) ? req.query.band : "novel";
+      const hasBand = !!(req.query.band && BANDS.has(req.query.band as NoveltyBand));
+      const band = hasBand ? (req.query.band as NoveltyBand) : "novel";
       const type = req.query.type === "upgrade" ? "upgrade" : "deploy";
       const start = windowStart(req.query.window);
       // closed programs (rent reclaimed) are the churn tail — hidden by default,
@@ -118,8 +119,16 @@ export function registerPublicRoutes(app: FastifyInstance): void {
       const conditions = [
         eq(schema.subjects.network, network),
         eq(schema.subjects.kind, "program"),
-        eq(schema.subjects.noveltyBand, band),
       ];
+      // The deploy stream tiers by novelty (novel/variant/clone) and always
+      // passes an explicit band. The upgrade stream spans all bands — an
+      // upgrade's lineage band is orthogonal to the fact that it was upgraded,
+      // so only constrain by band when one is explicitly requested. Forcing the
+      // default "novel" here is what left the upgrade tab empty: nearly every
+      // real upgrade lands in variant/clone.
+      if (hasBand || type === "deploy") {
+        conditions.push(eq(schema.subjects.noveltyBand, band));
+      }
       if (closedMode === "hide") {
         conditions.push(sql`(${schema.subjects.facts} ->> 'closedAt') is null`);
       } else if (closedMode === "only") {
