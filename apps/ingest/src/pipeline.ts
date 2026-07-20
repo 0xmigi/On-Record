@@ -39,6 +39,7 @@ import {
   watchDevnetNovel,
 } from "@onrecord/enrich";
 import { refreshInterest } from "./interest.js";
+import { recordGenesisDeploy } from "./timeline.js";
 
 type EventRow = typeof schema.events.$inferSelect;
 
@@ -259,25 +260,7 @@ export async function identifyStage(eventId: string): Promise<void> {
           .set({ type: "upgrade" })
           .where(eq(schema.events.id, eventId));
       }
-      await db
-        .insert(schema.events)
-        .values({
-          id: newId("evt"),
-          network,
-          type: "deploy",
-          signature: dh.firstSignature,
-          instructionIndex: 0,
-          slot: dh.firstDeploySlot,
-          blockTime: dh.firstDeployAt,
-          programId: event.programId,
-          programDataAddress: event.programDataAddress,
-          authorityBefore: null,
-          authorityAfter: null,
-          pipelineStage: "genesis", // a timeline marker, not for reprocessing
-        })
-        .onConflictDoNothing({
-          target: [schema.events.signature, schema.events.instructionIndex],
-        });
+      await recordGenesisDeploy(network, event.programId, event.programDataAddress, dh);
     }
 
     // Squads governance hides behind a vault PDA (classified "program" above);

@@ -29,7 +29,14 @@ import {
   type ApiProgramDetail,
   type ApiRawEvent,
 } from "@/lib/api";
-import { dayStamp, formatBytes, relativeTime, shortUrl, truncateAddress } from "@/lib/format";
+import {
+  dayStamp,
+  formatBytes,
+  isSyntheticSignature,
+  relativeTime,
+  shortUrl,
+  truncateAddress,
+} from "@/lib/format";
 
 const EVENT_LABELS: Record<ApiRawEvent["type"], string> = {
   deploy: "DEPLOY",
@@ -800,7 +807,21 @@ export default async function ProgramDossierPage({
                       </td>
                       <td>slot {row.ev.slot.toLocaleString("en-US")}</td>
                       <td>
-                        <Ext href={orbTx(row.ev.signature)} text={truncateAddress(row.ev.signature)} />
+                        {isSyntheticSignature(row.ev.signature) ? (
+                          // observed by polling account state — there is no
+                          // transaction to cite, and a fake link is worse than none
+                          <span
+                            className="cell-dim"
+                            title="Observed from ProgramData account state — no transaction signature to cite"
+                          >
+                            —
+                          </span>
+                        ) : (
+                          <Ext
+                            href={orbTx(row.ev.signature)}
+                            text={truncateAddress(row.ev.signature)}
+                          />
+                        )}
                       </td>
                     </tr>
                   ) : (

@@ -34,6 +34,21 @@ export function timeLeft(iso: string | null | undefined): string {
 }
 
 /** "2026-07-06 14:32 UTC" — absolute time for the technical record. */
+/** Internal capture ids, not real transaction signatures: the poller watches
+ *  ProgramData *account state* and the backfill enumerates accounts, so neither
+ *  can cite a transaction. Mirrors SYNTHETIC_SIG_PREFIXES in
+ *  apps/ingest/src/timeline.ts (the web talks to the API over HTTP only, so it
+ *  deliberately doesn't depend on @onrecord/core). */
+const SYNTHETIC_SIG_PREFIXES = ["backfill:", "poll:", "incubation-backfill:"];
+
+/** True when a "signature" is one of our capture ids rather than a real on-chain
+ *  signature. Those must never be rendered as a verifiable receipt — linking one
+ *  to an explorer produces a dead link, which is worse than showing nothing. */
+export function isSyntheticSignature(signature: string | null | undefined): boolean {
+  if (!signature) return false;
+  return SYNTHETIC_SIG_PREFIXES.some((p) => signature.startsWith(p));
+}
+
 const MONTHS = [
   "Jan", "Feb", "Mar", "Apr", "May", "Jun",
   "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
