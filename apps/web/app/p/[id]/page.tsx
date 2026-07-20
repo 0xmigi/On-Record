@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import type { ReactNode } from "react";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { BackToRadar } from "@/components/BackToRadar";
@@ -28,7 +29,7 @@ import {
   type ApiProgramDetail,
   type ApiRawEvent,
 } from "@/lib/api";
-import { formatBytes, relativeTime, shortUrl, truncateAddress } from "@/lib/format";
+import { dayStamp, formatBytes, relativeTime, shortUrl, truncateAddress } from "@/lib/format";
 
 const EVENT_LABELS: Record<ApiRawEvent["type"], string> = {
   deploy: "DEPLOY",
@@ -104,6 +105,71 @@ function Ext({ href, text }: { href: string; text: string }) {
     </a>
   );
 }
+
+/** A bare external link that shows an icon instead of a label — the tooltip
+ *  carries the meaning. Keeps the header sub-row clean when there are several. */
+function IconLink({ href, label, children }: { href: string; label: string; children: ReactNode }) {
+  return (
+    <a
+      className="icon-link"
+      href={href}
+      target="_blank"
+      rel="noopener noreferrer"
+      title={label}
+      aria-label={label}
+    >
+      {children}
+    </a>
+  );
+}
+
+const ICON = {
+  viewBox: "0 0 16 16",
+  width: 15,
+  height: 15,
+  fill: "none",
+  stroke: "currentColor",
+  strokeWidth: 1.4,
+  strokeLinecap: "round" as const,
+  strokeLinejoin: "round" as const,
+  "aria-hidden": true,
+};
+
+// a planet/orb — a disc with an orbit ring, for the Orb explorer
+const OrbIcon = () => (
+  <svg {...ICON}>
+    <circle cx="8" cy="8" r="5.1" />
+    <ellipse cx="8" cy="8" rx="5.1" ry="2.1" />
+  </svg>
+);
+// angle brackets — source code
+const CodeIcon = () => (
+  <svg {...ICON}>
+    <path d="M6 5 3 8l3 3" />
+    <path d="m10 5 3 3-3 3" />
+  </svg>
+);
+// globe — website
+const GlobeIcon = () => (
+  <svg {...ICON}>
+    <circle cx="8" cy="8" r="5.1" />
+    <path d="M2.9 8h10.2" />
+    <path d="M8 2.9c1.7 1.6 1.7 8.6 0 10.2M8 2.9c-1.7 1.6-1.7 8.6 0 10.2" />
+  </svg>
+);
+// speech bubble — social
+const SocialIcon = () => (
+  <svg {...ICON}>
+    <path d="M13.2 8.2A4.4 4.4 0 0 1 6.9 12L3 13l.9-3.3a4.4 4.4 0 1 1 9.3-1.5Z" />
+  </svg>
+);
+// calendar — first-deploy date
+const CalendarIcon = () => (
+  <svg {...ICON} width={13} height={13}>
+    <rect x="2.8" y="3.4" width="10.4" height="9.6" rx="1.4" />
+    <path d="M2.8 6.3h10.4M5.5 2.3v2.2M10.5 2.3v2.2" />
+  </svg>
+);
 
 export default async function ProgramDossierPage({
   params,
@@ -396,21 +462,35 @@ export default async function ProgramDossierPage({
                 self && n.deployedAt ? new Date(n.deployedAt).getTime() < new Date(self).getTime() : null;
               return (
                 <span title={tt}>
-                  {n.isReference ? (
-                    <span className="dossier-name">{n.name}</span>
-                  ) : n.id ? (
+                  {/* Always link to the relative's dossier and show its address:
+                      the name alone is spoofable (a fork inherits it from copied
+                      bytecode), so the address is what tells the real program
+                      apart from a lookalike sharing its name. Reference-corpus
+                      entries are tracked subjects too, so they link like any
+                      other. */}
+                  {n.id ? (
                     <Link href={`/p/${n.id}`} className="neighbor-addr">
-                      {n.name ?? truncateAddress(n.id)}
+                      {n.name ? (
+                        <>
+                          {n.name}{" "}
+                          <span className="cell-dim">{truncateAddress(n.id)}</span>
+                        </>
+                      ) : (
+                        truncateAddress(n.id)
+                      )}
                     </Link>
                   ) : (
-                    "a peer deploy"
+                    <span className="dossier-name">{n.name ?? "a peer deploy"}</span>
                   )}
                   <span className="cell-dim">
                     {" · "}
                     {simPct}% structural match
                   </span>
                   {older != null ? (
-                    <span className="rel-tag">{older ? "predecessor" : "fork"}</span>
+                    <span className="rel-tag">
+                      {older ? "predecessor" : "fork"}
+                      {n.deployedAt ? ` · ${relativeTime(n.deployedAt)}` : ""}
+                    </span>
                   ) : null}
                 </span>
               );
@@ -890,11 +970,44 @@ export default async function ProgramDossierPage({
 
           <div className="dossier-sub">
             <CopyAddress value={program.id} display={program.id} className="dossier-id" />
-            <Ext href={orbAddress(program.id)} text="open in Orb" />
-            {program.repoUrl ? <Ext href={program.repoUrl} text="source" /> : null}
-            {program.social ? <Ext href={program.social} text="social" /> : null}
-            {program.website ? <Ext href={program.website} text="website" /> : null}
+            <span className="dossier-links">
+              <IconLink href={orbAddress(program.id)} label="Open in Orb explorer">
+                <OrbIcon />
+              </IconLink>
+              {program.repoUrl ? (
+                <IconLink href={program.repoUrl} label="Source code">
+                  <CodeIcon />
+                </IconLink>
+              ) : null}
+              {program.social ? (
+                <IconLink href={program.social} label="Social">
+                  <SocialIcon />
+                </IconLink>
+              ) : null}
+              {program.website ? (
+                <IconLink href={program.website} label="Website">
+                  <GlobeIcon />
+                </IconLink>
+              ) : null}
+            </span>
           </div>
+          {/* Anchor the program in time. firstDeployAt is the ORIGINAL on-chain
+              deploy (from ProgramData history), not when we first saw it — so
+              clicking back through lineage never loses the sense of "how old is
+              this really". The tooltip carries the full context; the header
+              stays to a bare date. Falls back to first-seen when unknown. */}
+          {(() => {
+            const first = program.firstDeployAt ?? program.deployedAt;
+            if (!first) return null;
+            const cluster = program.network === "devnet" ? "devnet" : "mainnet";
+            const verb = program.firstDeployAt != null ? "First deployed on" : "First seen on";
+            return (
+              <div className="dossier-deployed" title={`${verb} ${cluster} · ${relativeTime(first)}`}>
+                <CalendarIcon />
+                <span className="dossier-deployed-date">{dayStamp(first)}</span>
+              </div>
+            );
+          })()}
         </div>
         <div className="dossier-head-signals">
           <SignalHex signals={deriveSignals(program)} size={140} labels />

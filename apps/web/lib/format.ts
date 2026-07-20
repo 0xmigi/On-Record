@@ -34,6 +34,21 @@ export function timeLeft(iso: string | null | undefined): string {
 }
 
 /** "2026-07-06 14:32 UTC" — absolute time for the technical record. */
+const MONTHS = [
+  "Jan", "Feb", "Mar", "Apr", "May", "Jun",
+  "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
+];
+
+/** "15 Feb 2023" — a full calendar day in UTC. Deterministic (no locale, no
+ *  time-of-day) so it renders identically on server and client — anchors a
+ *  program in time when clicking back through lineage links. */
+export function dayStamp(iso: string | null | undefined): string {
+  if (!iso) return "—";
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return "—";
+  return `${date.getUTCDate()} ${MONTHS[date.getUTCMonth()]} ${date.getUTCFullYear()}`;
+}
+
 export function utcStamp(iso: string | null | undefined): string {
   if (!iso) return "—";
   const date = new Date(iso);
