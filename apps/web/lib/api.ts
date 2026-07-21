@@ -49,6 +49,8 @@ export interface ApiProgram {
   deployType: RadarType; // "deploy" = new program id, "upgrade" = existing program changed
   firstDeployAt: string | null; // ISO — the ORIGINAL deploy (deployedAt is the latest)
   upgradeCount: number; // times re-deployed after the original
+  /** upgradeCount is a floor (deploy-history page cap hit) — render as "N+" */
+  upgradeCountTruncated?: boolean;
   // identity recovered from the program binary (the de-opaquer)
   repoUrl: string | null;
   social: string | null; // x.com / twitter
@@ -98,7 +100,7 @@ export interface ApiProgram {
   } | null;
   // sampled on-chain activity (hourly tx buckets; radar 48h, dossier 7d)
   activity: { t: number; c: number }[] | null;
-  momentum: { txns24h: number; growth: number | null } | null;
+  momentum: { txns24h: number; growth: number | null; txns24hTruncated?: boolean } | null;
   // interest-rank breakdown — drives the "why is this here" line; components
   // are weight-scaled contributions (absent on rows scored before it shipped)
   interest: {

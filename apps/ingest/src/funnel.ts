@@ -88,6 +88,8 @@ export async function computeWindowFunnel(
     )) as SubjectLite[];
 
   const uniqueSha = new Set<string>();
+  // binaries already counted toward byIntegration (see the loop below)
+  const integrationSeen = new Set<string>();
   let novel = 0;
   let variants = 0;
   let clones = 0;
@@ -130,8 +132,16 @@ export async function computeWindowFunnel(
     const fw = s.profile?.framework ?? "unknown";
     byFramework[fw] = (byFramework[fw] ?? 0) + 1;
     for (const cap of s.profile?.capabilities ?? []) byCapability[cap] = (byCapability[cap] ?? 0) + 1;
-    for (const integ of s.profile?.integrations ?? [])
-      byIntegration[integ] = (byIntegration[integ] ?? 0) + 1;
+    // Integrations count DISTINCT BINARIES, not deploys. A sniper bot redeployed
+    // 253x in a week would otherwise read as 253 programs "integrating" Pump.fun
+    // — which is what made Pump.fun briefly outrank Token-2022 in the 7d panel.
+    // Byte-identical code integrates nothing the original didn't. Rows with no
+    // sha256 (unfingerprinted) still count individually rather than vanish.
+    if (!s.sha256 || !integrationSeen.has(s.sha256)) {
+      if (s.sha256) integrationSeen.add(s.sha256);
+      for (const integ of s.profile?.integrations ?? [])
+        byIntegration[integ] = (byIntegration[integ] ?? 0) + 1;
+    }
 
     if (s.name) identity.named++;
     if (s.repoUrl) identity.withRepo++;

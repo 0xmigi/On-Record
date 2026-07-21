@@ -121,6 +121,7 @@ export function ProgramRow({ program }: { program: ApiProgram }) {
           {program.upgradeCount > 0 ? (
             <span className="cluster-note" title="Times this program has been re-deployed">
               upgraded ×{program.upgradeCount}
+              {program.upgradeCountTruncated ? "+" : ""}
             </span>
           ) : null}
           {program.hasSecurityTxt ? (

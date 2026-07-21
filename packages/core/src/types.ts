@@ -148,7 +148,13 @@ export interface EventEnrichment {
     idlSource: "pmp" | "anchor-legacy" | null;
     security: Record<string, unknown> | null;
   };
-  deploy?: { firstDeployAt: string | null; deployType: "deploy" | "upgrade"; upgradeCount: number };
+  deploy?: {
+    firstDeployAt: string | null;
+    deployType: "deploy" | "upgrade";
+    upgradeCount: number;
+    /** upgradeCount hit the history page cap — it is a floor, render "N+" */
+    upgradeCountTruncated?: boolean;
+  };
   identity?: Identity;
   classification?: Classification;
   score?: ScoreResult;
@@ -256,6 +262,8 @@ export interface ApiProgram {
   deployType: "deploy" | "upgrade";
   firstDeployAt: string | null; // ISO — the ORIGINAL deploy (deployedAt is the latest)
   upgradeCount: number; // times re-deployed after the original
+  /** upgradeCount is a floor (history page cap hit) — render as "N+" */
+  upgradeCountTruncated: boolean;
   // --- conviction: the traced funding of the deploy authority ---
   funderAddress: string | null;
   fundingAmountSol: number | null;
@@ -273,7 +281,12 @@ export interface ApiProgram {
   // --- momentum: sampled on-chain activity (methodology v0) ---
   /** hourly tx-count buckets, oldest→newest (radar: last 48h; detail: 7d) */
   activity: ApiActivityPoint[] | null;
-  momentum: { txns24h: number; growth: number | null } | null;
+  momentum: {
+    txns24h: number;
+    growth: number | null;
+    /** txns24h is a floor — the sampler's page cap was hit that run */
+    txns24hTruncated?: boolean;
+  } | null;
   /** interest-rank breakdown (interest.ts) — drives the "why is this here"
    *  line; components are already weight-scaled contributions */
   interest: ApiInterest | null;

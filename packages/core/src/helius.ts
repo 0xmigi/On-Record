@@ -317,6 +317,10 @@ export interface DeployHistory {
   lastSignature: string | null;
   /** deploy + upgrade + set-authority txns on the ProgramData; upgrades ≈ count-1 */
   txCount: number;
+  /** true when the page cap was hit — txCount is a FLOOR, not the real total.
+   *  Bx7T8… reported 5000 here against a true 5576. Anything rendering txCount
+   *  (or upgradeCount) must say "5,000+" rather than assert an exact number. */
+  truncated: boolean;
 }
 
 /** A program's ProgramData account only appears in deploy / upgrade / set-authority
@@ -328,14 +332,18 @@ export async function getDeployHistory(
   network: Network,
   programDataAddress: string,
 ): Promise<DeployHistory> {
+  const PAGES = 5;
   const all: SignatureInfo[] = [];
   let before: string | undefined;
-  for (let page = 0; page < 5; page++) {
+  let truncated = false;
+  for (let page = 0; page < PAGES; page++) {
     const sigs = await getSignaturesForAddress(network, programDataAddress, { limit: 1000, before });
     if (!sigs.length) break;
     all.push(...sigs);
     if (sigs.length < 1000) break;
     before = sigs[sigs.length - 1]!.signature;
+    // a full final page means there is more history we didn't walk
+    if (page === PAGES - 1) truncated = true;
   }
   if (!all.length) {
     return {
@@ -345,16 +353,19 @@ export async function getDeployHistory(
       lastDeploySlot: null,
       lastSignature: null,
       txCount: 0,
+      truncated: false,
     };
   }
   const oldest = all[all.length - 1]!;
   return {
-    firstDeployAt: oldest.blockTime ? new Date(oldest.blockTime * 1000) : null,
-    firstDeploySlot: oldest.slot,
-    firstSignature: oldest.signature,
+    // when truncated, "oldest" is only the oldest we REACHED — not the genesis
+    firstDeployAt: truncated ? null : oldest.blockTime ? new Date(oldest.blockTime * 1000) : null,
+    firstDeploySlot: truncated ? null : oldest.slot,
+    firstSignature: truncated ? null : oldest.signature,
     lastDeploySlot: all[0]!.slot,
     lastSignature: all[0]!.signature,
     txCount: all.length,
+    truncated,
   };
 }
 

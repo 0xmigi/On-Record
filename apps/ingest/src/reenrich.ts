@@ -69,6 +69,7 @@ async function run(network: Network): Promise<void> {
         hasSecurityTxt: bi.hasSecurityTxt,
         anchor: bi.anchor,
         upgradeCount,
+        upgradeCountTruncated: dh.truncated,
         deployCostLamports: deployRentLamports(raw.length),
         ...(bi.securityTxt ? { securityTxt: bi.securityTxt } : {}),
       };

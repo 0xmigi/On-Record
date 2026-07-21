@@ -26,6 +26,10 @@ export interface ActivityPoint {
 
 interface MomentumState {
   txns24h: number;
+  /** the sampler's per-run page cap was hit — txns24h is a FLOOR. Busy programs
+   *  otherwise all saturate at the same number (3 pages x 1000 x runs/day) and
+   *  that ceiling gets read as real traffic. */
+  txns24hTruncated?: boolean;
   prev24h: number;
   growth: number | null; // txns24h / prev24h, null until there is a prior day
   sampledAt: string;
@@ -63,9 +67,11 @@ export async function sampleMomentum(network: Network = "mainnet"): Promise<void
       const cursor = facts.momentum?.cursor ?? undefined;
 
       // new signatures since the cursor (newest first), 3-page cap
+      const PAGES = 3;
       const fresh: { signature: string; blockTime: number | null }[] = [];
       let before: string | undefined;
-      for (let page = 0; page < 3; page++) {
+      let truncated = false;
+      for (let page = 0; page < PAGES; page++) {
         const batch = await getSignaturesForAddress(network, s.id, {
           limit: 1000,
           before,
@@ -75,6 +81,8 @@ export async function sampleMomentum(network: Network = "mainnet"): Promise<void
         fresh.push(...batch);
         if (batch.length < 1000) break;
         before = batch[batch.length - 1]!.signature;
+        // a full final page means this program out-ran the sampler this run
+        if (page === PAGES - 1) truncated = true;
       }
 
       // merge per-hour counts into the stored series
@@ -97,6 +105,7 @@ export async function sampleMomentum(network: Network = "mainnet"): Promise<void
       const txns24h = sum(now - 86_400_000, now + HOUR_MS);
       const prev24h = sum(now - 2 * 86_400_000, now - 86_400_000);
       const momentum: MomentumState = {
+        txns24hTruncated: truncated || undefined,
         txns24h,
         prev24h,
         growth: prev24h > 0 ? Math.round((txns24h / prev24h) * 10) / 10 : null,

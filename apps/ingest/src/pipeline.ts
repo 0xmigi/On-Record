@@ -240,6 +240,7 @@ export async function identifyStage(eventId: string): Promise<void> {
       firstDeployAt: dh.firstDeployAt?.toISOString() ?? null,
       deployType: upgradeCount > 0 ? "upgrade" : "deploy",
       upgradeCount,
+      upgradeCountTruncated: dh.truncated,
     };
 
     // Materialize the timeline. THE RECORD renders event rows, but a program

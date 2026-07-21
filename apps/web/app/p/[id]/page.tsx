@@ -187,10 +187,13 @@ export default async function ProgramDossierPage({
   const program = await fetchProgram(id);
   if (!program) notFound();
 
-  // the interface (IDL) + its real usage — only when the program ships an IDL
-  const [idl, usage] = program.idlPresent
-    ? await Promise.all([fetchIdl(id), fetchUsage(id)])
-    : [null, null];
+  // The interface (IDL) + its real usage. Always ask rather than trusting
+  // idlPresent: that flag is a snapshot taken once at ingest, and teams often
+  // publish the IDL in a separate transaction AFTER deploying — so a program
+  // that shipped one later stayed false forever and the tab confidently claimed
+  // no IDL existed (horse-fun had 22 instructions published). The IDL endpoint
+  // does a live on-chain lookup, so the flag buys nothing but staleness.
+  const [idl, usage] = await Promise.all([fetchIdl(id), fetchUsage(id)]);
 
   // the code family: other deploys of (nearly) this bytecode
   const cluster = program.bucketId ? await fetchCluster(program.bucketId) : null;
@@ -405,7 +408,17 @@ export default async function ProgramDossierPage({
       <SectionHeader title="Lineage" info="Is it new code, or derived from something known?" />
       <div className="facts-panel">
         {program.incubation ? (
-          <Row label="Devnet origin">
+          // Only a same-address or same-authority match is this program's OWN
+          // devnet history. A sha256/tlsh hit just means code that LOOKS like
+          // this was on devnet first — which for a fork is somebody else's
+          // history entirely, and claiming it as incubation invents provenance
+          // (a 23h-old Phoenix clone read "3.8 days on devnet before mainnet").
+          (() => {
+            const own =
+              program.incubation.matchedOn === "program_id" ||
+              program.incubation.matchedOn === "authority";
+            return (
+          <Row label={own ? "Devnet origin" : "Seen on devnet"}>
             <span
               className="incubation-line"
               title={`first seen on devnet ${fmtDay(program.incubation.firstDevnetAt)}${program.incubation.lastDevnetAt ? `, last ${fmtDay(program.incubation.lastDevnetAt)}` : ""} · matched on ${INCUBATION_MATCH[program.incubation.matchedOn]}`}
@@ -415,7 +428,7 @@ export default async function ProgramDossierPage({
                   ? `${program.incubation.incubationDays} day${program.incubation.incubationDays === 1 ? "" : "s"}`
                   : "under a day"}
               </strong>{" "}
-              on devnet before mainnet
+              {own ? "on devnet before mainnet" : "earlier, matching code on devnet"}
               <span className="cell-dim">
                 {" · "}
                 {program.incubation.devnetDeploysTotal != null &&
@@ -440,6 +453,8 @@ export default async function ProgramDossierPage({
               </>
             ) : null}
           </Row>
+            );
+          })()
         ) : null}
         {program.codeMatch ? (
           <Row label="Exact code match">
@@ -729,7 +744,8 @@ export default async function ProgramDossierPage({
       <div className="facts-panel">
         {program.momentum ? (
           <Row label="Last 24h">
-            {program.momentum.txns24h.toLocaleString("en-US")} txns
+            {program.momentum.txns24h.toLocaleString("en-US")}
+            {program.momentum.txns24hTruncated ? "+" : ""} txns
             {program.momentum.growth != null ? (
               <span className="cell-dim"> · ×{program.momentum.growth} vs prior day</span>
             ) : null}
@@ -947,7 +963,17 @@ export default async function ProgramDossierPage({
               <span className="fw-chip">{program.framework}</span>
             ) : null}
             {program.deployType === "upgrade" && program.upgradeCount > 0 ? (
-              <span className="cluster-note">upgraded ×{program.upgradeCount}</span>
+              <span
+                className="cluster-note"
+                title={
+                  program.upgradeCountTruncated
+                    ? "We stopped walking the deploy history at the page cap — the real count is higher"
+                    : undefined
+                }
+              >
+                upgraded ×{program.upgradeCount}
+                {program.upgradeCountTruncated ? "+" : ""}
+              </span>
             ) : null}
             {botClass === "recycled" ? (
               <span className="dup-chip" title="Byte-identical bytecode to other deploys on record — same code, fresh id">

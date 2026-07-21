@@ -80,6 +80,7 @@ export function serializeProgram(
     website?: string;
     hasSecurityTxt?: boolean;
     upgradeCount?: number;
+    upgradeCountTruncated?: boolean;
     nearest?: NearestFact;
     funderAddress?: string;
     fundingLamports?: number;
@@ -90,7 +91,7 @@ export function serializeProgram(
     incubation?: ApiProgram["incubation"];
     multisig?: ApiProgram["multisig"];
     activity?: { t: number; c: number }[];
-    momentum?: { txns24h: number; growth: number | null };
+    momentum?: { txns24h: number; growth: number | null; txns24hTruncated?: boolean };
     closedAt?: string;
     interest?: ApiProgram["interest"];
   };
@@ -128,6 +129,7 @@ export function serializeProgram(
     deployType: (row.deployType as "deploy" | "upgrade") ?? "deploy",
     firstDeployAt: row.firstDeployAt?.toISOString() ?? null,
     upgradeCount: facts.upgradeCount ?? 0,
+    upgradeCountTruncated: facts.upgradeCountTruncated ?? false,
     funderAddress: facts.funderAddress ?? null,
     fundingAmountSol:
       typeof facts.fundingLamports === "number"
@@ -144,7 +146,11 @@ export function serializeProgram(
     // radar rows carry a 48h sparkline; the detail serializer widens to 7d
     activity: facts.activity?.slice(-48) ?? null,
     momentum: facts.momentum
-      ? { txns24h: facts.momentum.txns24h, growth: facts.momentum.growth }
+      ? {
+          txns24h: facts.momentum.txns24h,
+          growth: facts.momentum.growth,
+          txns24hTruncated: facts.momentum.txns24hTruncated ?? false,
+        }
       : null,
     interest: facts.interest ?? null,
   };
