@@ -18,6 +18,7 @@ import { OTHER_FRAMEWORKS_NOTE } from "@/lib/frameworks";
 import { SectionExplainer } from "@/components/SectionExplainer";
 import { BotExplainer } from "@/components/BotExplainer";
 import { SectionHeader } from "@/components/SectionHeader";
+import { SaveButton } from "@/components/SaveButton";
 import {
   CATEGORY_LABELS,
   fetchCluster,
@@ -1037,6 +1038,7 @@ export default async function ProgramDossierPage({
                 </IconLink>
               ) : null}
             </span>
+            <SaveButton id={program.id} name={program.name} category={program.category} />
           </div>
           {/* Anchor the program in time. firstDeployAt is the ORIGINAL on-chain
               deploy (from ProgramData history), not when we first saw it — so

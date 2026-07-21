@@ -54,6 +54,7 @@ export default function RootLayout({
             <nav className="topnav" aria-label="Main">
               <Link href="/">Radar</Link>
               <Link href="/funnel">Stats</Link>
+              <Link href="/saved">Saved</Link>
               {/* useSearchParams needs a Suspense boundary in a layout */}
               <Suspense fallback={null}>
                 <NetworkToggle />
