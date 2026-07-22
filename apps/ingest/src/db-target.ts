@@ -33,3 +33,23 @@ export function requireDatabaseTarget(script: string): string {
     process.exit(1);
   }
 }
+
+/** Same guard for the RPC key. A script that reads chain state needs this, and
+ *  without it every call returns HTTP 401 — which a per-item catch reads as
+ *  "this one program failed" and keeps going, so the run reports skips instead
+ *  of the one real problem. Overriding DATABASE_URL for a production run while
+ *  leaving .env unsourced is exactly how you end up here. */
+export function requireRpcKey(script: string): void {
+  if (process.env.HELIUS_API_KEY) return;
+  process.stderr.write(
+    `\n${script}: HELIUS_API_KEY is not set, but this script reads chain state.\n\n` +
+      `  Every RPC call would 401 and be skipped, and the run would report\n` +
+      `  success having done nothing.\n\n` +
+      `  Source .env for the key, then override the database:\n\n` +
+      `    set -a && . ../../.env && set +a\n` +
+      `    DATABASE_URL="$(railway variables --service Postgres --kv \\\n` +
+      `      | grep '^DATABASE_PUBLIC_URL=' | cut -d= -f2-)" \\\n` +
+      `      ./node_modules/.bin/tsx src/${script}\n\n`,
+  );
+  process.exit(1);
+}

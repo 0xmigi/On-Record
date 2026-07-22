@@ -33,7 +33,7 @@ import {
   type Network,
 } from "@onrecord/core";
 import { seedFromLabels } from "@onrecord/enrich";
-import { requireDatabaseTarget } from "./db-target.js";
+import { requireDatabaseTarget, requireRpcKey } from "./db-target.js";
 import { recordDeploy } from "./backfill.js";
 import { fingerprintStage, identifyStage, classifyStage, scoreStage } from "./pipeline.js";
 
@@ -44,6 +44,7 @@ const network: Network = argv.includes("--network=devnet") ? "devnet" : "mainnet
 process.env.INLINE_PIPELINE = "1"; // stages run in sequence, no Redis
 
 const target = requireDatabaseTarget("seed-landmarks.ts");
+requireRpcKey("seed-landmarks.ts");
 logger.info({ target, network, dry }, "target database");
 
 const seeded = await seedFromLabels();
@@ -141,7 +142,15 @@ for (const t of targets) {
     await scoreStage(eventId);
     ingested++;
   } catch (err) {
-    logger.warn({ programId: t.id, name: t.name, err: String(err) }, "landmark failed, skipping");
+    // A 401/403 is not "this program is unusual", it is "the whole run has no
+    // credentials" — every remaining landmark would fail the same way and the
+    // summary would read as 30 harmless skips. Stop instead.
+    const msg = String(err);
+    if (/HTTP 40[13]/.test(msg)) {
+      logger.error({ err: msg }, "RPC rejected our credentials — aborting rather than skipping 30 programs");
+      process.exit(1);
+    }
+    logger.warn({ programId: t.id, name: t.name, err: msg }, "landmark failed, skipping");
     failed++;
   }
 }
