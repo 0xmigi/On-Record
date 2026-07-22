@@ -1,6 +1,16 @@
 # Curated program → entity labels, seeded into the entities table.
-# This is intentionally small: DeFiLlama mappings and operator naming do the
-# rest. slugs must be unique.
+# DeFiLlama mappings and operator naming do the rest. slugs must be unique.
+#
+# The "landmarks" below exist for a specific reason: the index is built from
+# loader events, so a program that has not deployed or upgraded inside our
+# window has no subject row at all, and one that never leaks a name (no
+# security.txt, no `programs/<name>/src/` panic path) has a row with a null
+# name. Both are unfindable by search. SPL Token was the worst case — the most
+# invoked program on Solana, indexed, and nameless. A registry name outranks
+# every other naming source, so listing an id here is what makes it findable.
+#
+# seed-landmarks.ts consumes this file: it names existing rows and ingests the
+# ones that have no row yet.
 entities:
   - name: Jupiter
     slug: jupiter
@@ -59,3 +69,131 @@ entities:
     programIds:
       - SQDS4ep65T869zMMBKyuUq6aD6EgTu8psMjkvj52pCf
       - SMPLecH534NA9acpos4G6x7uf3LWbCAwZQE9e8ZekMu
+
+  # --- landmarks: canonical infrastructure most searches expect to find ---
+  - name: SPL Token
+    slug: spl-token
+    category: token-standard
+    website: https://spl.solana.com/token
+    programIds:
+      - TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA
+  - name: Token-2022
+    slug: token-2022
+    category: token-standard
+    website: https://spl.solana.com/token-2022
+    programIds:
+      - TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb
+  - name: Associated Token Account
+    slug: associated-token-account
+    category: token-standard
+    website: https://spl.solana.com/associated-token-account
+    programIds:
+      - ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL
+  - name: SPL Memo
+    slug: spl-memo
+    category: infra
+    website: https://spl.solana.com/memo
+    programIds:
+      - MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr
+  - name: SPL Stake Pool
+    slug: spl-stake-pool
+    category: liquid-staking
+    website: https://spl.solana.com/stake-pool
+    programIds:
+      - SPoo1Ku8WFXoNDMHPsrGSTSG1Y47rzgn41SLUNakuHy
+  - name: OpenBook v2
+    slug: openbook-v2
+    category: dex
+    website: https://openbookdex.com
+    programIds:
+      - opnb2LAfJYbRMAHHvqjCwQxanZn7ReEHp1k81EohpZb
+  - name: Serum v3
+    slug: serum-v3
+    category: dex
+    programIds:
+      - srmqPvymJeFKQ4zGQed1GFppgkRHL9kaELCbyksJtPX
+  - name: Orca
+    slug: orca
+    category: dex
+    website: https://orca.so
+    llamaSlug: orca
+    programIds:
+      - whirLbMiicVdio4qvUfM5KAg6Ct8VwpYzGff3uctyCc
+  - name: Meteora
+    slug: meteora
+    category: dex
+    website: https://meteora.ag
+    llamaSlug: meteora
+    programIds:
+      - LBUZKhRxPF3XUpBCjp4YzTKgLccjZhTSDM9YuVaPwxo
+      - Eo7WjKq67rjJQSZxS6z3YkapzY3eMj6Xy8X5EQVn5UaB
+  - name: Phoenix
+    slug: phoenix
+    category: dex
+    website: https://ellipsislabs.xyz
+    programIds:
+      - PhoeNiXZ8ByJGLkxNfZRnkUfjvmuYqLR89jjFHGqdXY
+  - name: Pyth
+    slug: pyth
+    category: oracle
+    website: https://pyth.network
+    programIds:
+      - FsJ3A3u2vn5cTVofAjvy6y5kwABJAqYWpe4975bi2epH
+      - rec5EKMGg6MxZYaMdyBfgwp4d5rB9T1VQH5pJv5LtFJ
+  - name: Switchboard
+    slug: switchboard
+    category: oracle
+    website: https://switchboard.xyz
+    programIds:
+      - SW1TCH7qEPTdLsDHRgPuMQjbQxKdH2aBStViMFnt64f
+  - name: Wormhole
+    slug: wormhole
+    category: bridge
+    website: https://wormhole.com
+    programIds:
+      - worm2ZoG2kUd4vFXhvjh93UUH596ayRfgQ2MgjNMTth
+  - name: MarginFi
+    slug: marginfi
+    category: lending
+    website: https://marginfi.com
+    llamaSlug: marginfi
+    programIds:
+      - MFv2hWf31Z9kbCa1snEPYctwafyhdvnV7FZnsebVacA
+  - name: Solend
+    slug: solend
+    category: lending
+    website: https://solend.fi
+    llamaSlug: solend
+    programIds:
+      - So1endDq2YkqhipRh3WViPa8hdiSpxWy6z3Z6tMCpAo
+  - name: Jito
+    slug: jito
+    category: liquid-staking
+    website: https://jito.network
+    llamaSlug: jito-liquid-staking
+    programIds:
+      - Jito4APyf642JPZPx3hGc6WWJ8zPKtRbRs4P815Awbb
+  - name: Sanctum
+    slug: sanctum
+    category: liquid-staking
+    website: https://sanctum.so
+    programIds:
+      - 5ocnV1qiCgaQR8Jb8xWnVbApfaygJ8tNoZfgPwsgx9kx
+  - name: Tensor
+    slug: tensor
+    category: nft-marketplace
+    website: https://tensor.trade
+    programIds:
+      - TSWAPaqyCSx2KABk68Shruf4rp7CxcNi8hAsbdwmHbN
+  - name: Magic Eden
+    slug: magic-eden
+    category: nft-marketplace
+    website: https://magiceden.io
+    programIds:
+      - M2mx93ekt1fmXSVkTrUL9xVFHkmME8HTUi5Cyc5aF7K
+  - name: Lighthouse
+    slug: lighthouse
+    category: infra
+    website: https://lighthouse.voyage
+    programIds:
+      - L2TExMFKdjpN9kozasaurPirfHy9P8sbXoAN1qA3S95
