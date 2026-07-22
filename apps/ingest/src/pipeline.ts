@@ -19,6 +19,7 @@ import {
   getDeployHistory,
   profileProgram,
   deriveBytecodeIdentity,
+  buildSearchText,
   type Category,
   type EventEnrichment,
   type Fingerprint,
@@ -334,6 +335,20 @@ async function upsertSubject(event: EventRow, enrichment: EventEnrichment): Prom
     },
     tvl: id?.tvl ?? null,
     lastEventAt: when,
+    // what makes a program findable by name/crate/integration rather than only
+    // by pasting its address (search.ts)
+    searchText: buildSearchText({
+      name: id?.entityName ?? pmpName ?? bi?.name ?? null,
+      repoUrl: id?.repoUrl ?? bi?.repoUrl ?? null,
+      website: bi?.website ?? null,
+      social: bi?.social ?? null,
+      securityTxt: bi?.securityTxt ?? null,
+      framework: enrichment.profile?.framework ?? null,
+      integrations: enrichment.profile?.integrations ?? null,
+      capabilities: enrichment.profile?.capabilities ?? null,
+      idlInstructions: fp?.idl?.instructions ?? null,
+      strings: fp?.strings ?? null,
+    }),
     updatedAt: new Date(),
   };
   await db
@@ -345,6 +360,9 @@ async function upsertSubject(event: EventRow, enrichment: EventEnrichment): Prom
         ...values,
         // never un-name a subject the operator or registry already named
         name: sql`coalesce(${schema.subjects.name}, ${values.name})`,
+        // …and keep that preserved name searchable: the rebuilt corpus only
+        // knows what this event's binary leaked, which may not include it
+        searchText: sql`lower(coalesce(${schema.subjects.name}, '')) || E'\n' || ${values.searchText}`,
         // merge facts: classify/score stash keys here (nearest, funder, …) that a
         // later event's identify pass must not clobber
         facts: sql`coalesce(${schema.subjects.facts}, '{}'::jsonb) || ${JSON.stringify(values.facts)}::jsonb`,

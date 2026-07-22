@@ -267,6 +267,32 @@ export async function fetchProgram(
   return getJson<ApiProgramDetail>(`/api/programs/${encodeURIComponent(id)}`);
 }
 
+// --- search: by name, crate, repo, or what a program talks to --------------
+export interface ApiSearchResult {
+  items: ApiProgram[];
+  query: string;
+  truncated: boolean; // more matches exist than the limit returned
+}
+
+export async function fetchSearch(
+  q: string,
+  opts: { network?: Network; limit?: number } = {}
+): Promise<ApiSearchResult> {
+  const query = q.trim();
+  if (query.length < 2) return { items: [], query, truncated: false };
+  const params = new URLSearchParams({ q: query });
+  if (opts.network) params.set("network", opts.network);
+  if (opts.limit) params.set("limit", String(opts.limit));
+  const res = await getJson<ApiSearchResult>(`/api/search?${params.toString()}`);
+  return res ?? { items: [], query, truncated: false };
+}
+
+/** Base58 program ids are 32–44 chars — a pasted address skips the dropdown
+ *  and goes straight to the dossier. Mirrors looksLikeProgramId server-side. */
+export function looksLikeProgramId(value: string): boolean {
+  return /^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(value.trim());
+}
+
 // --- Anchor IDL (the program's human-readable interface) -------------------
 export interface IdlField {
   name?: string;

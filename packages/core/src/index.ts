@@ -6,6 +6,7 @@ export * from "./queue.js";
 export * from "./helius.js";
 export * from "./profile.js";
 export * from "./identity.js";
+export * from "./search.js";
 export * from "./usage.js";
 export * from "./minhash.js";
 export {

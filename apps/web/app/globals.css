@@ -176,6 +176,131 @@ a {
   outline: none;
 }
 
+/* typeahead: the search box owns the stacking context for its dropdown */
+.search-wrap {
+  flex: 1 1 220px;
+  position: relative;
+  min-width: 0;
+}
+
+.search-wrap .search-form {
+  flex: 1 1 auto;
+  width: 100%;
+}
+
+.search-spinner {
+  flex: none;
+  width: 11px;
+  height: 11px;
+  border: 1.5px solid var(--border-strong);
+  border-top-color: transparent;
+  border-radius: 50%;
+  animation: search-spin 0.6s linear infinite;
+}
+
+@keyframes search-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .search-spinner {
+    animation-duration: 2s;
+  }
+}
+
+.search-results {
+  position: absolute;
+  z-index: 50;
+  top: calc(100% + 6px);
+  left: 0;
+  right: 0;
+  margin: 0;
+  padding: 4px;
+  list-style: none;
+  background: var(--bg);
+  border: 1px solid var(--border-strong);
+  border-radius: 8px;
+  box-shadow: 0 12px 32px rgb(0 0 0 / 0.28);
+  max-height: min(420px, 70vh);
+  overflow-y: auto;
+}
+
+.search-result {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  width: 100%;
+  padding: 8px 10px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--ink);
+  font-family: inherit;
+  font-size: 13px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.search-result.is-active,
+.search-result:hover {
+  background: var(--surface);
+}
+
+.search-result-name {
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.search-result-anon {
+  color: var(--ink-faint);
+  font-style: italic;
+  font-weight: 400;
+}
+
+.search-result-meta {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: none;
+}
+
+.search-result-id {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--ink-faint);
+}
+
+.search-result-tag {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--ink-muted);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 1px 5px;
+}
+
+.search-all {
+  justify-content: flex-start;
+  color: var(--ink-muted);
+  font-size: 12px;
+  border-top: 1px solid var(--border);
+  border-radius: 0 0 6px 6px;
+  margin-top: 2px;
+}
+
+.search-empty {
+  padding: 10px;
+  font-size: 12px;
+  color: var(--ink-muted);
+}
+
 .topnav {
   display: flex;
   gap: 18px;
@@ -2753,6 +2878,11 @@ a.copy-addr-text:hover {
 
   .topbar-inner {
     padding: 12px 14px;
+  }
+
+  .search-wrap {
+    order: 3;
+    flex-basis: 100%;
   }
 
   .search-form {

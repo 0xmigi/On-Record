@@ -7,6 +7,8 @@ import {
   tlshDistance,
   fetchAnchorIdl,
   decodeInstructionUsage,
+  looksLikeProgramId,
+  escapeLike,
   type ApiCluster,
   type ApiCursorPage,
   type ApiProgram,
@@ -302,6 +304,89 @@ export function registerPublicRoutes(app: FastifyInstance): void {
     };
     return cluster;
   });
+
+  // --- search: find a program by name, crate, repo or what it talks to -----
+  // Ranked, not scored: an exact name beats a name prefix beats a name
+  // substring beats an integration beats anything found in the binary. The
+  // last tier is the interesting one — it matches crate names and error
+  // identifiers in programs whose developers published nothing at all.
+  app.get<{ Querystring: { q?: string; network?: string; limit?: string } }>(
+    "/api/search",
+    async (req): Promise<{ items: ApiProgram[]; query: string; truncated: boolean }> => {
+      const raw = (req.query.q ?? "").trim();
+      const limit = Math.min(Number(req.query.limit ?? 20) || 20, 50);
+      // 2 chars is the floor a trigram index can serve without degrading to a
+      // full scan, and single letters match essentially every binary anyway.
+      if (raw.length < 2) return { items: [], query: raw, truncated: false };
+
+      // a pasted address isn't a text query — resolve it as an id
+      if (looksLikeProgramId(raw)) {
+        const hit = await db.select().from(schema.subjects).where(eq(schema.subjects.id, raw));
+        const row = hit[0];
+        if (row) {
+          const [sizes, nearest] = await Promise.all([
+            clusterSizes([row.bucketId]),
+            nearestMetaFor([row]),
+          ]);
+          return {
+            items: [serializeProgram(row, row.bucketId ? (sizes.get(row.bucketId) ?? null) : null, nearest)],
+            query: raw,
+            truncated: false,
+          };
+        }
+        return { items: [], query: raw, truncated: false };
+      }
+
+      const q = escapeLike(raw.toLowerCase());
+      const like = `%${q}%`;
+      const conditions = [eq(schema.subjects.kind, "program")];
+      if (req.query.network === "mainnet" || req.query.network === "devnet") {
+        conditions.push(eq(schema.subjects.network, req.query.network));
+      }
+
+      const rank = sql<number>`case
+        when lower(${schema.subjects.name}) = ${q} then 0
+        when lower(${schema.subjects.name}) like ${q + "%"} then 1
+        when lower(${schema.subjects.name}) like ${like} then 2
+        when lower(${schema.subjects.profile}::text) like ${like} then 3
+        when lower(${schema.subjects.repoUrl}) like ${like} then 4
+        when lower(${schema.subjects.id}) like ${q + "%"} then 5
+        else 6 end`;
+
+      const rows = await db
+        .select()
+        .from(schema.subjects)
+        .where(
+          and(
+            ...conditions,
+            or(
+              sql`lower(${schema.subjects.name}) like ${like}`,
+              sql`lower(${schema.subjects.repoUrl}) like ${like}`,
+              sql`lower(${schema.subjects.profile}::text) like ${like}`,
+              sql`${schema.subjects.category} like ${like}`,
+              sql`lower(${schema.subjects.id}) like ${q + "%"}`,
+              sql`${schema.subjects.searchText} like ${like}`,
+            )!,
+          ),
+        )
+        // rank first, then the radar's own "worth seeing" order within a tier
+        .orderBy(rank, sql`${schema.subjects.noveltyScore} desc nulls last`, desc(schema.subjects.firstSeenAt))
+        .limit(limit + 1);
+
+      const page = rows.slice(0, limit);
+      const [sizes, nearest] = await Promise.all([
+        clusterSizes(page.map((r) => r.bucketId)),
+        nearestMetaFor(page),
+      ]);
+      return {
+        items: page.map((r) =>
+          serializeProgram(r, r.bucketId ? (sizes.get(r.bucketId) ?? null) : null, nearest),
+        ),
+        query: raw,
+        truncated: rows.length > limit,
+      };
+    },
+  );
 
   // --- raw loader events (power users) ------------------------------------
   app.get<{ Querystring: { cursor?: string; limit?: string; network?: string } }>(

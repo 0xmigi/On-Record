@@ -87,6 +87,9 @@ export const subjects = pgTable(
     firstSeenAt: timestamp("first_seen_at", { withTimezone: true }),
     lastEventAt: timestamp("last_event_at", { withTimezone: true }),
     facts: jsonb("facts").$type<Record<string, unknown>>().default({}).notNull(),
+    // flat lowercased search corpus: declared identity + denoised bytecode
+    // strings. Matched with trigram ILIKE — see search.ts for why not tsvector.
+    searchText: text("search_text"),
     createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
   },
