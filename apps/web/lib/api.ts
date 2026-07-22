@@ -274,15 +274,21 @@ export interface ApiSearchResult {
   truncated: boolean; // more matches exist than the limit returned
 }
 
+/** "relevance" ranks by interest score inside a match tier; "recent" ranks by
+ *  deploy date. Tiers (exact name > prefix > substring > bytecode) sit above
+ *  both, so a name search always surfaces its own program first. */
+export type SearchSort = "relevance" | "recent";
+
 export async function fetchSearch(
   q: string,
-  opts: { network?: Network; limit?: number } = {}
+  opts: { network?: Network; limit?: number; sort?: SearchSort } = {}
 ): Promise<ApiSearchResult> {
   const query = q.trim();
   if (query.length < 2) return { items: [], query, truncated: false };
   const params = new URLSearchParams({ q: query });
   if (opts.network) params.set("network", opts.network);
   if (opts.limit) params.set("limit", String(opts.limit));
+  if (opts.sort === "recent") params.set("sort", "recent");
   const res = await getJson<ApiSearchResult>(`/api/search?${params.toString()}`);
   return res ?? { items: [], query, truncated: false };
 }

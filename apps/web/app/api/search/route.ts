@@ -10,6 +10,7 @@ export async function GET(request: Request): Promise<NextResponse> {
   const result = await fetchSearch(q, {
     network: network === "devnet" || network === "mainnet" ? (network as Network) : undefined,
     limit: Number(searchParams.get("limit")) || 8,
+    sort: searchParams.get("sort") === "recent" ? "recent" : "relevance",
   });
   return NextResponse.json(result, {
     // identical keystrokes are common (backspace, retype) — a short shared

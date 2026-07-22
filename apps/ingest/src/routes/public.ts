@@ -310,11 +310,12 @@ export function registerPublicRoutes(app: FastifyInstance): void {
   // substring beats an integration beats anything found in the binary. The
   // last tier is the interesting one — it matches crate names and error
   // identifiers in programs whose developers published nothing at all.
-  app.get<{ Querystring: { q?: string; network?: string; limit?: string } }>(
+  app.get<{ Querystring: { q?: string; network?: string; limit?: string; sort?: string } }>(
     "/api/search",
     async (req): Promise<{ items: ApiProgram[]; query: string; truncated: boolean }> => {
       const raw = (req.query.q ?? "").trim();
       const limit = Math.min(Number(req.query.limit ?? 20) || 20, 50);
+      const sort = req.query.sort === "recent" ? "recent" : "relevance";
       // 2 chars is the floor a trigram index can serve without degrading to a
       // full scan, and single letters match essentially every binary anyway.
       if (raw.length < 2) return { items: [], query: raw, truncated: false };
@@ -376,13 +377,20 @@ export function registerPublicRoutes(app: FastifyInstance): void {
             )!,
           ),
         )
-        // match quality first, then mainnet over devnet, then the radar's own
-        // "worth seeing" order within a tier
+        // Match quality first, then mainnet over devnet, then the tiebreak.
+        //
+        // The tiebreak is what ?sort= switches, and it matters more than it
+        // looks: a broad query like "metadao" matches nothing by name, so
+        // every hit lands in the bytecode tier and the tiebreak becomes the
+        // whole ordering. Interest rank answers "what's worth seeing"; recency
+        // answers "what happened lately". Tiers stay above both either way, so
+        // searching a name never buries the program that owns it.
         .orderBy(
           rank,
           clusterRank,
-          sql`${schema.subjects.noveltyScore} desc nulls last`,
-          desc(schema.subjects.firstSeenAt),
+          ...(sort === "recent"
+            ? [desc(schema.subjects.firstSeenAt)]
+            : [sql`${schema.subjects.noveltyScore} desc nulls last`, desc(schema.subjects.firstSeenAt)]),
         )
         .limit(limit + 1);
 

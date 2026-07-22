@@ -33,6 +33,7 @@ import {
   type Network,
 } from "@onrecord/core";
 import { seedFromLabels } from "@onrecord/enrich";
+import { requireDatabaseTarget } from "./db-target.js";
 import { recordDeploy } from "./backfill.js";
 import { fingerprintStage, identifyStage, classifyStage, scoreStage } from "./pipeline.js";
 
@@ -41,6 +42,9 @@ const dry = argv.includes("--dry");
 const network: Network = argv.includes("--network=devnet") ? "devnet" : "mainnet";
 
 process.env.INLINE_PIPELINE = "1"; // stages run in sequence, no Redis
+
+const target = requireDatabaseTarget("seed-landmarks.ts");
+logger.info({ target, network, dry }, "target database");
 
 const seeded = await seedFromLabels();
 logger.info({ entities: seeded, network, dry }, "seed-landmarks: registry seeded");

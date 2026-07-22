@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { ProgramRow } from "@/components/ProgramRow";
-import { fetchSearch, looksLikeProgramId } from "@/lib/api";
+import { fetchSearch, looksLikeProgramId, type SearchSort } from "@/lib/api";
 
 export const metadata: Metadata = {
   title: "Search",
@@ -11,13 +11,14 @@ export const metadata: Metadata = {
 export default async function SearchPage({
   searchParams,
 }: {
-  searchParams: Promise<{ q?: string; network?: string }>;
+  searchParams: Promise<{ q?: string; network?: string; sort?: string }>;
 }) {
   const params = await searchParams;
   const q = (params.q ?? "").trim();
+  const sort: SearchSort = params.sort === "recent" ? "recent" : "relevance";
   // deliberately unscoped: search spans both clusters whatever mode you came
   // from, with devnet rows badged and ranked below their mainnet equivalents
-  const { items, truncated } = await fetchSearch(q, { limit: 50 });
+  const { items, truncated } = await fetchSearch(q, { limit: 50, sort });
   const devnetCount = items.filter((p) => p.network === "devnet").length;
 
   return (
@@ -56,11 +57,29 @@ export default async function SearchPage({
         </div>
       ) : (
         <>
-          <p className="saved-hint">
-            {truncated ? "50+" : items.length} match{items.length === 1 && !truncated ? "" : "es"}{" "}
-            for <strong>{q}</strong>
-            {devnetCount ? ` · ${devnetCount} on devnet` : ""}
-          </p>
+          <div className="search-summary">
+            <p className="saved-hint">
+              {truncated ? "50+" : items.length} match{items.length === 1 && !truncated ? "" : "es"}{" "}
+              for <strong>{q}</strong>
+              {devnetCount ? ` · ${devnetCount} on devnet` : ""}
+            </p>
+            <nav className="search-sort" aria-label="Sort results">
+              <Link
+                href={`/search?q=${encodeURIComponent(q)}`}
+                className={sort === "relevance" ? "is-active" : ""}
+                aria-current={sort === "relevance" ? "true" : undefined}
+              >
+                best match
+              </Link>
+              <Link
+                href={`/search?q=${encodeURIComponent(q)}&sort=recent`}
+                className={sort === "recent" ? "is-active" : ""}
+                aria-current={sort === "recent" ? "true" : undefined}
+              >
+                newest
+              </Link>
+            </nav>
+          </div>
           <ol className="radar-list">
             {items.map((p) => (
               <li key={p.id}>

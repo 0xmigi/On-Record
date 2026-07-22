@@ -25,6 +25,7 @@ import {
   type EventEnrichment,
   type SecurityTxt,
 } from "@onrecord/core";
+import { requireDatabaseTarget } from "./db-target.js";
 
 const log = stageLogger("backfill-search");
 const dry = process.argv.includes("--dry");
@@ -39,16 +40,7 @@ const DDL = [
   `create index if not exists "subjects_name_trgm_idx" on "subjects" using gin (lower("name") gin_trgm_ops)`,
 ];
 
-// echo the target so a production run is never a guess
-const target = (() => {
-  try {
-    const u = new URL(process.env.DATABASE_URL ?? "postgres://localhost:5432/onrecord");
-    return `${u.hostname}:${u.port || "5432"}${u.pathname}`;
-  } catch {
-    return "unparseable DATABASE_URL";
-  }
-})();
-
+const target = requireDatabaseTarget("backfill-search.ts");
 log.info({ target, dry }, "target database");
 
 if (!dry) {

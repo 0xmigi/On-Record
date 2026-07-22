@@ -4302,3 +4302,37 @@ a.copy-addr-text:hover {
 .closed-section .recycled-summary strong {
   color: var(--ink-soft);
 }
+
+/* search results: count on the left, sort switch on the right */
+.search-summary {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.search-sort {
+  display: flex;
+  gap: 12px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.search-sort a {
+  color: var(--ink-faint);
+  text-decoration: none;
+  padding-bottom: 2px;
+  border-bottom: 1px solid transparent;
+}
+
+.search-sort a:hover {
+  color: var(--ink-muted);
+}
+
+.search-sort a.is-active {
+  color: var(--ink);
+  border-bottom-color: var(--accent);
+}
