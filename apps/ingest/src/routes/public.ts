@@ -339,10 +339,13 @@ export function registerPublicRoutes(app: FastifyInstance): void {
 
       const q = escapeLike(raw.toLowerCase());
       const like = `%${q}%`;
+      // Search spans both clusters whatever mode you're browsing in — a devnet
+      // hit is still the answer to "where is this program", it just needs
+      // labelling. No dedup pass is needed: subjects.id is the program address
+      // and the primary key, so a program deployed to both clusters is one row,
+      // and the mainnet upsert overwrites `network`. Its devnet history rides
+      // along as the incubation fact the dossier already backlinks.
       const conditions = [eq(schema.subjects.kind, "program")];
-      if (req.query.network === "mainnet" || req.query.network === "devnet") {
-        conditions.push(eq(schema.subjects.network, req.query.network));
-      }
 
       const rank = sql<number>`case
         when lower(${schema.subjects.name}) = ${q} then 0
@@ -352,6 +355,10 @@ export function registerPublicRoutes(app: FastifyInstance): void {
         when lower(${schema.subjects.repoUrl}) like ${like} then 4
         when lower(${schema.subjects.id}) like ${q + "%"} then 5
         else 6 end`;
+      // mainnet outranks devnet within a match tier, regardless of which mode
+      // you're browsing — a live program beats a rehearsal of one
+      const clusterRank = sql<number>`case
+        when ${schema.subjects.network} = 'mainnet' then 0 else 1 end`;
 
       const rows = await db
         .select()
@@ -369,8 +376,14 @@ export function registerPublicRoutes(app: FastifyInstance): void {
             )!,
           ),
         )
-        // rank first, then the radar's own "worth seeing" order within a tier
-        .orderBy(rank, sql`${schema.subjects.noveltyScore} desc nulls last`, desc(schema.subjects.firstSeenAt))
+        // match quality first, then mainnet over devnet, then the radar's own
+        // "worth seeing" order within a tier
+        .orderBy(
+          rank,
+          clusterRank,
+          sql`${schema.subjects.noveltyScore} desc nulls last`,
+          desc(schema.subjects.firstSeenAt),
+        )
         .limit(limit + 1);
 
       const page = rows.slice(0, limit);

@@ -50,10 +50,7 @@ export default function RootLayout({
               <Mark size={20} />
               <span>on record</span>
             </Link>
-            {/* reads ?network= to scope results — needs its own boundary */}
-            <Suspense fallback={<div className="search-wrap" />}>
-              <SearchBox />
-            </Suspense>
+            <SearchBox />
             <nav className="topnav" aria-label="Main">
               <Link href="/">Radar</Link>
               <Link href="/funnel">Stats</Link>

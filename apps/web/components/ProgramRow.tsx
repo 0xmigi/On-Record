@@ -57,7 +57,15 @@ function Fact({ label, value }: { label: string; value: string }) {
  * dossier), then slot/time, then the raw facts, then a novelty gauge. Cluster
  * rows note "×N in cluster".
  */
-export function ProgramRow({ program }: { program: ApiProgram }) {
+/** `showNetwork` tags devnet rows. Opt-in, because the radar already scopes to
+ *  one cluster at a time — only mixed lists (search) need to say which. */
+export function ProgramRow({
+  program,
+  showNetwork = false,
+}: {
+  program: ApiProgram;
+  showNetwork?: boolean;
+}) {
   const inCluster = (program.clusterSize ?? 0) > 1;
   const kind = botKind(program); // 'sniper' | 'throwaway' | 'duplicate' | null
   const signals = deriveSignals(program);
@@ -86,6 +94,11 @@ export function ProgramRow({ program }: { program: ApiProgram }) {
           <ProgramAvatar program={program} />
           {program.name ? (
             <span className="radar-name">{program.name}</span>
+          ) : null}
+          {showNetwork && program.network === "devnet" ? (
+            <span className="net-badge" title="Deployed on devnet, not mainnet">
+              devnet
+            </span>
           ) : null}
           <CopyAddress
             value={program.id}

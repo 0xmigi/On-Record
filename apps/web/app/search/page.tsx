@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { ProgramRow } from "@/components/ProgramRow";
-import { fetchSearch, looksLikeProgramId, type Network } from "@/lib/api";
+import { fetchSearch, looksLikeProgramId } from "@/lib/api";
 
 export const metadata: Metadata = {
   title: "Search",
@@ -15,8 +15,10 @@ export default async function SearchPage({
 }) {
   const params = await searchParams;
   const q = (params.q ?? "").trim();
-  const network: Network = params.network === "devnet" ? "devnet" : "mainnet";
-  const { items, truncated } = await fetchSearch(q, { network, limit: 50 });
+  // deliberately unscoped: search spans both clusters whatever mode you came
+  // from, with devnet rows badged and ranked below their mainnet equivalents
+  const { items, truncated } = await fetchSearch(q, { limit: 50 });
+  const devnetCount = items.filter((p) => p.network === "devnet").length;
 
   return (
     <>
@@ -45,9 +47,9 @@ export default async function SearchPage({
               </>
             ) : (
               <>
-                Nothing on {network} matches. The index covers programs seen deploying or
-                upgrading, not every program on chain — try the address directly, or{" "}
-                <Link href="/">browse the radar</Link>.
+                Nothing on mainnet or devnet matches. The index covers programs seen
+                deploying or upgrading, not every program on chain — try the address
+                directly, or <Link href="/">browse the radar</Link>.
               </>
             )}
           </p>
@@ -56,12 +58,13 @@ export default async function SearchPage({
         <>
           <p className="saved-hint">
             {truncated ? "50+" : items.length} match{items.length === 1 && !truncated ? "" : "es"}{" "}
-            for <strong>{q}</strong> on {network}
+            for <strong>{q}</strong>
+            {devnetCount ? ` · ${devnetCount} on devnet` : ""}
           </p>
           <ol className="radar-list">
             {items.map((p) => (
               <li key={p.id}>
-                <ProgramRow program={p} />
+                <ProgramRow program={p} showNetwork />
               </li>
             ))}
           </ol>

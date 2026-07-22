@@ -1,6 +1,6 @@
 "use client";
 
-import { useRouter, useSearchParams } from "next/navigation";
+import { useRouter } from "next/navigation";
 import { useEffect, useId, useRef, useState } from "react";
 import {
   looksLikeProgramId,
@@ -13,8 +13,6 @@ import {
  *  zero-latency path: it never hits the search endpoint. */
 export function SearchBox() {
   const router = useRouter();
-  const params = useSearchParams();
-  const network = params.get("network") === "devnet" ? "devnet" : "mainnet";
   const listId = useId();
 
   const [value, setValue] = useState("");
@@ -37,10 +35,10 @@ export function SearchBox() {
     const controller = new AbortController();
     setLoading(true);
     const timer = setTimeout(() => {
-      fetch(
-        `/api/search?q=${encodeURIComponent(query)}&network=${network}&limit=8`,
-        { signal: controller.signal }
-      )
+      // unscoped by design — devnet hits show up in mainnet mode, badged
+      fetch(`/api/search?q=${encodeURIComponent(query)}&limit=8`, {
+        signal: controller.signal,
+      })
         .then((r) => (r.ok ? (r.json() as Promise<ApiSearchResult>) : null))
         .then((data) => {
           if (controller.signal.aborted) return;
@@ -57,7 +55,7 @@ export function SearchBox() {
       clearTimeout(timer);
       controller.abort();
     };
-  }, [query, isAddress, network]);
+  }, [query, isAddress]);
 
   // a closed dropdown keeps no highlight — otherwise reopening it restores a
   // stale selection and the next Enter goes somewhere the user didn't choose
@@ -170,6 +168,9 @@ export function SearchBox() {
                 </span>
                 <span className="search-result-meta">
                   <span className="search-result-id">{r.id.slice(0, 6)}…</span>
+                  {r.network === "devnet" ? (
+                    <span className="search-result-tag is-devnet">devnet</span>
+                  ) : null}
                   {r.category !== "unknown" ? (
                     <span className="search-result-tag">{r.category}</span>
                   ) : null}
