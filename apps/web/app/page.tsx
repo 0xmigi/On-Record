@@ -113,14 +113,14 @@ function SpectrumBar({
 
 /** One compact row in the recycled section: the newest redeploy of a byte-clone
  *  cluster, its confidence label, and how many share the code. */
-function RecycledRow({ rep, count }: { rep: ApiProgram; count: number }) {
+function RecycledRow({ rep, count, windowLabel }: { rep: ApiProgram; count: number; windowLabel: string }) {
   const kind = botKind(rep) ?? "recycled";
   const t = rep.momentum?.txns24h ?? rep.earlySigners ?? null;
   return (
     <Link href={`/p/${rep.id}`} className="recycled-row">
       <span className={`recycled-kind rk-${kind}`}>{BOT_LABEL[kind]}</span>
       <span className="recycled-name">{rep.name ?? truncateAddress(rep.id)}</span>
-      <span className="recycled-x">×{count} {count === 1 ? "seen" : "today"}</span>
+      <span className="recycled-x">×{count} {count === 1 ? "seen" : windowLabel}</span>
       {t ? (
         <span className="recycled-txns">
           {t.toLocaleString("en-US")}
@@ -132,14 +132,23 @@ function RecycledRow({ rep, count }: { rep: ApiProgram; count: number }) {
   );
 }
 
+const WINDOW_LABEL: Record<RadarWindow, string> = {
+  today: "today",
+  week: "this week",
+  month: "this month",
+  all: "all time",
+};
+
 function RecycledSection({
   clusters,
   count,
   open,
+  windowLabel,
 }: {
   clusters: { key: string; rep: ApiProgram; size: number }[];
   count: number;
   open: boolean;
+  windowLabel: string;
 }) {
   if (!clusters.length) return null;
   return (
@@ -158,7 +167,7 @@ function RecycledSection({
       </summary>
       <div className="recycled-list">
         {clusters.map((c) => (
-          <RecycledRow key={c.key} rep={c.rep} count={c.size} />
+          <RecycledRow key={c.key} rep={c.rep} count={c.size} windowLabel={windowLabel} />
         ))}
       </div>
     </details>
@@ -266,7 +275,7 @@ export default async function RadarPage({
     size: parseSize(sp.size),
   };
 
-  const EMPTY = { items: [] as ApiProgram[], nextCursor: null };
+  const EMPTY = { items: [] as ApiProgram[], total: 0, nextCursor: null };
   const [novelPage, variantPage, clonePage, closedPages, upgradePage, funnel] = await Promise.all([
     isDeploy ? fetchRadar({ type, window, band: "novel", limit: 100, network }) : Promise.resolve(EMPTY),
     isDeploy ? fetchRadar({ type, window, band: "variant", limit: 100, network }) : Promise.resolve(EMPTY),
@@ -306,6 +315,7 @@ export default async function RadarPage({
 
   const familyKeyOf = (p: ApiProgram) => p.bucketId ?? p.id;
   const closedAll = closedPages.flatMap((p) => p.items);
+  const closedTotal = closedPages.reduce((a, p) => a + (p.total ?? p.items.length), 0);
   const closedByFamily = new Map<string, ApiProgram[]>();
   for (const p of closedAll) {
     const k = familyKeyOf(p);
@@ -359,11 +369,15 @@ export default async function RadarPage({
     })
     .sort((a, b) => b.t - a.t);
 
+  // tier counts come from the API's true row count — items cap at the page
+  // limit (100), and "novel 100 · variant 100" quietly lied on wide windows.
+  // Facets filter client-side over the capped page, so they keep items.length.
+  const facetsActive = hasActiveFacets(params);
   const counts = isDeploy
     ? {
-        novel: novelPage.items.length,
-        variant: variantPage.items.length,
-        recycled: clonePage.items.length,
+        novel: facetsActive ? novelPage.items.length : (novelPage.total ?? novelPage.items.length),
+        variant: facetsActive ? variantPage.items.length : (variantPage.total ?? variantPage.items.length),
+        recycled: facetsActive ? clonePage.items.length : (clonePage.total ?? clonePage.items.length),
       }
     : null;
 
@@ -462,12 +476,13 @@ export default async function RadarPage({
       {showRecycled ? (
         <RecycledSection
           clusters={clusters}
-          count={clonePage.items.length}
+          count={counts?.recycled ?? clonePage.items.length}
           open={view === "recycled"}
+          windowLabel={WINDOW_LABEL[window]}
         />
       ) : null}
 
-      {isDeploy && !isDevnet ? <ClosedSection groups={closedItems} total={closedAll.length} /> : null}
+      {isDeploy && !isDevnet ? <ClosedSection groups={closedItems} total={closedTotal} /> : null}
     </>
   );
 }

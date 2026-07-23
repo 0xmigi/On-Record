@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { useSearchParams } from "next/navigation";
+import { usePathname, useSearchParams } from "next/navigation";
 
 /**
  * App-wide devnet indicator (Orb-style): a full-width strip under the topbar.
@@ -19,6 +19,7 @@ import { useSearchParams } from "next/navigation";
  */
 export function ClusterBanner() {
   const search = useSearchParams();
+  const pathname = usePathname();
   const [cookieNet, setCookieNet] = useState<"mainnet" | "devnet" | null>(null);
 
   // re-read the persisted cluster on every navigation (the toggle may have
@@ -29,8 +30,20 @@ export function ClusterBanner() {
   }, [search]);
 
   const param = search.get("network");
+  // On a dossier the URL is guaranteed truthful (devnet programs redirect to
+  // carry ?network=devnet — see app/p/[id]/page.tsx), so a param-less /p/* IS
+  // mainnet. The browsing-mode cookie must not override the subject: a devnet
+  // cookie used to hang the devnet banner over a mainnet program reached via a
+  // search or lineage link (those push /p/<id> with no param).
+  const onDossier = pathname?.startsWith("/p/") ?? false;
   const current: "mainnet" | "devnet" =
-    param === "devnet" ? "devnet" : param === "mainnet" ? "mainnet" : cookieNet ?? "mainnet";
+    param === "devnet"
+      ? "devnet"
+      : param === "mainnet"
+        ? "mainnet"
+        : onDossier
+          ? "mainnet"
+          : cookieNet ?? "mainnet";
   if (current !== "devnet") return null;
 
   return (

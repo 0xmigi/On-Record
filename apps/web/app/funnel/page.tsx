@@ -273,7 +273,7 @@ export default async function FunnelPage({
         </section>
       ) : null}
 
-      <p className="funnel-updated">last {win}h · updated {utcStamp(funnel.updatedAt)}</p>
+      <p className="funnel-updated">last {win} · updated {utcStamp(funnel.updatedAt)}</p>
     </>
   );
 }

@@ -3,6 +3,9 @@
 // fallback so pages render a designed empty state instead of crashing.
 
 const API_BASE = process.env.API_URL ?? "http://localhost:3001";
+// a production build with no API_URL would silently render an empty site
+// against localhost — fail loudly instead (surfaces via the error boundary)
+const API_MISCONFIGURED = !process.env.API_URL && process.env.NODE_ENV === "production";
 
 export type Network = "mainnet" | "devnet";
 export type Band = "clone" | "variant" | "novel";
@@ -227,20 +230,43 @@ export interface ApiCluster {
 
 export interface ApiCursorPage<T> {
   items: T[];
+  /** true row count for the whole slice (items caps at the page limit) */
+  total?: number;
   nextCursor: string | null;
 }
 
 const EMPTY_PAGE = { items: [], nextCursor: null };
 
+const API_TIMEOUT_MS = 10_000;
+
+/** Thrown when the backend is unreachable, timing out, or erroring. Pages let
+ *  this propagate to the app error boundary (app/error.tsx) — an outage must
+ *  render as an outage, never as "no data" or a 404. */
+export class ApiUnavailableError extends Error {
+  constructor(path: string, cause: string) {
+    super(`On Record API unavailable (${cause}) for ${path}`);
+    this.name = "ApiUnavailableError";
+  }
+}
+
 async function getJson<T>(path: string): Promise<T | null> {
+  if (API_MISCONFIGURED) throw new ApiUnavailableError(path, "API_URL not configured");
+  let res: Response;
   try {
-    const res = await fetch(`${API_BASE}${path}`, {
+    res = await fetch(`${API_BASE}${path}`, {
       next: { revalidate: 30 },
+      // a hung backend must not pin the render until the platform 504s it
+      signal: AbortSignal.timeout(API_TIMEOUT_MS),
     });
-    if (!res.ok) return null;
+  } catch (err) {
+    throw new ApiUnavailableError(path, err instanceof Error ? err.name : "network error");
+  }
+  if (res.status === 404) return null; // the one honest "not on record"
+  if (!res.ok) throw new ApiUnavailableError(path, `HTTP ${res.status}`);
+  try {
     return (await res.json()) as T;
   } catch {
-    return null;
+    throw new ApiUnavailableError(path, "unparseable response");
   }
 }
 

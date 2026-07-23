@@ -1947,6 +1947,10 @@ a.copy-addr-text:hover {
   font-weight: 700;
   letter-spacing: -0.01em;
   color: var(--ink);
+  /* on-chain names are arbitrary bytes — an unbroken run must wrap, not
+     push the card wider than the column (the dossier title does the same) */
+  overflow-wrap: anywhere;
+  min-width: 0;
 }
 
 /* when a program is named, the id drops to a quiet mono subtitle so the two
@@ -4064,6 +4068,8 @@ a.copy-addr-text:hover {
   font-family: var(--font-mono);
   font-size: 12.5px;
   color: var(--ink);
+  overflow-wrap: anywhere;
+  min-width: 0;
 }
 .recycled-x {
   font-family: var(--font-mono);

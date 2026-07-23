@@ -147,7 +147,7 @@ export function ProgramRow({
               ✓ verified
             </span>
           ) : null}
-          {isFork && program.nearest ? (
+          {isFork && program.nearest?.name ? (
             <span className="fork-chip" title={`${Math.round(program.nearest.similarity * 100)}% code match to ${program.nearest.name}`}>
               fork of {program.nearest.name}
             </span>
@@ -203,7 +203,7 @@ export function ProgramRow({
           {notableIntegrations.length > 0 ? (
             <Fact label="talks to" value={notableIntegrations.slice(0, 2).join(", ")} />
           ) : null}
-          {resembles && program.nearest ? (
+          {resembles && program.nearest?.name ? (
             <Fact
               label="resembles"
               value={`${program.nearest.name} ${Math.round(program.nearest.similarity * 100)}%`}

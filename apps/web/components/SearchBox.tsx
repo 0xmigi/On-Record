@@ -47,8 +47,12 @@ export function SearchBox() {
           setLoading(false);
         })
         .catch(() => {
-          // AbortError is the normal path when typing continues
-          if (!controller.signal.aborted) setLoading(false);
+          // AbortError is the normal path when typing continues; a real
+          // failure must not leave the previous query's results under new text
+          if (!controller.signal.aborted) {
+            setResults([]);
+            setLoading(false);
+          }
         });
     }, 180);
     return () => {
