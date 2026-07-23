@@ -90,6 +90,11 @@ export const subjects = pgTable(
     // flat lowercased search corpus: declared identity + denoised bytecode
     // strings. Matched with trigram ILIKE — see search.ts for why not tsvector.
     searchText: text("search_text"),
+    // source tree recovered from panic paths (sourcetree.ts). `crate` is the
+    // workspace crate name; `sourcePaths` its own .rs files. This is the fork
+    // signal TLSH cannot see — same source, different build.
+    crate: text("crate"),
+    sourcePaths: jsonb("source_paths").$type<string[]>(),
     createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
   },
@@ -98,6 +103,8 @@ export const subjects = pgTable(
     index("subjects_bucket_idx").on(t.bucketId),
     index("subjects_radar_idx").on(t.network, t.noveltyBand, t.noveltyScore),
     index("subjects_first_seen_idx").on(t.firstSeenAt),
+    // lineage-by-crate: the lookup is "who else compiled from this crate"
+    index("subjects_crate_idx").on(t.network, t.crate),
   ],
 );
 

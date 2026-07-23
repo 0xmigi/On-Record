@@ -6,6 +6,7 @@ import path from "node:path";
 import { promisify } from "node:util";
 import bs58 from "bs58";
 import { LOADER_PROGRAM_ID } from "./helius.js";
+import { logger } from "./logger.js";
 
 const execFileAsync = promisify(execFile);
 
@@ -19,21 +20,45 @@ export function sha256Hex(bytes: Uint8Array): string {
 // here in TS so the corpus scan never touches the filesystem.
 // ---------------------------------------------------------------------------
 
+/** Why this retries: a bare `catch → null` here is invisible and permanent. A
+ *  program that fails to hash gets no lineage forever — it reads as "novel
+ *  code" no matter how obviously it's a fork, and nothing ever revisits it.
+ *  Measured on the live corpus: 80 of 4,985 entries (1.6%) had a null tlsh,
+ *  and their size distribution matched the successes almost exactly (median
+ *  311 KB vs 293 KB) — so these were transient exec failures under
+ *  concurrency, not inputs TLSH legitimately refuses. Retry, then surface the
+ *  reason instead of discarding it. */
 export async function tlshHash(bytes: Uint8Array): Promise<string | null> {
   if (bytes.length < 256) return null; // TLSH needs ≥256 bytes of input
-  const dir = await mkdtemp(path.join(tmpdir(), "tlsh-"));
-  const file = path.join(dir, "blob");
-  try {
-    await writeFile(file, bytes);
-    const { stdout } = await execFileAsync("tlsh", ["-f", file]);
-    // output: "<digest>\t<filename>"
-    const digest = stdout.trim().split(/\s+/)[0] ?? "";
-    return /^T1[0-9A-F]{70}$/i.test(digest) || /^[0-9A-F]{70}$/i.test(digest) ? digest : null;
-  } catch {
-    return null; // CLI missing or hashing failed — fingerprint degrades to sha256 only
-  } finally {
-    await rm(dir, { recursive: true, force: true });
+  let lastError: unknown = null;
+  for (let attempt = 0; attempt < 3; attempt++) {
+    const dir = await mkdtemp(path.join(tmpdir(), "tlsh-"));
+    const file = path.join(dir, "blob");
+    try {
+      await writeFile(file, bytes);
+      const { stdout } = await execFileAsync("tlsh", ["-f", file], {
+        maxBuffer: 1 << 20,
+        timeout: 30_000,
+      });
+      // output: "<digest>\t<filename>"
+      const digest = stdout.trim().split(/\s+/)[0] ?? "";
+      if (/^T1[0-9A-F]{70}$/i.test(digest) || /^[0-9A-F]{70}$/i.test(digest)) return digest;
+      // A well-formed run that produced no digest means TLSH genuinely refused
+      // this input (too little variance). Retrying cannot change that.
+      return null;
+    } catch (err) {
+      lastError = err;
+      await new Promise((r) => setTimeout(r, 150 * (attempt + 1)));
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
   }
+  // Exhausted retries. Callers store null, but the reason is no longer silent.
+  logger.warn(
+    { bytes: bytes.length, err: String(lastError).slice(0, 200) },
+    "tlsh hashing failed after 3 attempts — program will have no lineage until re-fingerprinted",
+  );
+  return null;
 }
 
 interface ParsedTlsh {
@@ -96,6 +121,18 @@ export function tlshDistance(a: string, b: string): number | null {
 // top 100 (spec §4.1). Feeds the Radar triage read.
 // ---------------------------------------------------------------------------
 
+/** Source paths are the identity signal (crate name + file tree → lineage,
+ *  see sourcetree.ts) and they are SHORT, so a plain longest-N cut drops them.
+ *  Drift is the proof: its stored sample of 100 contained not one
+ *  `programs/<crate>/src/…` path, so the fork detector had nothing to match
+ *  on. Keep these regardless of where they rank by length. */
+const SOURCE_PATH_RE = /(?:^|[^a-z0-9_/-])(?:programs?\/[a-z0-9_-]+\/)?src\/[a-z0-9_/-]+?\.rs/i;
+
+/** Printable strings from the bytecode, longest first.
+ *
+ *  `top` bounds what we persist — the raw set runs to thousands and most of it
+ *  is Rust panic boilerplate. Anything matching a source path is exempt from
+ *  that bound: those are cheap (tens of bytes) and carry the lineage signal. */
 export function extractStrings(bytes: Uint8Array, minLen = 8, top = 100): string[] {
   const found = new Set<string>();
   let start = -1;
@@ -108,7 +145,15 @@ export function extractStrings(bytes: Uint8Array, minLen = 8, top = 100): string
       start = -1;
     }
   }
-  return [...found].sort((x, y) => y.length - x.length).slice(0, top);
+  const byLength = [...found].sort((x, y) => y.length - x.length);
+  const kept = byLength.slice(0, top);
+  const keptSet = new Set(kept);
+  // add back any source-path string the length cut discarded
+  for (const s of byLength) {
+    if (keptSet.has(s)) continue;
+    if (SOURCE_PATH_RE.test(s)) kept.push(s);
+  }
+  return kept;
 }
 
 // ---------------------------------------------------------------------------

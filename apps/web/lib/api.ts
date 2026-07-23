@@ -156,6 +156,16 @@ export interface ApiProgramDetail extends ApiProgram {
   strings: string[]; // notable printable strings from bytecode
   syscalls: string[]; // sol_* imports read off the ELF (the capability evidence)
   securityTxt: SecurityTxt | null; // embedded security.txt, verbatim
+  /** programs compiled from the same crate — shared source, which bytecode
+   *  distance cannot detect. Ranked by how many .rs files they share. */
+  sourceKin?: {
+    programId: string;
+    name: string | null;
+    crate: string;
+    sharedFiles: number;
+    overlap: number;
+    deployedAt: string | null;
+  }[];
 }
 
 export interface ApiFunnel {

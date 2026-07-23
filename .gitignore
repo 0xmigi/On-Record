@@ -11,3 +11,6 @@ coverage/
 
 # large regenerable data snapshots (via scripts/snapshot.mjs)
 data/
+
+# scratch scripts from interactive sessions
+scripts/.tmp-*

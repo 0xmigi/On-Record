@@ -9,9 +9,14 @@ import {
   decodeInstructionUsage,
   looksLikeProgramId,
   escapeLike,
+  lineageSizeWindow,
+  sharedPathCount,
+  pathOverlap,
+  isSourceRelative,
   type ApiCluster,
   type ApiCursorPage,
   type ApiProgram,
+  type ApiProgramDetail,
   type ApiRawEvent,
   type NoveltyBand,
 } from "@onrecord/core";
@@ -85,6 +90,55 @@ async function nearestMetaFor(rows: { facts: unknown }[]): Promise<Map<string, N
       },
     ]),
   );
+}
+
+/** Programs sharing this one's crate, ranked by how much of the source tree
+ *  they actually share. A shared name alone proves nothing — Raydium and
+ *  Meteora both ship a crate called `amm` and share one file — so
+ *  isSourceRelative() requires path evidence before anything is returned. */
+async function resolveSourceKin(row: {
+  id: string;
+  network: string;
+  crate: string | null;
+  sourcePaths: string[] | null;
+}): Promise<ApiProgramDetail["sourceKin"]> {
+  if (!row.crate) return [];
+  const candidates = await db
+    .select({
+      id: schema.subjects.id,
+      name: schema.subjects.name,
+      crate: schema.subjects.crate,
+      sourcePaths: schema.subjects.sourcePaths,
+      firstDeployAt: schema.subjects.firstDeployAt,
+      firstSeenAt: schema.subjects.firstSeenAt,
+    })
+    .from(schema.subjects)
+    .where(
+      and(
+        eq(schema.subjects.network, row.network),
+        eq(schema.subjects.crate, row.crate),
+        ne(schema.subjects.id, row.id),
+      ),
+    )
+    .limit(200);
+
+  const mine = row.sourcePaths ?? [];
+  const kin = candidates
+    .map((c) => {
+      const theirs = c.sourcePaths ?? [];
+      return {
+        programId: c.id,
+        name: c.name,
+        crate: row.crate!,
+        sharedFiles: sharedPathCount(mine, theirs),
+        overlap: pathOverlap(mine, theirs),
+        deployedAt: (c.firstDeployAt ?? c.firstSeenAt)?.toISOString() ?? null,
+      };
+    })
+    .filter((k) => isSourceRelative(row.crate, row.crate, k.sharedFiles, k.overlap))
+    .sort((a, b) => b.sharedFiles - a.sharedFiles || b.overlap - a.overlap);
+
+  return kin.slice(0, 10);
 }
 
 async function clusterSizes(bucketIds: (string | null)[]): Promise<Map<string, number>> {
@@ -205,8 +259,7 @@ export function registerPublicRoutes(app: FastifyInstance): void {
     // nearest bytecode relatives (size ±20% prefilter, TLSH distance)
     const neighbors: { programId: string; distance: number; name: string | null }[] = [];
     if (row.tlsh && row.sizeBytes) {
-      const lo = Math.floor(row.sizeBytes * 0.8);
-      const hi = Math.ceil(row.sizeBytes * 1.2);
+      const [lo, hi] = lineageSizeWindow(row.sizeBytes);
       const candidates = await db
         .select({ programId: schema.fingerprintCorpus.programId, tlsh: schema.fingerprintCorpus.tlsh })
         .from(schema.fingerprintCorpus)
@@ -242,7 +295,14 @@ export function registerPublicRoutes(app: FastifyInstance): void {
         : Promise.resolve(null),
       nearestMetaFor([row]),
     ]);
-    return serializeProgramDetail(row, events, neighbors, clusterSize, nearestMeta);
+    // Source lineage: who else compiled from this crate. Answers the question
+    // TLSH structurally cannot — tail.trade is a build of Drift's crate (88
+    // shared files) at bytecode distance 182, which no threshold would ever
+    // call a relative. The crate name only nominates; the shared file count
+    // decides (see core/sourcetree.ts).
+    const sourceKin = await resolveSourceKin(row);
+
+    return serializeProgramDetail(row, events, neighbors, clusterSize, nearestMeta, sourceKin);
   });
 
   // --- a program's full Anchor IDL (the human-readable interface) ----------

@@ -522,6 +522,34 @@ export default async function ProgramDossierPage({
             <span className="cell-dim">no close match — novel code</span>
           )}
         </Row>
+        {/* Shared source, which bytecode distance cannot see. tail.trade is a
+            build of Drift's crate — 88 shared files — at TLSH distance 182, so
+            "closest relative" above reports novel code. The crate name and file
+            tree survive every build in the panic paths, so they answer "same
+            source?" where the fuzzy hash answers "same binary?". */}
+        {program.sourceKin?.length ? (
+          <Row label="Same source">
+            <span
+              title="Recovered from Rust panic paths baked into the binary: these programs were compiled from a crate of the same name, and share this many of their own source files. Shared code, not necessarily an affiliated team."
+            >
+              <span className="cell-dim">compiled from the </span>
+              <code>{program.sourceKin[0]!.crate}</code>
+              <span className="cell-dim"> crate · </span>
+              {program.sourceKin.slice(0, 3).map((k, i) => (
+                <span key={k.programId}>
+                  {i > 0 ? <span className="cell-dim">, </span> : null}
+                  <Link href={`/p/${k.programId}`} className="neighbor-addr">
+                    {k.name ?? truncateAddress(k.programId)}
+                  </Link>
+                  <span className="cell-dim"> ({k.sharedFiles} shared files)</span>
+                </span>
+              ))}
+              {program.sourceKin.length > 3 ? (
+                <span className="cell-dim"> +{program.sourceKin.length - 3} more</span>
+              ) : null}
+            </span>
+          </Row>
+        ) : null}
       </div>
 
       <SectionHeader

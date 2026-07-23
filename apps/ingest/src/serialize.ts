@@ -162,6 +162,7 @@ export function serializeProgramDetail(
   neighbors: ApiProgramDetail["neighbors"],
   clusterSize: number | null,
   nearestMeta?: Map<string, NearestMeta>,
+  sourceKin: ApiProgramDetail["sourceKin"] = [],
 ): ApiProgramDetail {
   const facts = (row.facts ?? {}) as {
     securityTxt?: SecurityTxt;
@@ -185,6 +186,7 @@ export function serializeProgramDetail(
     sha256: row.sha256,
     events: events.map(serializeEvent),
     neighbors,
+    sourceKin,
     idlInstructions,
     strings,
     syscalls: row.profile?.syscalls ?? [],

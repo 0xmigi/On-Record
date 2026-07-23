@@ -1,5 +1,6 @@
 import { and, eq, gte, lte, ne, sql } from "drizzle-orm";
 import {
+  lineageSizeWindow,
   db,
   schema,
   newId,
@@ -17,7 +18,8 @@ import {
 //   2. TLSH distance < CLONE_THRESHOLD → same bucket → band=variant
 //   3. distance ≥ NOVEL_THRESHOLD from all neighbors → band=novel
 //   4. middle band → band=variant (near a family, not a clean clone)
-// Corpus scan is linear with a size ±20% prefilter — fine at ~2k events/day.
+// Corpus scan is linear with an asymmetric size prefilter (see lineage.ts) —
+// fine at ~2k events/day.
 // ---------------------------------------------------------------------------
 
 /** Collapse the 4-way corpus disposition into the 3-way radar band. */
@@ -83,7 +85,7 @@ export async function classifyFingerprint(
     };
   }
 
-  // 2/3. nearest neighbor over the corpus (size ±20% prefilter). We also measure
+  // 2/3. nearest neighbor over the corpus (asymmetric size prefilter). We also measure
   // the *crowd* — how many distinct programs cluster within 5 similarity points of
   // the nearest — so the UI can flag a generic framework-shape match (a pack) vs a
   // genuine relative (a standout), instead of crowning one arbitrary tie-winner.
@@ -91,8 +93,7 @@ export async function classifyFingerprint(
   let peersWithin5 = 0;
   let runnerUpDistance: number | null = null;
   if (fp.tlsh) {
-    const lo = Math.floor(fp.sizeBytes * 0.8);
-    const hi = Math.ceil(fp.sizeBytes * 1.2);
+    const [lo, hi] = lineageSizeWindow(fp.sizeBytes);
     const candidates = await db
       .select({
         programId: schema.fingerprintCorpus.programId,

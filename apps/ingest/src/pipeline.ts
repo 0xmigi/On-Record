@@ -20,6 +20,7 @@ import {
   profileProgram,
   deriveBytecodeIdentity,
   buildSearchText,
+  recoverSourceTree,
   type Category,
   type EventEnrichment,
   type Fingerprint,
@@ -301,6 +302,7 @@ async function upsertSubject(event: EventRow, enrichment: EventEnrichment): Prom
   const dep = enrichment.deploy;
   const md = enrichment.metadata;
   const pmpName = typeof md?.security?.name === "string" ? md.security.name : null;
+  const sourceTree = recoverSourceTree(fp?.strings ?? []);
   const pmpLogo = typeof md?.security?.logo === "string" ? md.security.logo : null;
   const when = event.blockTime ?? new Date();
   const values = {
@@ -335,6 +337,10 @@ async function upsertSubject(event: EventRow, enrichment: EventEnrichment): Prom
     },
     tvl: id?.tvl ?? null,
     lastEventAt: when,
+    // the fork signal: crate name + own .rs tree, recovered from panic paths.
+    // TLSH sees byte similarity; this sees shared source (sourcetree.ts).
+    crate: sourceTree.crate,
+    sourcePaths: sourceTree.paths.length ? sourceTree.paths : null,
     // what makes a program findable by name/crate/integration rather than only
     // by pasting its address (search.ts)
     searchText: buildSearchText({

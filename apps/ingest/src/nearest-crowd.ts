@@ -1,12 +1,12 @@
 import { and, desc, eq, gte, lte } from "drizzle-orm";
-import { db, schema, tlshDistance, logger } from "@onrecord/core";
+import { db, schema, tlshDistance, logger, lineageSizeWindow } from "@onrecord/core";
 
 const WRITE = process.argv.includes("--write"); // persist stats into facts.nearest
 
 // ---------------------------------------------------------------------------
 // Read-only diagnostic: is a program's "nearest match" a genuine standout or
 // one of a crowd of framework-boilerplate lookalikes? For each program id,
-// replicate the classify-stage scan (corpus, same network, ±20% size) and
+// replicate the classify-stage scan (corpus, same network, lineage size window) and
 // report the distance distribution: nearest, runner-up, gap, and how many
 // distinct programs sit within 5 percentage points of the nearest.
 //
@@ -34,8 +34,7 @@ async function analyze(programId: string): Promise<void> {
     return;
   }
   const { tlsh, sizeBytes } = self[0];
-  const lo = Math.floor(sizeBytes * 0.8);
-  const hi = Math.ceil(sizeBytes * 1.2);
+  const [lo, hi] = lineageSizeWindow(sizeBytes);
 
   const candidates = await db
     .select({

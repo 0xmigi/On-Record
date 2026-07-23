@@ -344,6 +344,16 @@ export interface ApiProgramDetail extends ApiProgram {
   syscalls: string[];
   /** the developer's embedded security.txt, verbatim fields */
   securityTxt: SecurityTxt | null;
+  /** programs compiled from the same crate — the fork signal TLSH misses.
+   *  Ranked by how much of the source tree they literally share. */
+  sourceKin: {
+    programId: string;
+    name: string | null;
+    crate: string;
+    sharedFiles: number;
+    overlap: number; // 0..1 jaccard over recovered .rs paths
+    deployedAt: string | null;
+  }[];
 }
 
 export interface ApiFunnel {
