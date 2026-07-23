@@ -296,6 +296,20 @@ export async function identifyStage(eventId: string): Promise<void> {
 }
 
 async function upsertSubject(event: EventRow, enrichment: EventEnrichment): Promise<void> {
+  // Cross-cluster guard: subjects are keyed by program id alone, and same-
+  // keypair reuse across clusters is exactly what the lineage features track —
+  // so a devnet echo of a program already tracked on mainnet must not clobber
+  // the mainnet record (flipping network would drop it off the radar). The
+  // devnet event row itself carries the lineage signal. The reverse direction —
+  // a devnet-only subject debuting on mainnet — is a promotion and takes the
+  // full update.
+  if (event.network === "devnet") {
+    const existing = await db
+      .select({ network: schema.subjects.network })
+      .from(schema.subjects)
+      .where(eq(schema.subjects.id, event.programId));
+    if (existing[0] && existing[0].network !== "devnet") return;
+  }
   const fp = enrichment.fingerprint;
   const id = enrichment.identity;
   const bi = enrichment.bytecodeIdentity;
@@ -376,15 +390,21 @@ async function upsertSubject(event: EventRow, enrichment: EventEnrichment): Prom
     });
 }
 
-/** Merge keys into subjects.facts without touching the rest of the row. */
-async function mergeSubjectFacts(programId: string, patch: Record<string, unknown>): Promise<void> {
+/** Merge keys into subjects.facts without touching the rest of the row.
+ *  Network-scoped so a devnet event can never write onto a mainnet row that
+ *  happens to share the program id (see upsertSubject's cross-cluster guard). */
+async function mergeSubjectFacts(
+  programId: string,
+  network: Network,
+  patch: Record<string, unknown>,
+): Promise<void> {
   await db
     .update(schema.subjects)
     .set({
       facts: sql`coalesce(${schema.subjects.facts}, '{}'::jsonb) || ${JSON.stringify(patch)}::jsonb`,
       updatedAt: new Date(),
     })
-    .where(eq(schema.subjects.id, programId));
+    .where(and(eq(schema.subjects.id, programId), eq(schema.subjects.network, network)));
 }
 
 // ---------------------------------------------------------------------------
@@ -400,17 +420,19 @@ export async function classifyStage(eventId: string): Promise<void> {
   const fp = enrichment.fingerprint;
 
   if (event.type === "deploy" && fp) {
-    const classification = await classifyFingerprint(network, event.programId, fp);
+    const classification = await classifyFingerprint(network, event.programId, fp, {
+      authority: event.authorityAfter,
+    });
     enrichment.classification = classification;
 
     await db
       .update(schema.subjects)
       .set({ bucketId: classification.bucketId, noveltyBand: classification.band })
-      .where(eq(schema.subjects.id, event.programId));
+      .where(and(eq(schema.subjects.id, event.programId), eq(schema.subjects.network, network)));
 
     // persist lineage so the radar/dossier can show "nearest relative" cheaply
     if (classification.nearestProgramId !== null && classification.nearestDistance !== null) {
-      await mergeSubjectFacts(event.programId, {
+      await mergeSubjectFacts(event.programId, network, {
         nearest: {
           id: classification.nearestProgramId,
           distance: classification.nearestDistance,
@@ -447,7 +469,7 @@ export async function classifyStage(eventId: string): Promise<void> {
             );
           devnetIterations = Math.max(devnetIterations, Number(n[0]?.n ?? 0));
         }
-        await mergeSubjectFacts(event.programId, {
+        await mergeSubjectFacts(event.programId, network, {
           incubation: {
             devnetProgramId: wl[0].programId,
             firstDevnetAt: wl[0].firstSeenAt.toISOString(),
@@ -555,10 +577,10 @@ export async function scoreStage(eventId: string): Promise<void> {
       lastEventAt: event.blockTime ?? new Date(),
       updatedAt: new Date(),
     })
-    .where(eq(schema.subjects.id, event.programId));
+    .where(and(eq(schema.subjects.id, event.programId), eq(schema.subjects.network, network)));
 
   if (trail?.funderAddress) {
-    await mergeSubjectFacts(event.programId, {
+    await mergeSubjectFacts(event.programId, network, {
       funderAddress: trail.funderAddress,
       fundingLamports: trail.fundingLamports,
     });

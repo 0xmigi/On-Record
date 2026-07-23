@@ -1,4 +1,4 @@
-import { and, eq, gte } from "drizzle-orm";
+import { and, eq, gte, sql } from "drizzle-orm";
 import { db, schema, logger, tlshDistance } from "@onrecord/core";
 import { expireWatchlist, refreshTvl } from "@onrecord/enrich";
 import { snapshotFunnel, todayKey } from "./funnel.js";
@@ -63,14 +63,15 @@ async function maybeRunDaily(): Promise<void> {
 }
 
 async function corpusStats(): Promise<void> {
+  // aggregate in the database — the corpus is append-only and loading every
+  // row to count it would eventually OOM the container
   const rows = await db
-    .select({ network: schema.fingerprintCorpus.network })
-    .from(schema.fingerprintCorpus);
-  const byNetwork = rows.reduce<Record<string, number>>((acc, r) => {
-    acc[r.network] = (acc[r.network] ?? 0) + 1;
-    return acc;
-  }, {});
-  logger.info({ corpus: byNetwork, total: rows.length }, "corpus stats");
+    .select({ network: schema.fingerprintCorpus.network, n: sql<number>`count(*)` })
+    .from(schema.fingerprintCorpus)
+    .groupBy(schema.fingerprintCorpus.network);
+  const byNetwork = Object.fromEntries(rows.map((r) => [r.network, Number(r.n)]));
+  const total = rows.reduce((a, r) => a + Number(r.n), 0);
+  logger.info({ corpus: byNetwork, total }, "corpus stats");
 }
 
 /** Threshold drift report: the distribution of nearest-neighbor distances for
@@ -79,13 +80,22 @@ async function corpusStats(): Promise<void> {
 async function thresholdDriftReport(): Promise<void> {
   const since = new Date(Date.now() - 86_400_000);
   const recent = await db
-    .select()
+    .select({ tlsh: schema.fingerprintCorpus.tlsh, sizeBytes: schema.fingerprintCorpus.sizeBytes })
     .from(schema.fingerprintCorpus)
     .where(and(eq(schema.fingerprintCorpus.network, "mainnet"), gte(schema.fingerprintCorpus.seenAt, since)));
+  // compare against a bounded trailing window, not all of history — the corpus
+  // is append-only and the O(recent x all) scan would grow without limit (the
+  // drift signal only needs a representative recent population anyway)
+  const comparisonSince = new Date(Date.now() - 90 * 86_400_000);
   const older = await db
     .select({ tlsh: schema.fingerprintCorpus.tlsh, sizeBytes: schema.fingerprintCorpus.sizeBytes })
     .from(schema.fingerprintCorpus)
-    .where(eq(schema.fingerprintCorpus.network, "mainnet"));
+    .where(
+      and(
+        eq(schema.fingerprintCorpus.network, "mainnet"),
+        gte(schema.fingerprintCorpus.seenAt, comparisonSince),
+      ),
+    );
 
   const distances: number[] = [];
   for (const item of recent) {

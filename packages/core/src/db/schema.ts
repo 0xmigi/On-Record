@@ -1,5 +1,6 @@
 import {
   bigint,
+  primaryKey,
   boolean,
   doublePrecision,
   index,
@@ -109,6 +110,18 @@ export const subjects = pgTable(
 );
 
 // ---------------------------------------------------------------------------
+// poll_cursors — one row per network: the highest slot the poller has fully
+// ingested. Everything at or below `slot` is on record; the cursor never
+// advances past a program whose pipeline failed, so transient errors are
+// retried on the next tick instead of being silently skipped forever.
+// ---------------------------------------------------------------------------
+export const pollCursors = pgTable("poll_cursors", {
+  network: text("network").primaryKey(),
+  slot: bigint("slot", { mode: "number" }).notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+});
+
+// ---------------------------------------------------------------------------
 // copy_buckets — clusters of near-identical bytecode. Individual members are
 // folded into the cluster; the bucket's velocity feeds the funnel's clone rate.
 // ---------------------------------------------------------------------------
@@ -155,17 +168,22 @@ export const watchlist = pgTable(
 // funnel_daily — one row per day: the 2000 → unique → novel counts and the
 // category breakdown. Powers the Funnel surface (SPEC §6).
 // ---------------------------------------------------------------------------
-export const funnelDaily = pgTable("funnel_daily", {
-  date: text("date").primaryKey(), // YYYY-MM-DD (ET)
-  network: text("network").default("mainnet").notNull(),
-  raw: integer("raw").default(0).notNull(), // total deploy + upgrade events
-  unique: integer("unique").default(0).notNull(), // unique bytecode (Y)
-  novel: integer("novel").default(0).notNull(), // Z
-  clones: integer("clones").default(0).notNull(),
-  variants: integer("variants").default(0).notNull(),
-  byCategory: jsonb("by_category").$type<Record<string, number>>().default({}).notNull(),
-  updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
-});
+export const funnelDaily = pgTable(
+  "funnel_daily",
+  {
+    date: text("date").notNull(), // YYYY-MM-DD (ET)
+    network: text("network").default("mainnet").notNull(),
+    raw: integer("raw").default(0).notNull(), // total deploy + upgrade events
+    unique: integer("unique").default(0).notNull(), // unique bytecode (Y)
+    novel: integer("novel").default(0).notNull(), // Z
+    clones: integer("clones").default(0).notNull(),
+    variants: integer("variants").default(0).notNull(),
+    byCategory: jsonb("by_category").$type<Record<string, number>>().default({}).notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  // one row per (day, cluster): a devnet snapshot must not clobber mainnet's
+  (t) => [primaryKey({ columns: [t.date, t.network] })],
+);
 
 // ---------------------------------------------------------------------------
 // operator_log — every lever pull (naming, tuning, watching). Edits are part

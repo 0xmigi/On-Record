@@ -59,7 +59,9 @@ export async function reclassifyRecent(network: Network, hours: number): Promise
         idl: null,
         strings: [],
       };
-      const cls = await classifyFingerprint(network, s.id, fp);
+      // arrival:false — this is a re-run over an already-counted program, so
+      // bucket membership may move but clone velocity must not tick
+      const cls = await classifyFingerprint(network, s.id, fp, { arrival: false });
 
       const bandChanged = cls.band !== s.band;
       const bucketChanged = cls.bucketId != null && cls.bucketId !== s.bucketId;

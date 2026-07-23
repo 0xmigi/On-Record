@@ -298,7 +298,7 @@ export async function snapshotFunnel(date: string, network: Network = "mainnet")
     .insert(schema.funnelDaily)
     .values({ date, network, raw, unique: uniqueSha.size, novel, clones, variants, byCategory, updatedAt: new Date() })
     .onConflictDoUpdate({
-      target: schema.funnelDaily.date,
+      target: [schema.funnelDaily.date, schema.funnelDaily.network],
       set: { raw, unique: uniqueSha.size, novel, clones, variants, byCategory, updatedAt: new Date() },
     });
 }

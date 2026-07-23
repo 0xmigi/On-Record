@@ -17,6 +17,12 @@ import { startCron } from "./cron.js";
 
 process.env.INLINE_PIPELINE = "1"; // stages run in-process; enqueue() is a no-op
 
+// A stray fire-and-forget rejection must not kill the whole container (Node
+// exits on unhandledRejection by default). Log it; the loops all catch.
+process.on("unhandledRejection", (reason) => {
+  logger.error({ err: String(reason) }, "unhandled rejection (survived)");
+});
+
 const app = await createApp();
 await app.listen({ port: env.PORT, host: "0.0.0.0" });
 logger.info({ port: env.PORT }, "onrecord live: API listening");
