@@ -35,14 +35,27 @@ export default function SavedPage() {
         <>
           <p className="saved-hint">
             {list.length} program{list.length === 1 ? "" : "s"} · stored in this browser only
+            {list.some((p) => p.network === "devnet")
+              ? ` · ${list.filter((p) => p.network === "devnet").length} on devnet`
+              : ""}
           </p>
           <div className="facts-panel saved-list">
             {list.map((p) => (
               <div className="saved-row" key={p.id}>
-                <Link className="saved-link" href={`/p/${p.id}`}>
+                <Link
+                  className="saved-link"
+                  // carry the cluster so the destination opens in the right
+                  // mode; the dossier's own banner is authoritative either way
+                  href={p.network === "devnet" ? `/p/${p.id}?network=devnet` : `/p/${p.id}`}
+                >
                   <span className="saved-name">{p.name ?? truncateAddress(p.id)}</span>
                   {p.name ? <span className="saved-addr">{truncateAddress(p.id)}</span> : null}
                 </Link>
+                {p.network === "devnet" ? (
+                  <span className="net-badge" title="This program is on devnet">
+                    devnet
+                  </span>
+                ) : null}
                 {p.category && p.category !== "unknown" ? (
                   <span className="ix-chip">{p.category}</span>
                 ) : null}

@@ -19,6 +19,7 @@ import { SectionExplainer } from "@/components/SectionExplainer";
 import { BotExplainer } from "@/components/BotExplainer";
 import { SectionHeader } from "@/components/SectionHeader";
 import { SaveButton } from "@/components/SaveButton";
+import { ClusterBanner } from "@/components/ClusterBanner";
 import {
   CATEGORY_LABELS,
   fetchCluster,
@@ -980,6 +981,10 @@ export default async function ProgramDossierPage({
 
   return (
     <>
+      {/* Authoritative cluster strip: driven by the program's own network, not
+          by how you happened to arrive. Opening a devnet program while browsing
+          mainnet used to show no devnet indication at all. */}
+      <ClusterBanner network={program.network} />
       <BackToRadar fallbackHref={program.network === "devnet" ? "/?network=devnet" : "/"} />
 
       <div className="dossier-head">
@@ -1066,7 +1071,7 @@ export default async function ProgramDossierPage({
                 </IconLink>
               ) : null}
             </span>
-            <SaveButton id={program.id} name={program.name} category={program.category} />
+            <SaveButton id={program.id} name={program.name} category={program.category} network={program.network} />
           </div>
           {/* Anchor the program in time. firstDeployAt is the ORIGINAL on-chain
               deploy (from ProgramData history), not when we first saw it — so

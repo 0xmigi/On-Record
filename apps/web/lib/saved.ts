@@ -15,6 +15,12 @@ export interface SavedProgram {
   id: string;
   name: string | null;
   category: string | null;
+  /** which cluster this program lives on. Saving across both and then opening
+   *  a devnet row used to land on a page with no devnet indication at all —
+   *  the banner keys off browsing mode, not off the subject. Stored so the
+   *  list can label the row and link with ?network=, and absent on rows saved
+   *  before this shipped (treat undefined as mainnet, never assert). */
+  network?: "mainnet" | "devnet";
   savedAt: number; // epoch ms
 }
 

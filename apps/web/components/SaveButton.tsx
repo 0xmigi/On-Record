@@ -31,10 +31,12 @@ export function SaveButton({
   id,
   name = null,
   category = null,
+  network,
 }: {
   id: string;
   name?: string | null;
   category?: string | null;
+  network?: "mainnet" | "devnet";
 }) {
   const [saved, setSaved] = useState(false);
 
@@ -55,7 +57,7 @@ export function SaveButton({
         // radar rows have a full-card link overlay; don't navigate on save
         e.preventDefault();
         e.stopPropagation();
-        setSaved(toggleSaved({ id, name, category }));
+        setSaved(toggleSaved({ id, name, category, network }));
       }}
     >
       <StarIcon filled={saved} />
