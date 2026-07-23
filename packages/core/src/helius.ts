@@ -19,6 +19,10 @@ let rpcSeq = 0;
 
 const RPC_MAX_ATTEMPTS = Number(process.env.HELIUS_RPC_MAX_ATTEMPTS ?? 5);
 const RPC_BASE_DELAY_MS = Number(process.env.HELIUS_RPC_BASE_DELAY_MS ?? 400);
+// Generous — getProgramAccounts over the loader is legitimately slow — but a
+// hung socket must not stall a poll tick forever (ticks are overlap-guarded,
+// so one stall would otherwise stop ingestion entirely).
+export const RPC_TIMEOUT_MS = Number(process.env.HELIUS_RPC_TIMEOUT_MS ?? 60_000);
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
@@ -26,7 +30,7 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 // rate limit) and 5xx are the ones worth retrying — the burst backfill and the
 // poller's bootstrap tick will hit 429s, and dropping those programs silently
 // leaves permanent gaps (the poller's high-water mark never revisits them).
-async function rpc<T>(network: Network, method: string, params: unknown[]): Promise<T> {
+export async function rpc<T>(network: Network, method: string, params: unknown[]): Promise<T> {
   let lastErr: unknown;
   for (let attempt = 1; attempt <= RPC_MAX_ATTEMPTS; attempt++) {
     try {
@@ -34,6 +38,7 @@ async function rpc<T>(network: Network, method: string, params: unknown[]): Prom
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ jsonrpc: "2.0", id: ++rpcSeq, method, params }),
+        signal: AbortSignal.timeout(RPC_TIMEOUT_MS),
       });
       if (res.status === 429 || res.status >= 500) {
         if (attempt === RPC_MAX_ATTEMPTS) {
@@ -51,9 +56,13 @@ async function rpc<T>(network: Network, method: string, params: unknown[]): Prom
       if (json.error) throw new Error(`helius rpc ${method}: ${json.error.message}`);
       return json.result as T;
     } catch (err) {
-      // network-level failure (fetch threw): retry with backoff, else rethrow
+      // network-level failure (fetch threw): retry with backoff, else rethrow.
+      // fetch network errors are TypeError; the timeout signal aborts with a
+      // DOMException named TimeoutError — both are transient, both retryable.
       lastErr = err;
-      const retryable = err instanceof TypeError; // fetch network errors are TypeError
+      const retryable =
+        err instanceof TypeError ||
+        (err instanceof Error && (err.name === "TimeoutError" || err.name === "AbortError"));
       if (!retryable || attempt === RPC_MAX_ATTEMPTS) throw err;
       await sleep(RPC_BASE_DELAY_MS * 2 ** (attempt - 1) + Math.floor(Math.random() * 250));
     }

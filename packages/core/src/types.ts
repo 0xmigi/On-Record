@@ -407,6 +407,8 @@ export interface ApiCluster {
 
 export interface ApiCursorPage<T> {
   items: T[];
+  /** true row count for the whole slice (items caps at the page limit) */
+  total?: number;
   nextCursor: string | null;
 }
 

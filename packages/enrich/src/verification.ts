@@ -34,7 +34,7 @@ export async function checkVerification(
   try {
     const res = await fetch(
       `https://verify.osec.io/status/${encodeURIComponent(programId)}`,
-      { headers: { accept: "application/json" } },
+      { headers: { accept: "application/json" }, signal: AbortSignal.timeout(10_000) },
     );
     if (res.ok) {
       const json = (await res.json()) as OtterSecResponse;
@@ -45,7 +45,10 @@ export async function checkVerification(
       };
     }
   } catch (err) {
+    // don't cache the failure: a registry outage would otherwise pin
+    // verified:false for 24h with no retry
     logger.warn({ programId, err: String(err) }, "verification check failed");
+    return value;
   }
   cache.set(programId, { value, at: Date.now() });
   return value;
@@ -92,6 +95,7 @@ export async function resolveCodeMatch(sha256: string): Promise<CodeMatch | null
   try {
     const res = await fetch(`https://verify.osec.io/resolve-hash/${sha256}`, {
       headers: { accept: "application/json" },
+      signal: AbortSignal.timeout(10_000),
     });
     if (res.ok) {
       const json = (await res.json()) as ResolveHashResponse;
@@ -109,6 +113,7 @@ export async function resolveCodeMatch(sha256: string): Promise<CodeMatch | null
     }
   } catch (err) {
     logger.warn({ sha256, err: String(err) }, "resolve-hash lookup failed");
+    return value; // uncached — retry on the next sighting
   }
   hashCache.set(sha256, { value, at: Date.now() });
   return value;

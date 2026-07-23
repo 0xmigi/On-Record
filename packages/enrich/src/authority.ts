@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { getAccountBytes, isOnCurve, rpcUrl, type AuthorityClass, type Network } from "@onrecord/core";
+import { getAccountBytes, isOnCurve, rpc, type AuthorityClass, type Network } from "@onrecord/core";
 import bs58 from "bs58";
 
 // ---------------------------------------------------------------------------
@@ -32,13 +32,11 @@ export async function classifyAuthority(
 
   // On-curve: check the owner. A plain wallet is system-owned (or nonexistent);
   // a Squads vault/multisig signer account is owned by the Squads program.
-  try {
-    const owner = await getAccountOwner(network, authority);
-    if (owner && SQUADS_PROGRAM_IDS.has(owner)) return "squads";
-    if (owner && owner !== SYSTEM_PROGRAM) return "program";
-  } catch {
-    // network hiccup — fall through to the conservative read
-  }
+  // Failures propagate: a network hiccup must fail the stage (and be retried),
+  // not permanently brand the authority a hot wallet (0.2 vs 1.0 on scoring).
+  const owner = await getAccountOwner(network, authority);
+  if (owner && SQUADS_PROGRAM_IDS.has(owner)) return "squads";
+  if (owner && owner !== SYSTEM_PROGRAM) return "program";
   return "hot_wallet";
 }
 
@@ -116,33 +114,17 @@ export async function inspectSquadsAuthority(
   }
 }
 
-async function rpc<T>(network: Network, method: string, params: unknown[]): Promise<T> {
-  const res = await fetch(rpcUrl(network), {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({ jsonrpc: "2.0", id: 1, method, params }),
-  });
-  if (!res.ok) throw new Error(`rpc ${method}: HTTP ${res.status}`);
-  const json = (await res.json()) as { result?: T; error?: { message: string } };
-  if (json.error) throw new Error(`rpc ${method}: ${json.error.message}`);
-  return json.result as T;
-}
+// core's rpc client handles retry/backoff and timeouts — no bespoke fetch here
 
 async function getAccountOwner(network: Network, address: string): Promise<string | null> {
   // getAccountBytes returns data only; owner needs its own zero-data call.
-  const res = await fetch(rpcUrl(network), {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({
-      jsonrpc: "2.0",
-      id: 1,
-      method: "getAccountInfo",
-      params: [address, { encoding: "base64", dataSlice: { offset: 0, length: 0 } }],
-    }),
-  });
-  if (!res.ok) return null;
-  const json = (await res.json()) as { result?: { value?: { owner?: string } | null } };
-  return json.result?.value?.owner ?? null;
+  // Retried/timed out by core's client; null only for a genuinely absent
+  // account, never for a failed request (that throws, and the stage retries).
+  const result = await rpc<{ value?: { owner?: string } | null }>(network, "getAccountInfo", [
+    address,
+    { encoding: "base64", dataSlice: { offset: 0, length: 0 } },
+  ]);
+  return result?.value?.owner ?? null;
 }
 
 // Re-export so authority.ts owns everything "who controls it".

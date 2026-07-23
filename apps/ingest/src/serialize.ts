@@ -1,4 +1,5 @@
 import {
+  httpUrl,
   schema,
   type ApiNearest,
   type ApiProgram,
@@ -109,7 +110,7 @@ export function serializeProgram(
     instructionCount: row.instructionCount,
     idlPresent: row.idlPresent,
     idlSource: facts.idlSource ?? null,
-    logoUrl: facts.logoUrl ?? null,
+    logoUrl: httpUrl(facts.logoUrl) ?? null,
     authorityClass: (row.authorityClass as AuthorityClass) ?? null,
     deployerFundingSource: row.deployerFundingSource,
     earlySigners: row.earlySigners,
@@ -119,10 +120,12 @@ export function serializeProgram(
     framework: profile?.framework ?? null,
     capabilities: profile?.capabilities ?? [],
     integrations: profile?.integrations ?? [],
-    syscallCount: profile?.syscalls.length ?? null,
-    repoUrl: row.repoUrl || null,
-    social: facts.social ?? null,
-    website: facts.website ?? null,
+    syscallCount: profile?.syscalls?.length ?? null,
+    // scheme-guarded: these came out of attacker-controlled binaries and are
+    // rendered as hrefs — rows ingested before the guard may hold bad schemes
+    repoUrl: httpUrl(row.repoUrl),
+    social: httpUrl(facts.social),
+    website: httpUrl(facts.website),
     hasSecurityTxt: Boolean(facts.hasSecurityTxt),
     closedAt: facts.closedAt ?? null,
     closed: Boolean(facts.closedAt),
@@ -181,7 +184,7 @@ export function serializeProgramDetail(
   }
   return {
     ...serializeProgram(row, clusterSize, nearestMeta),
-    repoUrl: row.repoUrl || null,
+    repoUrl: httpUrl(row.repoUrl),
     authority: row.authority,
     sha256: row.sha256,
     events: events.map(serializeEvent),

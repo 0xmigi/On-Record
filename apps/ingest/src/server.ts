@@ -10,6 +10,18 @@ import { registerAdminRoutes } from "./routes/admin.js";
 export async function createApp(): Promise<FastifyInstance> {
   const app = Fastify({ logger: false, bodyLimit: 8 * 1024 * 1024 });
 
+  // 4xx keep their messages (they describe the caller's mistake); 5xx are
+  // logged in full but answered generically — Fastify's default body would
+  // echo internal error text (e.g. raw Postgres messages) to the public.
+  app.setErrorHandler((err: Error & { statusCode?: number }, req, reply) => {
+    const status = err.statusCode && err.statusCode >= 400 ? err.statusCode : 500;
+    if (status >= 500) {
+      logger.error({ url: req.url, err: String(err) }, "api: unhandled error");
+      return reply.code(status).send({ error: "internal error" });
+    }
+    return reply.code(status).send({ error: err.message });
+  });
+
   // permissive CORS on the read API — it's a public record
   app.addHook("onSend", async (req, reply) => {
     if (req.url.startsWith("/api") || req.url.startsWith("/rss")) {

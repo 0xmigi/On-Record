@@ -61,6 +61,15 @@ export function parseSecurityTxt(bytecode: Uint8Array): Record<string, string> |
 const DEP_REPO_ORGS =
   /github\.com\/(?:solana-labs|solana-program|anza-xyz|coral-xyz|project-serum|metaplex-foundation|rust-lang|rustsec|dtolnay|serde-rs|tokio-rs|bytecodealliance|paritytech|rust-num|pyth-network|switchboard-xyz)\b/i;
 
+/** Accept a URL only if it's plain http(s). Security.txt fields are attacker-
+ *  controlled bytes inside the deployed binary and end up in anchor hrefs —
+ *  a `javascript:` scheme here is script execution in the app's origin. */
+export function httpUrl(value: string | null | undefined): string | null {
+  if (!value) return null;
+  const v = value.trim();
+  return /^https?:\/\//i.test(v) ? v : null;
+}
+
 /** Recover project identity from the SBF bytecode. */
 export function deriveBytecodeIdentity(bytecode: Uint8Array): BytecodeIdentity {
   const strings = extractStrings(bytecode, 8, 500);
@@ -83,13 +92,13 @@ export function deriveBytecodeIdentity(bytecode: Uint8Array): BytecodeIdentity {
   const projectGithub = strings
     .map((s) => s.match(/https?:\/\/github\.com\/[^\s"']+/i)?.[0])
     .find((u) => u && !DEP_REPO_ORGS.test(u));
-  const repoUrl = sec?.source_code ?? projectGithub ?? null;
+  const repoUrl = httpUrl(sec?.source_code) ?? projectGithub ?? null;
   const social =
     sec?.contacts?.match(/https?:\/\/(?:x|twitter)\.com\/[^\s,"']+/i)?.[0] ??
     firstMatch(/https?:\/\/(?:x|twitter)\.com\/[^\s"']+/i) ??
     null;
   const website =
-    sec?.project_url ??
+    httpUrl(sec?.project_url) ??
     firstMatch(/https?:\/\/[a-z0-9.-]+\.(?:io|xyz|app|fi|so|finance|money|network)\b[^\s"']*/i) ??
     null;
   const anchor = strings.some((s) =>

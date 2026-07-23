@@ -99,8 +99,11 @@ function decodePmpPayload(data: Buffer): { text: string; dataSource: number } | 
       ? PMP_HEADER_LEN + declaredLen
       : data.length;
   let payload: Buffer = data.subarray(PMP_HEADER_LEN, end);
-  if (compression === 1) payload = zlib.gunzipSync(payload);
-  else if (compression === 2) payload = zlib.inflateSync(payload);
+  // cap decompression output: the payload is attacker-controlled on-chain data,
+  // and an uncapped bomb (~10MB account -> GBs) would OOM the whole process
+  const MAX_DECOMPRESSED = 16 * 1024 * 1024;
+  if (compression === 1) payload = zlib.gunzipSync(payload, { maxOutputLength: MAX_DECOMPRESSED });
+  else if (compression === 2) payload = zlib.inflateSync(payload, { maxOutputLength: MAX_DECOMPRESSED });
   if (encoding === 2) payload = Buffer.from(bs58.decode(payload.toString("ascii")));
   else if (encoding === 3) payload = Buffer.from(payload.toString("ascii"), "base64");
   return { text: payload.toString("utf8"), dataSource };
@@ -216,12 +219,21 @@ export async function probeProgramMetadata(
   programId: string,
 ): Promise<MetadataProbe> {
   const md = await fetchProgramMetadata(network, programId);
-  const idl = md.idl as { instructions?: { name?: string }[]; accounts?: { name?: string }[] } | null;
+  const idl = md.idl as { instructions?: unknown; accounts?: unknown } | null;
+  // the IDL is untrusted JSON out of an attacker-controlled account — a shape
+  // like {"instructions": {}} or [null] must degrade, not throw out of the probe
+  const names = (list: unknown): string[] =>
+    Array.isArray(list)
+      ? list
+          .map((x) => (typeof (x as { name?: unknown })?.name === "string" ? (x as { name: string }).name : ""))
+          .filter(Boolean)
+          .slice(0, 64)
+      : [];
   return {
     idl: idl
       ? {
-          instructions: (idl.instructions ?? []).map((i) => i.name ?? "").filter(Boolean).slice(0, 64),
-          accounts: (idl.accounts ?? []).map((a) => a.name ?? "").filter(Boolean).slice(0, 64),
+          instructions: names(idl.instructions),
+          accounts: names(idl.accounts),
         }
       : null,
     idlSource: md.idlSource,

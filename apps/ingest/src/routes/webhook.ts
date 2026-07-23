@@ -1,6 +1,16 @@
+import { timingSafeEqual } from "node:crypto";
 import type { FastifyInstance } from "fastify";
 import { db, schema, enqueue, env, newId, logger, type Network } from "@onrecord/core";
 import { parseWebhookPayload } from "../parse.js";
+
+/** Constant-time comparison of the webhook Authorization header against the
+ *  configured shared secret. */
+function secretMatches(header: string | undefined, secret: string): boolean {
+  if (!header) return false;
+  const a = Buffer.from(header);
+  const b = Buffer.from(secret);
+  return a.length === b.length && timingSafeEqual(a, b);
+}
 
 // ---------------------------------------------------------------------------
 // Helius webhook receivers (spec §3). One endpoint per network; the shared
@@ -14,7 +24,13 @@ export function registerWebhookRoutes(app: FastifyInstance): void {
     app.post(`/webhooks/helius/${network}`, async (req, reply) => {
       const secret =
         network === "mainnet" ? env.HELIUS_WEBHOOK_SECRET_MAINNET : env.HELIUS_WEBHOOK_SECRET_DEVNET;
-      if (secret && req.headers.authorization !== secret) {
+      // fail closed: with no secret configured, anyone could inject fabricated
+      // deploy events into the record — same posture as the admin routes
+      if (!secret) {
+        logger.warn({ network }, "webhook rejected: no shared secret configured");
+        return reply.code(503).send({ error: "webhook secret not configured" });
+      }
+      if (!secretMatches(req.headers.authorization, secret)) {
         return reply.code(401).send({ error: "bad webhook auth" });
       }
 

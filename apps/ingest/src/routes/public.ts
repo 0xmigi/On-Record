@@ -1,5 +1,5 @@
 import type { FastifyInstance } from "fastify";
-import { and, desc, eq, gte, inArray, isNull, lt, lte, ne, or, sql } from "drizzle-orm";
+import { and, desc, eq, gte, inArray, isNotNull, isNull, lt, lte, ne, or, sql } from "drizzle-orm";
 import {
   db,
   schema,
@@ -51,10 +51,21 @@ function decodeCursor(cursor: string): { ts: number; id: string } | null {
   try {
     const [ts, id] = Buffer.from(cursor, "base64url").toString().split(":");
     if (ts === undefined || id === undefined) return null;
-    return { ts: Number(ts), id };
+    const t = Number(ts);
+    // a malformed cursor must page from the start, not become NaN → new Date(NaN) → 500
+    if (!Number.isFinite(t) || t < 0) return null;
+    return { ts: t, id };
   } catch {
     return null;
   }
+}
+
+/** Clamp a ?limit= query param to [1, max]; garbage and negatives fall back to
+ *  the default instead of reaching Postgres as an invalid LIMIT. */
+function parseLimit(raw: string | undefined, def: number, max: number): number {
+  const n = Math.floor(Number(raw ?? def));
+  if (!Number.isFinite(n) || n < 1) return def;
+  return Math.min(n, max);
 }
 
 /** Resolve display metadata for the nearest-relative ids stashed in facts:
@@ -156,7 +167,7 @@ export function registerPublicRoutes(app: FastifyInstance): void {
   app.get<{ Querystring: { window?: string; band?: string; type?: string; cursor?: string; limit?: string; closed?: string; sort?: string; network?: string } }>(
     "/api/radar",
     async (req): Promise<ApiCursorPage<ApiProgram>> => {
-      const limit = Math.min(Number(req.query.limit ?? 30) || 30, 100);
+      const limit = parseLimit(req.query.limit, 30, 100);
       const network = req.query.network === "devnet" ? "devnet" : "mainnet";
       // interest ordering (interest.ts v0.1 blend, stored on noveltyScore) is
       // the default — "most worth seeing first". ?sort=recent restores the
@@ -200,6 +211,10 @@ export function registerPublicRoutes(app: FastifyInstance): void {
         );
       }
       if (start) conditions.push(gte(schema.subjects.firstSeenAt, start));
+      // "newest" only makes sense for dated rows: undated reference-corpus
+      // seeds would sort NULLS FIRST above every real deploy, and their ts=0
+      // cursor would dead-end the next page.
+      if (sort === "recent") conditions.push(isNotNull(schema.subjects.firstSeenAt));
 
       const cur = sort === "recent" && req.query.cursor ? decodeCursor(req.query.cursor) : null;
       if (cur) {
@@ -212,16 +227,24 @@ export function registerPublicRoutes(app: FastifyInstance): void {
         );
       }
 
-      const rows = await db
-        .select()
-        .from(schema.subjects)
-        .where(and(...conditions))
-        .orderBy(
-          ...(sort === "interest"
-            ? [sql`${schema.subjects.noveltyScore} desc nulls last`, desc(schema.subjects.firstSeenAt), desc(schema.subjects.id)]
-            : [desc(schema.subjects.firstSeenAt), desc(schema.subjects.id)]),
-        )
-        .limit(limit + 1);
+      const [rows, totalRows] = await Promise.all([
+        db
+          .select()
+          .from(schema.subjects)
+          .where(and(...conditions))
+          .orderBy(
+            ...(sort === "interest"
+              ? [sql`${schema.subjects.noveltyScore} desc nulls last`, desc(schema.subjects.firstSeenAt), desc(schema.subjects.id)]
+              : [sql`${schema.subjects.firstSeenAt} desc nulls last`, desc(schema.subjects.id)]),
+          )
+          .limit(limit + 1),
+        // true row count for the same slice — the radar's tier counts read
+        // this, not items.length (which caps at the page limit)
+        db
+          .select({ n: sql<number>`count(*)` })
+          .from(schema.subjects)
+          .where(and(...conditions)),
+      ]);
 
       const page = rows.slice(0, limit);
       const [sizes, nearest] = await Promise.all([
@@ -234,6 +257,7 @@ export function registerPublicRoutes(app: FastifyInstance): void {
       const last = page[page.length - 1];
       return {
         items,
+        total: Number(totalRows[0]?.n ?? items.length),
         // cursor paging is recency-keyed; interest-ordered pages don't paginate
         nextCursor:
           sort === "recent" && rows.length > limit && last
@@ -306,23 +330,28 @@ export function registerPublicRoutes(app: FastifyInstance): void {
   });
 
   // --- a program's full Anchor IDL (the human-readable interface) ----------
-  app.get<{ Params: { id: string } }>("/api/programs/:id/idl", async (req) => {
+  // Both RPC-backed routes require the id to be on record: they drive metered
+  // Helius work, and an unknown-id default would let anyone burn credits by
+  // iterating arbitrary addresses.
+  app.get<{ Params: { id: string } }>("/api/programs/:id/idl", async (req, reply) => {
     const rows = await db
       .select({ network: schema.subjects.network })
       .from(schema.subjects)
       .where(eq(schema.subjects.id, req.params.id));
-    const network = (rows[0]?.network as "mainnet" | "devnet") ?? "mainnet";
+    if (!rows[0]) return reply.code(404).send({ error: "unknown program" });
+    const network = rows[0].network as "mainnet" | "devnet";
     const idl = await fetchAnchorIdl(network, req.params.id);
     return { idl };
   });
 
   // --- instruction usage: the program's real "shape" (decoded from recent txns)
-  app.get<{ Params: { id: string } }>("/api/programs/:id/usage", async (req) => {
+  app.get<{ Params: { id: string } }>("/api/programs/:id/usage", async (req, reply) => {
     const rows = await db
       .select({ network: schema.subjects.network })
       .from(schema.subjects)
       .where(eq(schema.subjects.id, req.params.id));
-    const network = (rows[0]?.network as "mainnet" | "devnet") ?? "mainnet";
+    if (!rows[0]) return reply.code(404).send({ error: "unknown program" });
+    const network = rows[0].network as "mainnet" | "devnet";
     const usage = await decodeInstructionUsage(network, req.params.id, { sample: 400 });
     return { usage };
   });
@@ -374,7 +403,7 @@ export function registerPublicRoutes(app: FastifyInstance): void {
     "/api/search",
     async (req): Promise<{ items: ApiProgram[]; query: string; truncated: boolean }> => {
       const raw = (req.query.q ?? "").trim();
-      const limit = Math.min(Number(req.query.limit ?? 20) || 20, 50);
+      const limit = parseLimit(req.query.limit, 20, 50);
       const sort = req.query.sort === "recent" ? "recent" : "relevance";
       // 2 chars is the floor a trigram index can serve without degrading to a
       // full scan, and single letters match essentially every binary anyway.
@@ -449,7 +478,7 @@ export function registerPublicRoutes(app: FastifyInstance): void {
           rank,
           clusterRank,
           ...(sort === "recent"
-            ? [desc(schema.subjects.firstSeenAt)]
+            ? [sql`${schema.subjects.firstSeenAt} desc nulls last`]
             : [sql`${schema.subjects.noveltyScore} desc nulls last`, desc(schema.subjects.firstSeenAt)]),
         )
         .limit(limit + 1);
@@ -473,7 +502,7 @@ export function registerPublicRoutes(app: FastifyInstance): void {
   app.get<{ Querystring: { cursor?: string; limit?: string; network?: string } }>(
     "/api/raw/events",
     async (req): Promise<ApiCursorPage<ApiRawEvent>> => {
-      const limit = Math.min(Number(req.query.limit ?? 50) || 50, 200);
+      const limit = parseLimit(req.query.limit, 50, 200);
       const conditions = [];
       if (req.query.network === "mainnet" || req.query.network === "devnet") {
         conditions.push(eq(schema.events.network, req.query.network));

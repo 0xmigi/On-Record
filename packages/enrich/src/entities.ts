@@ -44,7 +44,7 @@ interface LlamaProtocol {
 /** Pull Solana protocols from DeFiLlama. Program-id mappings from Llama are
  *  sparse; the main value is names + TVL, which snapshot onto events. */
 export async function seedFromDefiLlama(): Promise<number> {
-  const res = await fetch("https://api.llama.fi/protocols");
+  const res = await fetch("https://api.llama.fi/protocols", { signal: AbortSignal.timeout(30_000) });
   if (!res.ok) throw new Error(`defillama protocols: HTTP ${res.status}`);
   const protocols = (await res.json()) as LlamaProtocol[];
   let count = 0;
@@ -139,7 +139,7 @@ export async function refreshTvl(): Promise<void> {
   for (const row of rows) {
     if (!row.llamaSlug) continue;
     try {
-      const res = await fetch(`https://api.llama.fi/tvl/${encodeURIComponent(row.llamaSlug)}`);
+      const res = await fetch(`https://api.llama.fi/tvl/${encodeURIComponent(row.llamaSlug)}`, { signal: AbortSignal.timeout(10_000) });
       if (!res.ok) continue;
       const tvl = Number(await res.text());
       if (!Number.isFinite(tvl)) continue;
