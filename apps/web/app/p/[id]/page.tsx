@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import type { ReactNode } from "react";
 import Link from "next/link";
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import { BackToRadar } from "@/components/BackToRadar";
 import { CopyAddress } from "@/components/CopyAddress";
 import { ProgramAvatar } from "@/components/ProgramAvatar";
@@ -19,7 +19,6 @@ import { SectionExplainer } from "@/components/SectionExplainer";
 import { BotExplainer } from "@/components/BotExplainer";
 import { SectionHeader } from "@/components/SectionHeader";
 import { SaveButton } from "@/components/SaveButton";
-import { ClusterBanner } from "@/components/ClusterBanner";
 import {
   CATEGORY_LABELS,
   fetchCluster,
@@ -182,12 +181,28 @@ const CalendarIcon = () => (
 
 export default async function ProgramDossierPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ id: string }>;
+  searchParams: Promise<{ network?: string }>;
 }) {
   const { id } = await params;
   const program = await fetchProgram(id);
   if (!program) notFound();
+
+  // Make the url tell the truth about the cluster, then let the one banner in
+  // the root layout read it. Rendering a second banner from inside the page
+  // was the obvious fix and the wrong one: .page is a centred, padded column,
+  // so that instance came out inset and pushed down while every other route's
+  // sat flush and full-bleed. One banner, in one place, fed a URL that cannot
+  // disagree with the subject.
+  const urlNet = (await searchParams).network;
+  if (program.network === "devnet" && urlNet !== "devnet") {
+    redirect(`/p/${encodeURIComponent(id)}?network=devnet`);
+  }
+  if (program.network === "mainnet" && urlNet === "devnet") {
+    redirect(`/p/${encodeURIComponent(id)}?network=mainnet`);
+  }
 
   // The interface (IDL) + its real usage. Always ask rather than trusting
   // idlPresent: that flag is a snapshot taken once at ingest, and teams often
@@ -981,10 +996,6 @@ export default async function ProgramDossierPage({
 
   return (
     <>
-      {/* Authoritative cluster strip: driven by the program's own network, not
-          by how you happened to arrive. Opening a devnet program while browsing
-          mainnet used to show no devnet indication at all. */}
-      <ClusterBanner network={program.network} />
       <BackToRadar fallbackHref={program.network === "devnet" ? "/?network=devnet" : "/"} />
 
       <div className="dossier-head">
