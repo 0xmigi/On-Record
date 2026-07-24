@@ -85,7 +85,12 @@ export async function pollDeploys(opts: PollOptions): Promise<PollResult> {
       );
     const lastSlot = Number(hw[0]?.maxSlot ?? 0);
     const bootstrapSlot = currentSlot - Math.floor(bootstrapHours * 3600 * SLOTS_PER_SECOND);
-    sinceSlot = Math.max(lastSlot, bootstrapSlot);
+    // Trust the recorded high-water mark whenever one exists — clamping it to
+    // the bootstrap window silently skips everything deployed while the
+    // process was down (that exact gap happened on 2026-07-24: the first tick
+    // after the cursor table shipped clamped a 21h outage down to 1h). The
+    // bootstrap window is only for a genuinely empty table.
+    sinceSlot = lastSlot > 0 ? lastSlot : bootstrapSlot;
   }
 
   // headers slot-filtered during the stream, programIds mapped only for the
