@@ -320,6 +320,58 @@ export default async function ProgramDossierPage({
           trusting the deployed bytecode as-is, with no source cross-check.
         </p>
       </SectionExplainer>
+      {program.repoLink ? (
+        <>
+          <SectionHeader
+            title="Source repo (found, not declared)"
+            info="Nobody declared a repo for this program. This one was found by searching public code for the program id."
+          />
+          <div className="facts-panel">
+            <Row label="Repo">
+              <Ext href={program.repoLink.repoUrl} text={program.repoLink.repo} />
+            </Row>
+            <Row label="Match">
+              {program.repoLink.method === "declared"
+                ? "declares this program id as its own"
+                : "carries the crate path the binary leaked"}
+              {program.repoLink.crateConfirmed ? (
+                <span className="cell-dim"> · crate path confirmed both ways</span>
+              ) : null}
+            </Row>
+            <Row label="Evidence">
+              {program.repoLink.matchCount} file
+              {program.repoLink.matchCount === 1 ? "" : "s"} contain the address
+              {program.repoLink.matchedPaths.length ? (
+                <span className="cell-dim"> · {program.repoLink.matchedPaths.join(" · ")}</span>
+              ) : null}
+            </Row>
+            {program.repoLink.otherCandidates > 0 ? (
+              <Row label="Other candidates">
+                {program.repoLink.otherCandidates} other repo
+                {program.repoLink.otherCandidates === 1 ? "" : "s"} could claim this link
+                <span className="cell-dim"> · copies, renames, hard forks</span>
+              </Row>
+            ) : null}
+          </div>
+          <SectionExplainer title="How was this found?">
+            <p className="explainer-read">
+              A program id is 32 bytes of entropy. A developer who publishes
+              their source commits it verbatim — so searching public code for
+              the address finds the repo the binary never names.
+            </p>
+            <p>
+              It only counts when the link closes both ways: the binary leaks a
+              crate path (<strong>programs/&lt;crate&gt;/src/…</strong>) and the
+              repo carries that same path, or the repo declares this exact
+              address as its own program.{" "}
+              <strong>This is an inference, not a verified build</strong> —
+              nobody re-compiled the source and matched the bytecode. Treat it
+              as a lead with its evidence attached, and read the matched files
+              yourself before trusting it.
+            </p>
+          </SectionExplainer>
+        </>
+      ) : null}
       {program.securityTxt ? (
         <>
           <SectionHeader

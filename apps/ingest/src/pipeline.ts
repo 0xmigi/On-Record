@@ -362,6 +362,10 @@ async function upsertSubject(event: EventRow, enrichment: EventEnrichment): Prom
       ...(md?.security ? { pmpSecurity: md.security } : {}),
       ...(id?.codeMatch ? { codeMatch: id.codeMatch } : {}),
       ...(id?.multisig ? { multisig: id.multisig } : {}),
+      // kept out of repoUrl on purpose: that column is the repo somebody
+      // DECLARED (verified build / security.txt). This one was inferred by
+      // searching public code, and the dossier says so.
+      ...(id?.repoLink ? { repoLink: id.repoLink } : {}),
     },
     tvl: id?.tvl ?? null,
     lastEventAt: when,

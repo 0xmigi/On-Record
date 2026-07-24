@@ -10,6 +10,7 @@ import {
   type EventEnrichment,
   type Network,
   type NoveltyBand,
+  type RepoLink,
   type SecurityTxt,
 } from "@onrecord/core";
 
@@ -169,6 +170,7 @@ export function serializeProgramDetail(
 ): ApiProgramDetail {
   const facts = (row.facts ?? {}) as {
     securityTxt?: SecurityTxt;
+    repoLink?: RepoLink;
     activity?: { t: number; c: number }[];
   };
   // pull IDL instructions + notable strings from the most recent fingerprint
@@ -194,6 +196,12 @@ export function serializeProgramDetail(
     strings,
     syscalls: row.profile?.syscalls ?? [],
     securityTxt: facts.securityTxt ?? null,
+    // the repo URL is a search hit rendered as an href — same scheme guard as
+    // every other string that came out of a binary or a third party
+    repoLink:
+      facts.repoLink && httpUrl(facts.repoLink.repoUrl)
+        ? { ...facts.repoLink, repoUrl: httpUrl(facts.repoLink.repoUrl)! }
+        : null,
     activity: facts.activity ?? null, // full 7-day series on the dossier
   };
 }

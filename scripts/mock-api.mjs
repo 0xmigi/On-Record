@@ -144,6 +144,7 @@ function program(meta) {
     _idl: idl,
     _repoUrl: meta.repoUrl ?? null,
     _authority: meta.authorityClass === "none" ? null : meta.authority ?? addr(),
+    _repoLink: meta.repoLink ?? null,
     _neighbors: meta.neighbors ?? [],
     _strings: meta.strings ?? [],
     _events: meta.events ?? null,
@@ -188,6 +189,17 @@ const NOVEL = [
     signers: 214,
     strings: ["concentrated_liquidity", "tick spacing invalid", "pool::swap_exact_in"],
     neighbors: [],
+    // declares no repo anywhere — the case the program-id code search exists for
+    repoLink: {
+      repo: "example-labs/clmm",
+      repoUrl: "https://github.com/example-labs/clmm",
+      method: "declared",
+      crateConfirmed: true,
+      matchedPaths: ["programs/clmm/src/lib.rs", "Anchor.toml", "app/src/constants.ts"],
+      matchCount: 7,
+      otherCandidates: 2,
+      queriedAt: "2026-07-24T09:00:00.000Z",
+    },
   }),
   program({
     name: null,
@@ -487,6 +499,7 @@ function programDetail(p) {
     neighbors: p._neighbors,
     idlInstructions: p._idl,
     strings: p._strings,
+    repoLink: p._repoLink ?? null,
   };
 }
 

@@ -150,6 +150,20 @@ export interface SecurityTxt {
   expiry?: string;
 }
 
+/** A source repo recovered by searching public code for the program id. */
+export interface RepoLink {
+  repo: string; // owner/name
+  repoUrl: string;
+  /** declared = the repo compiles to this address; crate-path = it carries the
+   *  crate directory the binary leaked */
+  method: "declared" | "crate-path";
+  crateConfirmed: boolean;
+  matchedPaths: string[];
+  matchCount: number;
+  otherCandidates: number;
+  queriedAt: string;
+}
+
 export interface ApiProgramDetail extends ApiProgram {
   authority: string | null;
   sha256: string | null;
@@ -159,6 +173,9 @@ export interface ApiProgramDetail extends ApiProgram {
   strings: string[]; // notable printable strings from bytecode
   syscalls: string[]; // sol_* imports read off the ELF (the capability evidence)
   securityTxt: SecurityTxt | null; // embedded security.txt, verbatim
+  /** repo found by searching public code for the program id. An inference —
+   *  kept apart from repoUrl, which somebody declared. */
+  repoLink?: RepoLink | null;
   /** programs compiled from the same crate — shared source, which bytecode
    *  distance cannot detect. Ranked by how many .rs files they share. */
   sourceKin?: {
