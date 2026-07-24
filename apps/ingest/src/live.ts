@@ -1,4 +1,4 @@
-import { env, logger } from "@onrecord/core";
+import { assertTlshAvailable, env, logger } from "@onrecord/core";
 import { createApp } from "./server.js";
 import { startPolling } from "./poller.js";
 import { startCron } from "./cron.js";
@@ -22,6 +22,11 @@ process.env.INLINE_PIPELINE = "1"; // stages run in-process; enqueue() is a no-o
 process.on("unhandledRejection", (reason) => {
   logger.error({ err: String(reason) }, "unhandled rejection (survived)");
 });
+
+// Prove the fingerprinter works before the poller can write anything. Without
+// tlsh every ingested program lands as lineage-less "novel" while the pipeline
+// still reports ok — fail at boot instead, where it is obvious.
+await assertTlshAvailable();
 
 const app = await createApp();
 await app.listen({ port: env.PORT, host: "0.0.0.0" });

@@ -1,5 +1,12 @@
 import { Worker, type ConnectionOptions } from "bullmq";
-import { makeRedis, logger, QUEUES, type EventJob, type QueueName } from "@onrecord/core";
+import {
+  assertTlshAvailable,
+  makeRedis,
+  logger,
+  QUEUES,
+  type EventJob,
+  type QueueName,
+} from "@onrecord/core";
 import { classifyStage, fingerprintStage, identifyStage, scoreStage } from "./pipeline.js";
 import { startCron } from "./cron.js";
 
@@ -28,6 +35,9 @@ function stageWorker<T>(
   });
   return worker;
 }
+
+// same preflight as live.ts — a worker that cannot hash writes corrupt rows
+await assertTlshAvailable();
 
 stageWorker<EventJob>(QUEUES.fingerprint, 8, ({ eventId }) => fingerprintStage(eventId));
 stageWorker<EventJob>(QUEUES.identify, 4, ({ eventId }) => identifyStage(eventId));

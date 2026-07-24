@@ -20,14 +20,38 @@ export function sha256Hex(bytes: Uint8Array): string {
 // here in TS so the corpus scan never touches the filesystem.
 // ---------------------------------------------------------------------------
 
-/** Why this retries: a bare `catch → null` here is invisible and permanent. A
- *  program that fails to hash gets no lineage forever — it reads as "novel
- *  code" no matter how obviously it's a fork, and nothing ever revisits it.
- *  Measured on the live corpus: 80 of 4,985 entries (1.6%) had a null tlsh,
- *  and their size distribution matched the successes almost exactly (median
- *  311 KB vs 293 KB) — so these were transient exec failures under
- *  concurrency, not inputs TLSH legitimately refuses. Retry, then surface the
- *  reason instead of discarding it. */
+/** Raised when the tlsh CLI cannot be run at all (missing binary, or exec
+ *  failing repeatedly). Distinct from a null return, which means TLSH ran fine
+ *  and legitimately refused the input. Callers must let this propagate: a
+ *  fingerprint without lineage is corrupt data, not a partial result. */
+export class TlshUnavailableError extends Error {
+  constructor(cause: string) {
+    super(
+      `tlsh CLI unavailable (${cause}). Refusing to fingerprint without lineage — ` +
+        `a subject written now would read as novel code forever. The binary ships ` +
+        `in the worker image; run this inside the container (railway ssh) or install it.`,
+    );
+    this.name = "TlshUnavailableError";
+  }
+}
+
+/** Returns a digest, or null when TLSH itself refuses the input (too small or
+ *  too little variance) — the only honest "no hash" cases. Anything else
+ *  THROWS.
+ *
+ *  Why it throws rather than returning null: a null from a missing binary is
+ *  indistinguishable, downstream, from a null TLSH chose. classifyFingerprint
+ *  skips its whole nearest-neighbour block when tlsh is null, so the program
+ *  scores structuralNovelty=1 and lands as "novel" with no lineage and no
+ *  bucket — permanently, because nothing revisits it. That is worse than
+ *  failing: the pipeline reports outcome "ok" and writes corrupt rows at full
+ *  speed. This happened on 2026-07-24 — a backfill run outside the container
+ *  wrote 116 such subjects before anyone noticed the warn lines.
+ *
+ *  It also still retries, because transient exec failures under concurrency are
+ *  real: measured on the live corpus, 80 of 4,985 entries (1.6%) had a null
+ *  tlsh with a size distribution matching the successes almost exactly (median
+ *  311 KB vs 293 KB) — those were flaky spawns, not refused inputs. */
 export async function tlshHash(bytes: Uint8Array): Promise<string | null> {
   if (bytes.length < 256) return null; // TLSH needs ≥256 bytes of input
   let lastError: unknown = null;
@@ -47,18 +71,32 @@ export async function tlshHash(bytes: Uint8Array): Promise<string | null> {
       // this input (too little variance). Retrying cannot change that.
       return null;
     } catch (err) {
+      // A missing binary is not transient — retrying it just delays the same
+      // answer three times and buries the cause in the last error.
+      if ((err as NodeJS.ErrnoException)?.code === "ENOENT") {
+        throw new TlshUnavailableError("binary not found on PATH");
+      }
       lastError = err;
       await new Promise((r) => setTimeout(r, 150 * (attempt + 1)));
     } finally {
       await rm(dir, { recursive: true, force: true });
     }
   }
-  // Exhausted retries. Callers store null, but the reason is no longer silent.
-  logger.warn(
-    { bytes: bytes.length, err: String(lastError).slice(0, 200) },
-    "tlsh hashing failed after 3 attempts — program will have no lineage until re-fingerprinted",
-  );
-  return null;
+  throw new TlshUnavailableError(`exec failed 3× — ${String(lastError).slice(0, 200)}`);
+}
+
+/** Preflight for anything that runs the pipeline: prove the CLI works BEFORE
+ *  touching the chain or the database, so a misconfigured environment fails at
+ *  boot instead of part-way through a backfill with rows already written. */
+export async function assertTlshAvailable(): Promise<void> {
+  // deterministic, incompressible enough for TLSH to accept: 1 KB of a
+  // counter-driven byte pattern. A fixed blob keeps the check free of RNG.
+  const probe = new Uint8Array(1024);
+  for (let i = 0; i < probe.length; i++) probe[i] = (i * 37 + (i >> 3) * 11) & 0xff;
+  const digest = await tlshHash(probe); // throws TlshUnavailableError if broken
+  if (!digest) {
+    logger.warn("tlsh preflight: CLI ran but refused the probe input — treating as available");
+  }
 }
 
 interface ParsedTlsh {

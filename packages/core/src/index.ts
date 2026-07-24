@@ -14,6 +14,8 @@ export * from "./minhash.js";
 export {
   sha256Hex,
   tlshHash,
+  assertTlshAvailable,
+  TlshUnavailableError,
   tlshDistance,
   extractStrings,
   anchorIdlAddress,

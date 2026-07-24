@@ -49,8 +49,21 @@ export async function reclassifyRecent(network: Network, hours: number): Promise
   let rebanded = 0;
   let renearested = 0;
   for (const s of subs) {
-    // upgrades inherit identity; the gate is a deploy-time cut
-    if (s.deployType === "upgrade" || !s.sha256 || s.sizeBytes == null) continue;
+    // Skipping on deployType used to stand in for "this arrived as an upgrade,
+    // so the gate never graded it". Those are not the same set. deployType is a
+    // LIFETIME flag set from ProgramData history, while the gate keys off the
+    // event: classifyStage only grades event.type === 'deploy'. A program whose
+    // history shows prior upgrades but whose captured event stayed a 'deploy'
+    // gets graded once at ingest and then skipped here forever — so a bad grade
+    // is permanent. That blind spot is where 9 subjects sat wrongly banded
+    // "novel" after a fingerprint run lost its tlsh (2026-07-24); they were only
+    // found by eyeballing the band mix against a historical baseline.
+    //
+    // Re-grading them is safe: arrival:false below means bucket membership can
+    // move but clone velocity never re-ticks, and a recomputed band from real
+    // lineage always beats one computed from a missing hash — or scoreStage's
+    // bare `?? "variant"` default. Rows with nothing to grade on still skip.
+    if (!s.sha256 || s.sizeBytes == null) continue;
     try {
       const fp: Fingerprint = {
         sha256: s.sha256,
