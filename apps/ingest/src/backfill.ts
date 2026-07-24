@@ -1,4 +1,5 @@
 import {
+  assertTlshAvailable,
   db,
   schema,
   newId,
@@ -43,6 +44,9 @@ function parseArgs(argv: string[]): Options {
 export async function runBackfill(opts: Options): Promise<{ scanned: number; ingested: number }> {
   const { network, windowHours, max } = opts;
   process.env.INLINE_PIPELINE = "1"; // stages run in sequence, no Redis
+  // Before any RPC or DB write: a backfill run outside the worker image has
+  // no tlsh, and would write every recovered program with no lineage at all.
+  await assertTlshAvailable();
 
   const currentSlot = await getSlot(network);
   const cutoffSlot = currentSlot - Math.floor(windowHours * 3600 * SLOTS_PER_SECOND);

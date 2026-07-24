@@ -18,10 +18,15 @@ interface VolumePoint {
   upgrades?: number;
 }
 
+interface Series {
+  deploys: number;
+  upgrades: number;
+}
 interface Bucket {
   t: number; // bucket start, secs
   deploys: number;
   upgrades: number;
+  devnet: Series | null; // null = not comparing clusters
 }
 
 const H = 220;
@@ -52,11 +57,21 @@ function topRoundedRect(x: number, y: number, w: number, h: number, r: number): 
   return `M${x},${y + h} v${-(h - rr)} q0,${-rr} ${rr},${-rr} h${w - 2 * rr} q${rr},0 ${rr},${rr} v${h - rr} z`;
 }
 
+/** `devnetVolume` opts the chart into cluster comparison: each bucket draws two
+ *  bars — this page's cluster and devnet — so their volumes read side by side.
+ *  Omit it (or pass an empty series) and the chart stays single-series. */
 export function FlowChart({
   volume,
+  devnetVolume,
+  networkLabel = "mainnet",
+  recordStartsAt,
   windowSecs,
 }: {
   volume: VolumePoint[];
+  devnetVolume?: VolumePoint[];
+  networkLabel?: string;
+  /** ISO — when the record begins. Bars left of it are backfill, not history. */
+  recordStartsAt?: string | null;
   windowSecs: number;
 }) {
   const [hover, setHover] = useState<number | null>(null);
@@ -78,28 +93,48 @@ export function FlowChart({
   // case render ONE combined series — never claim "0 upgrades" we can't know
   const hasSplit = volume.some((p) => p.deploys != null || p.upgrades != null);
 
+  const comparing = (devnetVolume?.length ?? 0) > 0;
+
   const buckets = useMemo<Bucket[]>(() => {
     const bs = bucketSecs(windowSecs);
     const nowB = Math.floor(Date.now() / 1000 / bs) * bs;
     const startB = nowB - Math.ceil(windowSecs / bs) * bs + bs;
     const map = new Map<number, Bucket>();
-    for (let t = startB; t <= nowB; t += bs) map.set(t, { t, deploys: 0, upgrades: 0 });
-    for (const p of volume) {
-      const key = Math.floor(p.t / bs) * bs;
-      const b = map.get(key);
-      if (!b) continue;
-      b.deploys += p.deploys ?? p.count;
-      b.upgrades += p.upgrades ?? 0;
-    }
+    for (let t = startB; t <= nowB; t += bs)
+      map.set(t, { t, deploys: 0, upgrades: 0, devnet: comparing ? { deploys: 0, upgrades: 0 } : null });
+    const add = (pts: VolumePoint[], into: (b: Bucket) => Series | Bucket | null) => {
+      for (const p of pts) {
+        const b = map.get(Math.floor(p.t / bs) * bs);
+        if (!b) continue;
+        const target = into(b);
+        if (!target) continue;
+        target.deploys += p.deploys ?? p.count;
+        target.upgrades += p.upgrades ?? 0;
+      }
+    };
+    add(volume, (b) => b);
+    if (comparing) add(devnetVolume!, (b) => b.devnet);
     return [...map.values()];
-  }, [volume, windowSecs]);
+  }, [volume, devnetVolume, comparing, windowSecs]);
 
   const n = buckets.length;
-  const yMax = niceMax(Math.max(1, ...buckets.map((b) => b.deploys + b.upgrades)));
+  // one scale across both clusters — a shared axis is the whole point of
+  // putting them side by side; separate scales would flatter the smaller one
+  const yMax = niceMax(
+    Math.max(
+      1,
+      ...buckets.map((b) => Math.max(b.deploys + b.upgrades, (b.devnet?.deploys ?? 0) + (b.devnet?.upgrades ?? 0))),
+    ),
+  );
   const plotW = width - PAD_L;
   const plotH = H - PAD_B - PAD_T;
   const slot = plotW / n;
-  const barW = Math.min(24, Math.max(3, slot * 0.62));
+  // comparison mode splits the slot into a tight pair, so the two clusters read
+  // as one unit per bucket rather than as twice as many independent bars
+  const barW = comparing
+    ? Math.min(11, Math.max(2, slot * 0.3))
+    : Math.min(24, Math.max(3, slot * 0.62));
+  const pairGap = comparing ? Math.max(1, barW * 0.18) : 0;
   const y = (v: number) => plotH * (v / yMax);
   const baseY = PAD_T + plotH;
 
@@ -117,6 +152,23 @@ export function FlowChart({
     return `${d.getMonth() + 1}/${d.getDate()}`;
   };
 
+  // Where the record begins, in plot coordinates. Bars to the LEFT of it are
+  // either absent or recovered by a one-off backfill, which can only find
+  // programs whose ProgramData still points at that old slot — so the run-up
+  // reads as a ramp in deploys when it is really the record starting. Only
+  // drawn when it lands inside the window: on 24h/48h it is off-screen left,
+  // which correctly means "all of this is on the record".
+  const bs = bucketSecs(windowSecs);
+  const startT = recordStartsAt ? Date.parse(recordStartsAt) / 1000 : NaN;
+  const firstB = buckets[0]?.t ?? 0;
+  const lastEnd = (buckets[n - 1]?.t ?? 0) + bs;
+  const markerX =
+    Number.isFinite(startT) && startT > firstB && startT < lastEnd
+      ? PAD_L + ((startT - firstB) / bs) * slot
+      : null;
+  // flip the label inside the plot when the marker sits near the right edge
+  const markerFlip = markerX != null && markerX > width - 90;
+
   // aim for ~5 x labels on desktop, fewer when narrow
   const labelEvery = Math.max(1, Math.round(n / Math.max(2, Math.min(5, width / 150))));
   const yTicks = yMax % 2 === 0 ? [0, yMax / 2, yMax] : [0, yMax];
@@ -132,6 +184,19 @@ export function FlowChart({
           <span className="flow-key">
             <span className="flow-swatch flow-swatch-upgrade" /> upgrades
           </span>
+          {/* colour carries deploy-vs-upgrade; the cluster is carried by the
+              paired position + weight, so it has to be said in words */}
+          {comparing ? (
+            <>
+              <span className="flow-legend-sep">·</span>
+              <span className="flow-key">
+                <span className="flow-swatch flow-swatch-deploy" /> {networkLabel}
+              </span>
+              <span className="flow-key">
+                <span className="flow-swatch flow-swatch-deploy-devnet" /> devnet
+              </span>
+            </>
+          ) : null}
         </div>
       ) : null}
       <div className="flow-plot" ref={wrapRef}>
@@ -142,6 +207,27 @@ export function FlowChart({
           aria-label="New deploys and upgrades per bucket over the selected window"
           onMouseLeave={() => setHover(null)}
         >
+          {/* devnet is the SAME hue, separated by texture rather than by colour
+              or weight: a lighter fill reads as a fourth colour and washes out
+              in a screenshot, while a hatch stays legible at any size and in
+              either theme. Hue keeps meaning deploy-vs-upgrade throughout. */}
+          {comparing ? (
+            <defs>
+              {(["deploy", "upgrade"] as const).map((k) => (
+                <pattern
+                  key={k}
+                  id={`hatch-${k}`}
+                  width="5"
+                  height="5"
+                  patternTransform="rotate(45)"
+                  patternUnits="userSpaceOnUse"
+                >
+                  <rect width="5" height="5" className={`hatch-bg-${k}`} />
+                  <line x1="0" y1="0" x2="0" y2="5" className={`hatch-line-${k}`} strokeWidth="2.4" />
+                </pattern>
+              ))}
+            </defs>
+          ) : null}
           {yTicks.map((v) => (
             <g key={v}>
               <line className="flow-grid" x1={PAD_L} x2={width} y1={baseY - y(v)} y2={baseY - y(v)} />
@@ -151,27 +237,59 @@ export function FlowChart({
             </g>
           ))}
 
+          {/* drawn under the bars so it never obscures data */}
+          {markerX != null ? (
+            <g className="flow-record-start">
+              <rect
+                className="flow-prehistory"
+                x={PAD_L}
+                y={PAD_T}
+                width={Math.max(0, markerX - PAD_L)}
+                height={plotH}
+              />
+              <line className="flow-record-line" x1={markerX} x2={markerX} y1={PAD_T} y2={baseY} />
+              <text
+                className="flow-record-label"
+                x={markerX + (markerFlip ? -6 : 6)}
+                y={PAD_T + 9}
+                textAnchor={markerFlip ? "end" : "start"}
+              >
+                record starts
+              </text>
+            </g>
+          ) : null}
+
           {buckets.map((b, i) => {
             const cx = PAD_L + slot * i + slot / 2;
-            const x0 = cx - barW / 2;
-            const dH = y(b.deploys);
-            const uH = y(b.upgrades);
-            const gap = uH > 0 && dH > 0 ? 2 : 0; // surface gap between segments
+            // single: one bar centred. comparing: this cluster left, devnet right
+            const x0 = comparing ? cx - barW - pairGap / 2 : cx - barW / 2;
+            const xDev = cx + pairGap / 2;
+            const stack = (sx: number, s: Series, suffix: string) => {
+              const dH = y(s.deploys);
+              const uH = y(s.upgrades);
+              const gap = uH > 0 && dH > 0 ? 2 : 0; // surface gap between segments
+              return (
+                <>
+                  {dH > 0 ? (
+                    uH > 0 ? (
+                      <rect className={`flow-bar-deploy${suffix}`} x={sx} y={baseY - dH} width={barW} height={dH} />
+                    ) : (
+                      <path className={`flow-bar-deploy${suffix}`} d={topRoundedRect(sx, baseY - dH, barW, dH, 3)} />
+                    )
+                  ) : null}
+                  {uH > 0 ? (
+                    <path
+                      className={`flow-bar-upgrade${suffix}`}
+                      d={topRoundedRect(sx, baseY - dH - gap - uH, barW, uH, 3)}
+                    />
+                  ) : null}
+                </>
+              );
+            };
             return (
               <g key={b.t}>
-                {dH > 0 ? (
-                  uH > 0 ? (
-                    <rect className="flow-bar-deploy" x={x0} y={baseY - dH} width={barW} height={dH} />
-                  ) : (
-                    <path className="flow-bar-deploy" d={topRoundedRect(x0, baseY - dH, barW, dH, 3)} />
-                  )
-                ) : null}
-                {uH > 0 ? (
-                  <path
-                    className="flow-bar-upgrade"
-                    d={topRoundedRect(x0, baseY - dH - gap - uH, barW, uH, 3)}
-                  />
-                ) : null}
+                {stack(x0, b, "")}
+                {comparing && b.devnet ? stack(xDev, b.devnet, "-devnet") : null}
                 {hover === i ? (
                   <line className="flow-hover-line" x1={cx} x2={cx} y1={PAD_T} y2={baseY} />
                 ) : null}
@@ -203,6 +321,7 @@ export function FlowChart({
             <span className="flow-tip-time">{fmtBucket(hovered.t)}</span>
             {hasSplit ? (
               <>
+                {comparing ? <span className="flow-tip-net">{networkLabel}</span> : null}
                 <span className="flow-tip-row">
                   <span className="flow-swatch flow-swatch-deploy" />
                   {hovered.deploys} new
@@ -211,6 +330,19 @@ export function FlowChart({
                   <span className="flow-swatch flow-swatch-upgrade" />
                   {hovered.upgrades} upgrades
                 </span>
+                {comparing && hovered.devnet ? (
+                  <>
+                    <span className="flow-tip-net">devnet</span>
+                    <span className="flow-tip-row">
+                      <span className="flow-swatch flow-swatch-deploy-devnet" />
+                      {hovered.devnet.deploys} new
+                    </span>
+                    <span className="flow-tip-row">
+                      <span className="flow-swatch flow-swatch-upgrade-devnet" />
+                      {hovered.devnet.upgrades} upgrades
+                    </span>
+                  </>
+                ) : null}
               </>
             ) : (
               <span className="flow-tip-row">

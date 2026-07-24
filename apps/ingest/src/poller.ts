@@ -1,5 +1,6 @@
 import { and, eq, inArray, sql } from "drizzle-orm";
 import {
+  assertTlshAvailable,
   db,
   schema,
   newId,
@@ -63,6 +64,7 @@ const TERMINAL_STAGES = new Set([
 /** One poll tick. Idempotent — re-seeing a program is a no-op. */
 export async function pollDeploys(opts: PollOptions): Promise<PollResult> {
   const { network, bootstrapHours, max } = opts;
+  await assertTlshAvailable(); // see live.ts — never ingest without lineage
   const currentSlot = await getSlot(network);
 
   // The cursor is the highest slot with nothing missing at or below it. It only

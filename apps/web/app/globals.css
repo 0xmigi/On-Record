@@ -2710,6 +2710,46 @@ a.copy-addr-text:hover {
 .flow-swatch-upgrade {
   background: var(--chart-upgrade);
 }
+/* devnet keeps the SAME hues — hue means deploy-vs-upgrade throughout — and is
+   separated by TEXTURE: a lighter fill reads as a fourth colour and washes out
+   in a screenshot, a hatch survives both. Swatches mirror the SVG pattern. */
+.flow-swatch-deploy-devnet {
+  background: repeating-linear-gradient(
+    45deg,
+    var(--chart-deploy) 0 2px,
+    color-mix(in srgb, var(--chart-deploy) 22%, transparent) 2px 5px
+  );
+}
+.flow-swatch-upgrade-devnet {
+  background: repeating-linear-gradient(
+    45deg,
+    var(--chart-upgrade) 0 2px,
+    color-mix(in srgb, var(--chart-upgrade) 22%, transparent) 2px 5px
+  );
+}
+.hatch-bg-deploy {
+  fill: color-mix(in srgb, var(--chart-deploy) 22%, transparent);
+}
+.hatch-line-deploy {
+  stroke: var(--chart-deploy);
+}
+.hatch-bg-upgrade {
+  fill: color-mix(in srgb, var(--chart-upgrade) 22%, transparent);
+}
+.hatch-line-upgrade {
+  stroke: var(--chart-upgrade);
+}
+.flow-legend-sep {
+  color: var(--ink-faint);
+}
+.flow-tip-net {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+  margin-top: 2px;
+}
 .flow-plot {
   position: relative;
 }
@@ -2722,9 +2762,31 @@ a.copy-addr-text:hover {
 .flow-bar-upgrade {
   fill: var(--chart-upgrade);
 }
+.flow-bar-deploy-devnet {
+  fill: url(#hatch-deploy);
+}
+.flow-bar-upgrade-devnet {
+  fill: url(#hatch-upgrade);
+}
 .flow-grid {
   stroke: var(--border);
   stroke-width: 1;
+}
+/* before the record began: bars there are backfill and undercount, so the
+   region is damped rather than hidden — the data is real, its coverage is not */
+.flow-prehistory {
+  fill: var(--ink);
+  opacity: 0.035;
+}
+.flow-record-line {
+  stroke: var(--ink-faint);
+  stroke-width: 1;
+  stroke-dasharray: 3 3;
+}
+.flow-record-label {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  fill: var(--ink-faint);
 }
 .flow-tick {
   font-family: var(--font-mono);

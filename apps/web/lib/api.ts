@@ -207,6 +207,15 @@ export interface ApiFunnel {
   // 30-day hourly volume; deploys/upgrades split is absent on API builds
   // predating the split (chart falls back to counting everything as deploys)
   volume?: { t: number; count: number; deploys?: number; upgrades?: number }[];
+  // both clusters' series, for the side-by-side comparison in the chart. Absent
+  // on API builds predating it — the chart falls back to `volume` alone.
+  volumeByNetwork?: Record<
+    Network,
+    { t: number; count: number; deploys?: number; upgrades?: number }[]
+  >;
+  // ISO — when this cluster's record begins; the chart marks it so the run-up
+  // before it does not read as a surge. Absent on older API builds.
+  recordStartsAt?: string | null;
   // per-vector aggregates across the window's new deploys
   identity?: { named: number; withRepo: number; opaque: number };
   lineage?: { novel: number; variant: number; fork: number };
