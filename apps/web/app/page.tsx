@@ -467,7 +467,7 @@ export default async function RadarPage({
         <ol className="radar-list">
           {mainItems.map((program) => (
             <li key={program.id}>
-              <ProgramRow program={program} />
+              <ProgramRow program={program} leadWith={isDeploy ? "deploy" : "upgrade"} />
             </li>
           ))}
         </ol>

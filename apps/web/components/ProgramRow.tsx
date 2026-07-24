@@ -58,13 +58,18 @@ function Fact({ label, value }: { label: string; value: string }) {
  * rows note "×N in cluster".
  */
 /** `showNetwork` tags devnet rows. Opt-in, because the radar already scopes to
- *  one cluster at a time — only mixed lists (search) need to say which. */
+ *  one cluster at a time — only mixed lists (search) need to say which.
+ *  `leadWith` picks which date opens the history line: every list leads with the
+ *  date it is sorted by, so the upgrades stream leads with the code change and
+ *  keeps the original deploy as trailing context. */
 export function ProgramRow({
   program,
   showNetwork = false,
+  leadWith = "deploy",
 }: {
   program: ApiProgram;
   showNetwork?: boolean;
+  leadWith?: "deploy" | "upgrade";
 }) {
   const inCluster = (program.clusterSize ?? 0) > 1;
   const kind = botKind(program); // 'sniper' | 'throwaway' | 'duplicate' | null
@@ -79,6 +84,14 @@ export function ProgramRow({
     (program.nearest?.similarity ?? 0) >= 0.6;
   const resembles =
     Boolean(program.nearest?.isReference) && (program.nearest?.similarity ?? 0) >= 0.4;
+  // lastEventAt is the program's most recent loader event — for an upgraded
+  // program that IS the code change. Falls back to leading with the deploy date
+  // if the row has never carried one.
+  const leadsWithUpgrade = leadWith === "upgrade" && Boolean(program.lastEventAt);
+  const upgradeTimes =
+    program.upgradeCount > 0
+      ? `×${program.upgradeCount}${program.upgradeCountTruncated ? "+" : ""}`
+      : null;
 
   return (
     <article className="radar-row">
@@ -128,13 +141,23 @@ export function ProgramRow({
         </div>
 
         {/* history row: when it arrived, then what's happened since —
-            "deployed" leads so every card's second line starts the same way */}
+            "deployed" leads so every card's second line starts the same way.
+            On the upgrades stream the code change leads instead (that's what
+            the list is sorted by) and the deploy date trails it. */}
         <div className="radar-ident radar-indent">
-          <span className="radar-when">deployed {relativeTime(program.deployedAt)}</span>
-          {program.upgradeCount > 0 ? (
+          <span className="radar-when">
+            {leadsWithUpgrade
+              ? `upgraded ${relativeTime(program.lastEventAt)}`
+              : `deployed ${relativeTime(program.deployedAt)}`}
+          </span>
+          {upgradeTimes ? (
             <span className="cluster-note" title="Times this program has been re-deployed">
-              upgraded ×{program.upgradeCount}
-              {program.upgradeCountTruncated ? "+" : ""}
+              {leadsWithUpgrade ? upgradeTimes : `upgraded ${upgradeTimes}`}
+            </span>
+          ) : null}
+          {leadsWithUpgrade ? (
+            <span className="cluster-note" title="When this program first went on record">
+              deployed {relativeTime(program.deployedAt)}
             </span>
           ) : null}
           {program.hasSecurityTxt ? (

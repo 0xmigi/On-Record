@@ -96,6 +96,12 @@ function program(meta) {
     deployedSlot: BASE_SLOT - Math.round(meta.hoursAgo * 150),
     deployedAt: iso(meta.hoursAgo),
     lastEventAt: iso(meta.lastAgo ?? meta.hoursAgo),
+    // deployType is a LIFETIME flag, exactly as the pipeline writes it: once a
+    // program's ProgramData history shows a re-deploy it stays 'upgrade' forever.
+    // That is why the upgrade stream must window on lastEventAt, not deployedAt.
+    deployType: (meta.upgrades ?? 0) > 0 ? "upgrade" : "deploy",
+    upgradeCount: meta.upgrades ?? 0,
+    upgradeCountTruncated: meta.upgradesTruncated ?? false,
     band: meta.band,
     noveltyScore: meta.score,
     category: meta.category,
@@ -108,6 +114,31 @@ function program(meta) {
     verified: meta.verified ?? false,
     bucketId: meta.bucketId ?? null,
     clusterSize: meta.clusterSize ?? null,
+    // --- fields the radar row dereferences; defaults keep every row renderable
+    // without each fixture having to spell them out ---
+    idlSource: idlPresent ? "anchor-legacy" : null,
+    logoUrl: null,
+    firstDeployAt: iso(meta.hoursAgo),
+    funderAddress: meta.funding ? addr() : null,
+    fundingAmountSol: meta.funding ? 12.5 : null,
+    deployCostSol: meta.sizeBytes ? Number((meta.sizeBytes / 100_000).toFixed(3)) : null,
+    repoUrl: meta.repoUrl ?? null,
+    social: meta.social ?? null,
+    website: meta.website ?? null,
+    hasSecurityTxt: meta.hasSecurityTxt ?? false,
+    closedAt: meta.closedAt ?? null,
+    closed: Boolean(meta.closedAt),
+    framework: meta.framework ?? (idlPresent ? "anchor" : "native"),
+    capabilities: meta.capabilities ?? [],
+    integrations: meta.integrations ?? [],
+    syscallCount: meta.syscallCount ?? null,
+    nearest: meta.nearest ?? null,
+    codeMatch: null,
+    incubation: meta.incubation ?? null,
+    multisig: null,
+    activity: meta.activity ?? null,
+    momentum: meta.txns24h ? { txns24h: meta.txns24h, growth: null } : null,
+    interest: null,
     // extras kept for detail assembly (stripped from radar rows):
     _sha256: meta.sha256 ?? sha256(),
     _idl: idl,
@@ -340,7 +371,21 @@ const CLONES = [
   program({ band: "clone", score: 0.02, category: "token", hoursAgo: 6.0, sizeBytes: 41_000, authorityClass: "hot_wallet", funding: "unknown", signers: 0, bucketId: "clu_photon", clusterSize: 34 }),
 ];
 
-const ALL = [...NOVEL, ...NOVEL_OLDER, ...VARIANTS, ...CLONES];
+// The upgrade stream: ESTABLISHED programs whose code changed recently. Their
+// deploy dates are weeks-to-months old and only lastEventAt sits inside the
+// window — the exact cohort a firstSeenAt-based window filter cannot see. Bands
+// spread across variant/clone on purpose: a real upgrade's lineage band is
+// orthogonal to the fact that it was upgraded.
+const UPGRADED = [
+  program({ name: "referral", band: "variant", score: 0.44, category: "defi", hoursAgo: 24 * 130, lastAgo: 1.0, upgrades: 6, sizeBytes: 476_000, authorityClass: "squads", funding: "bridge", signers: 210, verified: true, framework: "anchor", integrations: ["Jupiter", "SPL Token"], txns24h: 4_820, hasSecurityTxt: true }),
+  program({ name: null, band: "novel", score: 0.51, category: "infra", hoursAgo: 24 * 41, lastAgo: 5.5, upgrades: 3, sizeBytes: 318_000, authorityClass: "squads", funding: "coinbase", signers: 96 }),
+  program({ name: "vault-router", band: "variant", score: 0.38, category: "defi", hoursAgo: 24 * 9, lastAgo: 19.5, upgrades: 21, upgradesTruncated: true, sizeBytes: 204_800, authorityClass: "squads", funding: "unknown", signers: 58 }),
+  program({ name: null, band: "clone", score: 0.11, category: "token", hoursAgo: 24 * 6, lastAgo: 22.0, upgrades: 2, sizeBytes: 61_000, authorityClass: "hot_wallet", funding: "unknown", signers: 4, bucketId: "clu_spltoken", clusterSize: 118 }),
+  // last changed 9 days ago — must stay OUT of the 24h window, in on "week"+
+  program({ name: "stale-amm", band: "variant", score: 0.27, category: "defi", hoursAgo: 24 * 200, lastAgo: 24 * 9, upgrades: 14, sizeBytes: 631_000, authorityClass: "squads", funding: "unknown", signers: 33 }),
+];
+
+const ALL = [...NOVEL, ...NOVEL_OLDER, ...VARIANTS, ...CLONES, ...UPGRADED];
 const BY_ID = new Map(ALL.map((p) => [p.id, p]));
 
 // Wire cluster members from the seeded programs + a couple synthetic tails.
@@ -370,9 +415,18 @@ for (const p of novelToday) byCategory[p.category] = (byCategory[p.category] ?? 
 const RAW = 1974;
 const UNIQUE = 612;
 const NOVEL_COUNT = novelToday.length; // radar's "today · novel" count
+// The radar header reads deploys/upgrades off the funnel, each on its own clock
+// — same split the API computes, so the header and the two tabs agree.
+const deploysToday = ALL.filter((p) => p.deployType !== "upgrade" && hoursOf(p) <= 24).length;
+const upgradesToday = ALL.filter(
+  (p) => p.deployType === "upgrade" && (NOW - Date.parse(p.lastEventAt)) / 3_600_000 <= 24,
+).length;
+
 const FUNNEL = {
   date: today,
   raw: RAW,
+  deploys: deploysToday,
+  upgrades: upgradesToday,
   unique: UNIQUE,
   novel: NOVEL_COUNT,
   clones: RAW - UNIQUE, // exact-bytecode dupes dropped raw -> unique
@@ -436,9 +490,16 @@ function programDetail(p) {
   };
 }
 
-function radarWindowFilter(window) {
-  const cutoff = window === "today" ? 24 : window === "week" ? 24 * 7 : Infinity;
-  return (p) => hoursOf(p) <= cutoff;
+function windowCutoff(window) {
+  return window === "today" ? 24 : window === "week" ? 24 * 7 : window === "month" ? 24 * 30 : Infinity;
+}
+
+/** Each stream is dated by its own event: a new deploy by when the program
+ *  appeared, an upgrade by when its code last changed. */
+function radarWindowFilter(window, type) {
+  const cutoff = windowCutoff(window);
+  const age = type === "upgrade" ? (p) => (NOW - Date.parse(p.lastEventAt)) / 3_600_000 : hoursOf;
+  return (p) => age(p) <= cutoff;
 }
 
 // --- server ----------------------------------------------------------------
@@ -463,13 +524,23 @@ createServer((req, res) => {
 
   if (p === "/api/radar") {
     const window = q.get("window") || "today";
-    const band = q.get("band") || "novel";
+    const type = q.get("type") === "upgrade" ? "upgrade" : "deploy";
     const limit = Math.min(Number(q.get("limit")) || 50, 100);
-    const items = ALL.filter((x) => x.band === band)
-      .filter(radarWindowFilter(window))
-      .sort((a, b) => b.noveltyScore - a.noveltyScore)
+    // The deploy stream tiers by novelty and always passes a band. The upgrade
+    // stream spans every band, so it only narrows when one is asked for.
+    const band = q.get("band");
+    const matchesBand = type === "upgrade" && !band ? () => true : (x) => x.band === (band || "novel");
+    const items = ALL.filter(matchesBand)
+      .filter((x) => (type === "upgrade" ? x.deployType === "upgrade" : x.deployType !== "upgrade"))
+      .filter(radarWindowFilter(window, type))
+      .sort((a, b) =>
+        type === "upgrade"
+          ? Date.parse(b.lastEventAt) - Date.parse(a.lastEventAt)
+          : b.noveltyScore - a.noveltyScore,
+      )
       .map(radarRow);
-    return send(res, 200, paginate(items, q.get("cursor"), limit));
+    const page = paginate(items, q.get("cursor"), limit);
+    return send(res, 200, { ...page, total: items.length });
   }
 
   const progMatch = p.match(/^\/api\/programs\/(.+)$/);

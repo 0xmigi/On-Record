@@ -1,5 +1,5 @@
 import type { FastifyInstance } from "fastify";
-import { and, desc, eq, gte, inArray, isNotNull, isNull, lt, lte, ne, or, sql } from "drizzle-orm";
+import { and, desc, eq, gte, inArray, isNull, lt, lte, ne, or, sql } from "drizzle-orm";
 import {
   db,
   schema,
@@ -179,6 +179,23 @@ export function registerPublicRoutes(app: FastifyInstance): void {
       const band = hasBand ? (req.query.band as NoveltyBand) : "novel";
       const type = req.query.type === "upgrade" ? "upgrade" : "deploy";
       const start = windowStart(req.query.window);
+      // The window dates each stream by its own event. A new deploy is dated by
+      // when the program first appeared (firstSeenAt); an upgrade by when its
+      // code last changed (lastEventAt). deployType is a LIFETIME property — a
+      // program keeps it forever once its ProgramData history shows an upgrade —
+      // so dating the upgrade stream by firstSeenAt asked "which programs were
+      // first seen in this window and have ever been upgraded", which hides
+      // every upgrade of an established program. That is what left "last 24h"
+      // showing only the handful of programs On Record happened to meet today.
+      // Raw-SQL comparisons on this expression must bind an ISO string with a
+      // ::timestamptz cast — the driver only auto-encodes Date when drizzle
+      // knows the column type, which it doesn't through coalesce().
+      const timeCol =
+        type === "upgrade"
+          ? sql`coalesce(${schema.subjects.lastEventAt}, ${schema.subjects.firstSeenAt})`
+          : sql`${schema.subjects.firstSeenAt}`;
+      const timeOf = (r: { firstSeenAt: Date | null; lastEventAt: Date | null }) =>
+        type === "upgrade" ? (r.lastEventAt ?? r.firstSeenAt) : r.firstSeenAt;
       // closed programs (rent reclaimed) are the churn tail — hidden by default,
       // ?closed=1 shows them, ?closed=only isolates the graveyard.
       const closedMode = req.query.closed === "1" ? "include" : req.query.closed === "only" ? "only" : "hide";
@@ -210,20 +227,17 @@ export function registerPublicRoutes(app: FastifyInstance): void {
           or(eq(schema.subjects.deployType, "deploy"), isNull(schema.subjects.deployType))!,
         );
       }
-      if (start) conditions.push(gte(schema.subjects.firstSeenAt, start));
+      if (start) conditions.push(sql`${timeCol} >= ${start.toISOString()}::timestamptz`);
       // "newest" only makes sense for dated rows: undated reference-corpus
       // seeds would sort NULLS FIRST above every real deploy, and their ts=0
       // cursor would dead-end the next page.
-      if (sort === "recent") conditions.push(isNotNull(schema.subjects.firstSeenAt));
+      if (sort === "recent") conditions.push(sql`${timeCol} is not null`);
 
       const cur = sort === "recent" && req.query.cursor ? decodeCursor(req.query.cursor) : null;
       if (cur) {
-        const curDate = new Date(cur.ts);
+        const curIso = new Date(cur.ts).toISOString();
         conditions.push(
-          or(
-            lt(schema.subjects.firstSeenAt, curDate),
-            and(eq(schema.subjects.firstSeenAt, curDate), lt(schema.subjects.id, cur.id)),
-          )!,
+          sql`(${timeCol} < ${curIso}::timestamptz or (${timeCol} = ${curIso}::timestamptz and ${schema.subjects.id} < ${cur.id}))`,
         );
       }
 
@@ -234,8 +248,8 @@ export function registerPublicRoutes(app: FastifyInstance): void {
           .where(and(...conditions))
           .orderBy(
             ...(sort === "interest"
-              ? [sql`${schema.subjects.noveltyScore} desc nulls last`, desc(schema.subjects.firstSeenAt), desc(schema.subjects.id)]
-              : [sql`${schema.subjects.firstSeenAt} desc nulls last`, desc(schema.subjects.id)]),
+              ? [sql`${schema.subjects.noveltyScore} desc nulls last`, sql`${timeCol} desc nulls last`, desc(schema.subjects.id)]
+              : [sql`${timeCol} desc nulls last`, desc(schema.subjects.id)]),
           )
           .limit(limit + 1),
         // true row count for the same slice — the radar's tier counts read
@@ -261,7 +275,7 @@ export function registerPublicRoutes(app: FastifyInstance): void {
         // cursor paging is recency-keyed; interest-ordered pages don't paginate
         nextCursor:
           sort === "recent" && rows.length > limit && last
-            ? encodeCursor(last.firstSeenAt?.getTime() ?? 0, last.id)
+            ? encodeCursor(timeOf(last)?.getTime() ?? 0, last.id)
             : null,
       };
     },

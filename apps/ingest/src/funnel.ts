@@ -58,8 +58,21 @@ export async function computeWindowFunnel(
 
   // programs active in the window, split into new deploys vs upgrades by the
   // per-program classification (deployType), so the funnel matches the radar.
+  // The two halves are dated differently and cannot come from one scan: a new
+  // deploy is dated by firstSeenAt, an upgrade by lastEventAt (the code change).
+  // deployType is a lifetime flag, so counting upgrades off the firstSeenAt scan
+  // only ever found programs On Record first met inside the window — the same
+  // undercount that emptied the radar's upgrade tab.
   let deploys = 0;
-  let upgrades = 0;
+
+  // Closed programs (ProgramData deallocated, rent reclaimed) are excluded from
+  // the scan the same way the radar excludes them from its list — the header
+  // total sits above that list and must count the same rows. They are not lost:
+  // `churn.closed` below counts them on their own, and the radar keeps its
+  // Closed section. Everything derived from this scan moves together, which is
+  // what keeps churn.redeploys a share OF deploys rather than a number that can
+  // exceed it.
+  const live = sql`(${schema.subjects.facts} ->> 'closedAt') is null`;
 
   // new-program subjects in the window carry everything the breakdowns need
   const subs = (await db
@@ -84,8 +97,39 @@ export async function computeWindowFunnel(
         eq(schema.subjects.network, network),
         eq(schema.subjects.kind, "program"),
         gte(schema.subjects.firstSeenAt, start),
+        live,
       ),
     )) as SubjectLite[];
+
+  // upgrades: every program whose code changed inside the window, however long
+  // it has been on record. Dated by lastEventAt (falling back to firstSeenAt for
+  // rows predating that column) — see the note above the deploy scan.
+  const upgradeRows = await db
+    .select({ n: sql<number>`count(*)` })
+    .from(schema.subjects)
+    .where(
+      and(
+        eq(schema.subjects.network, network),
+        eq(schema.subjects.kind, "program"),
+        eq(schema.subjects.deployType, "upgrade"),
+        sql`coalesce(${schema.subjects.lastEventAt}, ${schema.subjects.firstSeenAt}) >= ${start.toISOString()}::timestamptz`,
+        live,
+      ),
+    );
+  const upgrades = Number(upgradeRows[0]?.n ?? 0);
+
+  // the closed tail, counted on its own now that the scan above excludes it
+  const closedRows = await db
+    .select({ n: sql<number>`count(*)` })
+    .from(schema.subjects)
+    .where(
+      and(
+        eq(schema.subjects.network, network),
+        eq(schema.subjects.kind, "program"),
+        gte(schema.subjects.firstSeenAt, start),
+        sql`(${schema.subjects.facts} ->> 'closedAt') is not null`,
+      ),
+    );
 
   const uniqueSha = new Set<string>();
   // binaries already counted toward byIntegration (see the loop below)
@@ -105,7 +149,7 @@ export async function computeWindowFunnel(
   // already on record (band=clone) is the same program redeployed under a fresh
   // id: the sniper-bot signature. `pumpfun` is the subset wired to Pump.fun;
   // `closed` is the tail that already reclaimed its rent.
-  const churn = { redeploys: 0, pumpfun: 0, closed: 0 };
+  const churn = { redeploys: 0, pumpfun: 0, closed: Number(closedRows[0]?.n ?? 0) };
   const fwEarly: Record<string, number> = {};
   const fwLate: Record<string, number> = {};
   let earlyTotal = 0;
@@ -113,8 +157,7 @@ export async function computeWindowFunnel(
 
   for (const s of subs) {
     if (s.sha256) uniqueSha.add(s.sha256);
-    if (s.deployType === "upgrade") upgrades++;
-    else deploys++;
+    if (s.deployType !== "upgrade") deploys++;
     if (s.noveltyBand === "novel") {
       novel++;
       lineage.novel++;
@@ -160,8 +203,6 @@ export async function computeWindowFunnel(
       churn.redeploys++;
       if ((s.profile?.integrations ?? []).includes("Pump.fun")) churn.pumpfun++;
     }
-    if (s.facts?.closedAt) churn.closed++;
-
     const t = s.firstSeenAt?.getTime() ?? 0;
     if (t >= midMs) {
       fwLate[fw] = (fwLate[fw] ?? 0) + 1;

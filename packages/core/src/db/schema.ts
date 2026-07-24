@@ -1,3 +1,4 @@
+import { sql } from "drizzle-orm";
 import {
   bigint,
   primaryKey,
@@ -104,6 +105,14 @@ export const subjects = pgTable(
     index("subjects_bucket_idx").on(t.bucketId),
     index("subjects_radar_idx").on(t.network, t.noveltyBand, t.noveltyScore),
     index("subjects_first_seen_idx").on(t.firstSeenAt),
+    // the upgrade stream: "programs whose code changed in this window", dated by
+    // lastEventAt rather than firstSeenAt. Expression-indexed because the query
+    // coalesces to firstSeenAt for rows that predate lastEventAt.
+    index("subjects_upgraded_idx").on(
+      t.network,
+      t.deployType,
+      sql`coalesce(${t.lastEventAt}, ${t.firstSeenAt}) desc`,
+    ),
     // lineage-by-crate: the lookup is "who else compiled from this crate"
     index("subjects_crate_idx").on(t.network, t.crate),
   ],
