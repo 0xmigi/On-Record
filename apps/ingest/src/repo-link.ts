@@ -12,16 +12,16 @@ import { db, schema, logger, searchRepoByProgramId, env, type Network } from "@o
 //     spends the budget on programs that no longer exist. Waiting an hour and
 //     skipping anything already closed drops nearly all of it.
 //  2. Code search allows ~10 requests/minute. The whole deploy stream cannot
-//     fit through that; the novel band can, with room to spare.
+//     fit through that; what survives the clone gate can.
 //
-// So: novel, still alive, no repo from any other source, at least an hour old.
+// So: not a clone, still alive, no repo from any other source, an hour old.
 // Misses are stamped too (repoLinkCheckedAt) — a program with no public source
 // has none on the next pass either, and re-asking every hour would burn the
 // budget on permanent negatives. The stamp expires, because a repo published
 // next week is still worth finding.
 // ---------------------------------------------------------------------------
 
-const SWEEP_MAX = Number(process.env.REPO_LINK_SWEEP_MAX ?? 20);
+const SWEEP_MAX = Number(process.env.REPO_LINK_SWEEP_MAX ?? 40);
 /** Give the closed sweep time to mark bot churn before we spend a search. */
 const MIN_AGE_HOURS = Number(process.env.REPO_LINK_MIN_AGE_HOURS ?? 1);
 /** How far back to keep looking — a program's repo may appear after its deploy. */
@@ -60,8 +60,15 @@ export async function sweepRepoLinks(network: Network = "mainnet"): Promise<void
             > now() - ${`${LOOKBACK_DAYS} days`}::interval`,
       ),
     )
-    // newest first: a fresh deploy is what the radar is showing right now
-    .orderBy(sql`coalesce(${schema.subjects.firstSeenAt}, ${schema.subjects.updatedAt}) desc`)
+    // Crate-carrying programs first, then newest. Newest-first alone starves
+    // them: mainnet deploys enough per hour that the top of the queue is always
+    // fresh churn, and a program whose binary leaked `programs/<crate>/` is both
+    // the likeliest to have a public repo and the only one the crate-path pass
+    // can confirm. Everything still gets its turn — checked rows are stamped.
+    .orderBy(
+      sql`(${schema.subjects.crate} is null),
+          coalesce(${schema.subjects.firstSeenAt}, ${schema.subjects.updatedAt}) desc`,
+    )
     .limit(SWEEP_MAX);
 
   if (!rows.length) return;
