@@ -2711,15 +2711,33 @@ a.copy-addr-text:hover {
   background: var(--chart-upgrade);
 }
 /* devnet keeps the SAME hues — hue means deploy-vs-upgrade throughout — and is
-   separated by weight instead, so the pairing reads as one bucket, not four
-   unrelated series. Pre-launch data should sit behind mainnet, not compete. */
+   separated by TEXTURE: a lighter fill reads as a fourth colour and washes out
+   in a screenshot, a hatch survives both. Swatches mirror the SVG pattern. */
 .flow-swatch-deploy-devnet {
-  background: var(--chart-deploy);
-  opacity: 0.42;
+  background: repeating-linear-gradient(
+    45deg,
+    var(--chart-deploy) 0 2px,
+    color-mix(in srgb, var(--chart-deploy) 22%, transparent) 2px 5px
+  );
 }
 .flow-swatch-upgrade-devnet {
-  background: var(--chart-upgrade);
-  opacity: 0.42;
+  background: repeating-linear-gradient(
+    45deg,
+    var(--chart-upgrade) 0 2px,
+    color-mix(in srgb, var(--chart-upgrade) 22%, transparent) 2px 5px
+  );
+}
+.hatch-bg-deploy {
+  fill: color-mix(in srgb, var(--chart-deploy) 22%, transparent);
+}
+.hatch-line-deploy {
+  stroke: var(--chart-deploy);
+}
+.hatch-bg-upgrade {
+  fill: color-mix(in srgb, var(--chart-upgrade) 22%, transparent);
+}
+.hatch-line-upgrade {
+  stroke: var(--chart-upgrade);
 }
 .flow-legend-sep {
   color: var(--ink-faint);
@@ -2745,12 +2763,10 @@ a.copy-addr-text:hover {
   fill: var(--chart-upgrade);
 }
 .flow-bar-deploy-devnet {
-  fill: var(--chart-deploy);
-  opacity: 0.42;
+  fill: url(#hatch-deploy);
 }
 .flow-bar-upgrade-devnet {
-  fill: var(--chart-upgrade);
-  opacity: 0.42;
+  fill: url(#hatch-upgrade);
 }
 .flow-grid {
   stroke: var(--border);

@@ -187,6 +187,27 @@ export function FlowChart({
           aria-label="New deploys and upgrades per bucket over the selected window"
           onMouseLeave={() => setHover(null)}
         >
+          {/* devnet is the SAME hue, separated by texture rather than by colour
+              or weight: a lighter fill reads as a fourth colour and washes out
+              in a screenshot, while a hatch stays legible at any size and in
+              either theme. Hue keeps meaning deploy-vs-upgrade throughout. */}
+          {comparing ? (
+            <defs>
+              {(["deploy", "upgrade"] as const).map((k) => (
+                <pattern
+                  key={k}
+                  id={`hatch-${k}`}
+                  width="5"
+                  height="5"
+                  patternTransform="rotate(45)"
+                  patternUnits="userSpaceOnUse"
+                >
+                  <rect width="5" height="5" className={`hatch-bg-${k}`} />
+                  <line x1="0" y1="0" x2="0" y2="5" className={`hatch-line-${k}`} strokeWidth="2.4" />
+                </pattern>
+              ))}
+            </defs>
+          ) : null}
           {yTicks.map((v) => (
             <g key={v}>
               <line className="flow-grid" x1={PAD_L} x2={width} y1={baseY - y(v)} y2={baseY - y(v)} />
