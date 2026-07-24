@@ -9,6 +9,7 @@ import {
   getConfig,
   newId,
   updateConfig,
+  repoSearchStatus,
   type RuntimeConfig,
 } from "@onrecord/core";
 import { addManualWatch } from "@onrecord/enrich";
@@ -137,7 +138,7 @@ export async function registerAdminRoutes(app: FastifyInstance): Promise<void> {
       if (!programId) {
         const result = await sweepRepoLinks("mainnet");
         await log("repo-link.sweep", null, null, result);
-        return { ok: true, ...result };
+        return { ok: true, search: repoSearchStatus(), ...result };
       }
       const rows = await db.select().from(schema.subjects).where(eq(schema.subjects.id, programId));
       const row = rows[0];
@@ -148,6 +149,9 @@ export async function registerAdminRoutes(app: FastifyInstance): Promise<void> {
       return {
         ok: true,
         link,
+        // what GitHub last said — separates "no repo exists" from "the token
+        // was refused", which look identical in the link alone
+        search: repoSearchStatus(),
         // the row as the sweep sees it — this is what explains a skip
         subject: {
           band: row.noveltyBand,

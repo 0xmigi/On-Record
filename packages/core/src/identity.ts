@@ -195,6 +195,24 @@ async function takeSlot(maxWaitMs: number): Promise<boolean> {
   return true;
 }
 
+/** What GitHub last said, so a silent null can be explained from outside the
+ *  process. A 403 on every call (a token the search endpoint won't accept)
+ *  and "this program genuinely has no public repo" are indistinguishable
+ *  otherwise — both just return null. */
+let lastSearch: { at: string; status: number | null; note: string } | null = null;
+
+export function repoSearchStatus(): {
+  tokenPresent: boolean;
+  cooldownUntil: string | null;
+  last: { at: string; status: number | null; note: string } | null;
+} {
+  return {
+    tokenPresent: Boolean(env.GITHUB_TOKEN), // presence only, never the value
+    cooldownUntil: cooldownUntil > Date.now() ? new Date(cooldownUntil).toISOString() : null,
+    last: lastSearch,
+  };
+}
+
 /** Park all callers until the window GitHub named (or a minute, if it named none). */
 function enterCooldown(res: Response): void {
   const retryAfter = Number(res.headers.get("retry-after"));
@@ -388,6 +406,7 @@ async function runSearch(
   maxWaitMs: number,
 ): Promise<GhSearchItem[] | null> {
   if (!(await takeSlot(maxWaitMs))) {
+    lastSearch = { at: new Date().toISOString(), status: null, note: "skipped — no slot within the wait budget" };
     logger.debug({ programId }, "github code search skipped — rate-limit budget spent");
     return null;
   }
@@ -406,15 +425,24 @@ async function runSearch(
     });
     if (res.status === 403 || res.status === 429) {
       enterCooldown(res);
-      logger.warn({ programId, status: res.status }, "github code search rate-limited");
+      // 403 is not always throttling — a token the search endpoint rejects
+      // looks identical from here, so keep GitHub's own words
+      const body = (await res.text()).slice(0, 200);
+      lastSearch = { at: new Date().toISOString(), status: res.status, note: body };
+      logger.warn({ programId, status: res.status, body }, "github code search refused");
       return null;
     }
     if (!res.ok) {
-      logger.warn({ programId, status: res.status }, "github code search failed");
+      const body = (await res.text()).slice(0, 200);
+      lastSearch = { at: new Date().toISOString(), status: res.status, note: body };
+      logger.warn({ programId, status: res.status, body }, "github code search failed");
       return null;
     }
-    return ((await res.json()) as { items?: GhSearchItem[] }).items ?? [];
+    const items = ((await res.json()) as { items?: GhSearchItem[] }).items ?? [];
+    lastSearch = { at: new Date().toISOString(), status: 200, note: `${items.length} hits` };
+    return items;
   } catch (err) {
+    lastSearch = { at: new Date().toISOString(), status: null, note: String(err) };
     logger.warn({ programId, err: String(err) }, "github code search failed");
     return null;
   }
