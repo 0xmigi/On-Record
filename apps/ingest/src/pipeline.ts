@@ -19,6 +19,7 @@ import {
   getDeployHistory,
   profileProgram,
   deriveBytecodeIdentity,
+  searchRepoByProgramId,
   buildSearchText,
   recoverSourceTree,
   type Category,
@@ -275,11 +276,24 @@ export async function identifyStage(eventId: string): Promise<void> {
     }
   }
 
+  // Nobody declared a repo — neither the verified-builds registry nor the
+  // binary's own security.txt. Search public code for the program id: a repo
+  // that declares this address, or carries the crate path the binary leaked,
+  // is the source the deploy never named. Mainnet only — devnet deploys aren't
+  // worth the code-search rate-limit budget.
+  const bytecodeIdentity = enrichment.bytecodeIdentity;
+  const declaredRepo = verification.repoUrl ?? bytecodeIdentity?.repoUrl ?? null;
+  const repoLink =
+    programId && !declaredRepo && network !== "devnet"
+      ? await searchRepoByProgramId(programId, { crateName: bytecodeIdentity?.crate ?? null })
+      : null;
+
   enrichment.identity = {
     entityId: entity?.id ?? entityByAuthority?.id ?? null,
     entityName: entity?.name ?? entityByAuthority?.name ?? null,
     verified: verification.verified,
     repoUrl: verification.repoUrl,
+    repoLink,
     repoCommit: verification.commit,
     previousCommit,
     authorityClass,

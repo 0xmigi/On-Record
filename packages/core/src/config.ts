@@ -8,6 +8,9 @@ export const env = {
   HELIUS_WEBHOOK_SECRET_MAINNET: process.env.HELIUS_WEBHOOK_SECRET_MAINNET ?? "",
   HELIUS_WEBHOOK_SECRET_DEVNET: process.env.HELIUS_WEBHOOK_SECRET_DEVNET ?? "",
   ADMIN_PASSWORD: process.env.ADMIN_PASSWORD ?? "",
+  // GitHub code search (repo attribution). Optional: without it the program-id
+  // → repo lookup is skipped, every other signal is unaffected.
+  GITHUB_TOKEN: process.env.GITHUB_TOKEN ?? "",
   PORT: Number(process.env.PORT ?? 3001),
   PUBLIC_API_URL: process.env.PUBLIC_API_URL ?? "http://localhost:3001",
   REDIS_URL: process.env.REDIS_URL ?? "redis://localhost:6379",

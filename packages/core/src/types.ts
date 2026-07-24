@@ -48,6 +48,31 @@ export interface Identity {
   codeMatch: ApiCodeMatch | null;
   /** decoded Squads multisig behind the upgrade authority, when governed */
   multisig: ApiMultisig | null;
+  /** public repo found by searching code for the program id — an inference,
+   *  not a verified build. Absent on events enriched before this existed. */
+  repoLink?: RepoLink | null;
+}
+
+/** A source repo recovered by searching public code for the program id.
+ *  Distinct from `Identity.repoUrl`, which comes from the verified-builds
+ *  registry and is proof; this is a search hit with its evidence attached. */
+export interface RepoLink {
+  /** owner/name */
+  repo: string;
+  repoUrl: string;
+  /** declared = the repo compiles to this address (declare_id! / Anchor.toml);
+   *  crate-path = the repo carries the same crate path the binary leaked */
+  method: "declared" | "crate-path";
+  /** both directions closed: binary leaked programs/<crate>/, repo has it too */
+  crateConfirmed: boolean;
+  /** repo files containing the program id, capped for storage */
+  matchedPaths: string[];
+  /** files matched in this repo (before the path cap) */
+  matchCount: number;
+  /** other repos that also survived the link test — copies, renames, hard
+   *  forks. >0 means "this one, of N that could claim it", not "the only one". */
+  otherCandidates: number;
+  queriedAt: string;
 }
 
 /** Squads multisig decoded from the deploy/upgrade transaction. */
@@ -130,6 +155,9 @@ export interface SecurityTxt {
  *  security.txt, embedded URLs) — the de-opaquing edge (~half of anonymous programs). */
 export interface BytecodeIdentity {
   name: string | null;
+  /** crate directory from the leaked panic path (`programs/<crate>/src/…`) —
+   *  `name` may be a security.txt label instead. Absent on older enrichments. */
+  crate?: string | null;
   repoUrl: string | null;
   social: string | null;
   website: string | null;
