@@ -2772,6 +2772,22 @@ a.copy-addr-text:hover {
   stroke: var(--border);
   stroke-width: 1;
 }
+/* before the record began: bars there are backfill and undercount, so the
+   region is damped rather than hidden — the data is real, its coverage is not */
+.flow-prehistory {
+  fill: var(--ink);
+  opacity: 0.035;
+}
+.flow-record-line {
+  stroke: var(--ink-faint);
+  stroke-width: 1;
+  stroke-dasharray: 3 3;
+}
+.flow-record-label {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  fill: var(--ink-faint);
+}
 .flow-tick {
   font-family: var(--font-mono);
   font-size: 10px;

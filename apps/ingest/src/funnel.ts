@@ -259,6 +259,19 @@ export async function computeWindowFunnel(
     devnet: volRows.filter((r) => r.network === "devnet").map(toPoint),
   };
 
+  // When this cluster's record actually begins — the first row we ever WROTE,
+  // not the earliest block time (genesis deploys reach back years). Anything
+  // left of this is either absent or came from a one-off backfill, which can
+  // only recover programs whose ProgramData still points at that old slot, so
+  // it systematically undercounts. The chart marks it rather than letting the
+  // run-up read as a surge in deploys. Derived, never hardcoded: devnet has its
+  // own start, and a re-seeded database would move it.
+  const startRows = await db
+    .select({ at: sql<string | null>`min(${schema.events.createdAt})` })
+    .from(schema.events)
+    .where(eq(schema.events.network, network));
+  const recordStartsAt = startRows[0]?.at ? new Date(startRows[0].at).toISOString() : null;
+
   const raw = deploys + upgrades;
 
   return {
@@ -279,6 +292,7 @@ export async function computeWindowFunnel(
     byCapability,
     volume,
     volumeByNetwork,
+    recordStartsAt,
     identity,
     lineage,
     control,

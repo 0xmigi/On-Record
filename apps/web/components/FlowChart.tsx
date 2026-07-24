@@ -64,11 +64,14 @@ export function FlowChart({
   volume,
   devnetVolume,
   networkLabel = "mainnet",
+  recordStartsAt,
   windowSecs,
 }: {
   volume: VolumePoint[];
   devnetVolume?: VolumePoint[];
   networkLabel?: string;
+  /** ISO — when the record begins. Bars left of it are backfill, not history. */
+  recordStartsAt?: string | null;
   windowSecs: number;
 }) {
   const [hover, setHover] = useState<number | null>(null);
@@ -149,6 +152,23 @@ export function FlowChart({
     return `${d.getMonth() + 1}/${d.getDate()}`;
   };
 
+  // Where the record begins, in plot coordinates. Bars to the LEFT of it are
+  // either absent or recovered by a one-off backfill, which can only find
+  // programs whose ProgramData still points at that old slot — so the run-up
+  // reads as a ramp in deploys when it is really the record starting. Only
+  // drawn when it lands inside the window: on 24h/48h it is off-screen left,
+  // which correctly means "all of this is on the record".
+  const bs = bucketSecs(windowSecs);
+  const startT = recordStartsAt ? Date.parse(recordStartsAt) / 1000 : NaN;
+  const firstB = buckets[0]?.t ?? 0;
+  const lastEnd = (buckets[n - 1]?.t ?? 0) + bs;
+  const markerX =
+    Number.isFinite(startT) && startT > firstB && startT < lastEnd
+      ? PAD_L + ((startT - firstB) / bs) * slot
+      : null;
+  // flip the label inside the plot when the marker sits near the right edge
+  const markerFlip = markerX != null && markerX > width - 90;
+
   // aim for ~5 x labels on desktop, fewer when narrow
   const labelEvery = Math.max(1, Math.round(n / Math.max(2, Math.min(5, width / 150))));
   const yTicks = yMax % 2 === 0 ? [0, yMax / 2, yMax] : [0, yMax];
@@ -216,6 +236,28 @@ export function FlowChart({
               </text>
             </g>
           ))}
+
+          {/* drawn under the bars so it never obscures data */}
+          {markerX != null ? (
+            <g className="flow-record-start">
+              <rect
+                className="flow-prehistory"
+                x={PAD_L}
+                y={PAD_T}
+                width={Math.max(0, markerX - PAD_L)}
+                height={plotH}
+              />
+              <line className="flow-record-line" x1={markerX} x2={markerX} y1={PAD_T} y2={baseY} />
+              <text
+                className="flow-record-label"
+                x={markerX + (markerFlip ? -6 : 6)}
+                y={PAD_T + 9}
+                textAnchor={markerFlip ? "end" : "start"}
+              >
+                record starts
+              </text>
+            </g>
+          ) : null}
 
           {buckets.map((b, i) => {
             const cx = PAD_L + slot * i + slot / 2;

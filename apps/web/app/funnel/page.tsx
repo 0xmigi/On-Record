@@ -160,6 +160,7 @@ export default async function FunnelPage({
             volume={funnel.volume}
             devnetVolume={network === "mainnet" ? funnel.volumeByNetwork?.devnet : undefined}
             networkLabel={network}
+            recordStartsAt={funnel.recordStartsAt}
             windowSecs={WINDOW_SECS[win]}
           />
         </section>

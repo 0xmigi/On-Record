@@ -379,6 +379,9 @@ export interface ApiFunnel {
     Network,
     { t: number; count: number; deploys: number; upgrades: number }[]
   >;
+  /** ISO — when this cluster's record actually begins (first row written).
+   *  Everything left of it is absent or backfilled, and undercounts. */
+  recordStartsAt?: string | null;
   identity?: { named: number; withRepo: number; opaque: number };
   lineage?: { novel: number; variant: number; fork: number };
   control?: { mutable: number; frozen: number; verified: number };
