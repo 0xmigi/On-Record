@@ -5,6 +5,7 @@ import { snapshotFunnel, todayKey } from "./funnel.js";
 import { sampleMomentum } from "./momentum.js";
 import { sweepClosed } from "./closed.js";
 import { reclassifyRecent } from "./reclassify.js";
+import { sweepRepoLinks } from "./repo-link.js";
 
 // ---------------------------------------------------------------------------
 // Scheduled work (SPEC §10): TVL refresh (6h), a live funnel snapshot (15m),
@@ -29,6 +30,12 @@ export function startCron(): void {
   // detect programs closed since deploy (rent reclaimed) — the churn tail
   every(Number(process.env.CLOSED_SWEEP_INTERVAL_MS ?? 15 * 60_000), "closed-sweep", async () => {
     await sweepClosed("mainnet");
+  });
+  // find the source repo for novel programs that declared none. Runs after the
+  // closed sweep has had its chance, so bot churn is already excluded; no-ops
+  // entirely without GITHUB_TOKEN.
+  every(Number(process.env.REPO_LINK_INTERVAL_MS ?? 3_600_000), "repo-link-sweep", async () => {
+    await sweepRepoLinks("mainnet");
   });
 }
 
