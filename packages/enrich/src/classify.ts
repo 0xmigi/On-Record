@@ -53,10 +53,19 @@ export async function classifyFingerprint(
   const arrival = opts.arrival !== false;
 
   // When this program is already in the corpus (a reclassify pass), only what
-  // the corpus held BEFORE its own first appearance may claim it as a copy or
-  // set its band — otherwise the original of a cloned family gets demoted to a
-  // clone of its own copycats as they accumulate. Null on the live path (the
+  // the corpus held BEFORE this BYTECODE first appeared may claim it as a copy
+  // or set its band — otherwise the original of a cloned family gets demoted to
+  // a clone of its own copycats as they accumulate. Null on the live path (the
   // corpus append happens after classification), where everything is prior.
+  //
+  // The cut is anchored to the bytecode, NOT to the program's own first
+  // sighting. A program is graded on its CURRENT binary, and for an upgraded
+  // program those two dates are far apart: anchoring on the program excluded
+  // every corpus row recorded between its original deploy and the code actually
+  // being graded. That produced rows badged "novel — no known relative" while
+  // carrying a 94–99%-similar neighbour (measured 2026-07-24: 66 of 69 such
+  // rows, 27 of them excluding a neighbour that genuinely predated the code).
+  // Same firstSeen/lastEvent confusion the radar's upgrade window had.
   const mine = await db
     .select({ at: sql<string | null>`min(${schema.fingerprintCorpus.seenAt})` })
     .from(schema.fingerprintCorpus)
@@ -64,6 +73,7 @@ export async function classifyFingerprint(
       and(
         eq(schema.fingerprintCorpus.network, network),
         eq(schema.fingerprintCorpus.programId, programId),
+        eq(schema.fingerprintCorpus.sha256, fp.sha256),
       ),
     );
   const firstSeen = mine[0]?.at ? new Date(mine[0].at) : null;
