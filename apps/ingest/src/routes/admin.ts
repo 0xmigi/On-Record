@@ -13,6 +13,7 @@ import {
 } from "@onrecord/core";
 import { addManualWatch } from "@onrecord/enrich";
 import { runVerifiedBackfill } from "../backfill-verified.js";
+import { linkOne, sweepRepoLinks } from "../repo-link.js";
 
 // ---------------------------------------------------------------------------
 // Operator levers (SPEC §5). The radar runs itself; these are the controls:
@@ -121,6 +122,43 @@ export async function registerAdminRoutes(app: FastifyInstance): Promise<void> {
         return { ok: true, started: true, max: max ?? "all", reenrich: !!reenrich };
       },
     );
+
+    // --- repo link: run the program-id code search now -----------------------
+    // The sweep is hourly and picks its own subjects, which makes "why is this
+    // program not linked?" unanswerable from outside. This runs it on demand —
+    // with a programId it forces that one program and reports what the row
+    // actually looks like, so a miss can be told apart from an exclusion.
+    admin.post<{ Body: { programId?: string } }>("/admin/repo-link", async (req, reply) => {
+      const programId = req.body?.programId;
+      // presence only — never echo the token itself
+      if (!env.GITHUB_TOKEN) {
+        return reply.code(400).send({ error: "GITHUB_TOKEN is not set on this service" });
+      }
+      if (!programId) {
+        const result = await sweepRepoLinks("mainnet");
+        await log("repo-link.sweep", null, null, result);
+        return { ok: true, ...result };
+      }
+      const rows = await db.select().from(schema.subjects).where(eq(schema.subjects.id, programId));
+      const row = rows[0];
+      if (!row) return reply.code(404).send({ error: "subject not found" });
+      const facts = (row.facts ?? {}) as Record<string, unknown>;
+      const link = await linkOne(programId, row.crate, "mainnet", true);
+      await log("repo-link.one", programId, facts.repoLink ?? null, link);
+      return {
+        ok: true,
+        link,
+        // the row as the sweep sees it — this is what explains a skip
+        subject: {
+          band: row.noveltyBand,
+          crate: row.crate,
+          repoUrl: row.repoUrl,
+          closedAt: facts.closedAt ?? null,
+          firstSeenAt: row.firstSeenAt,
+          previouslyCheckedAt: facts.repoLinkCheckedAt ?? null,
+        },
+      };
+    });
 
     // --- the record of the record ---------------------------------------------
     admin.get("/admin/log", async () => {

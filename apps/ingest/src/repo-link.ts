@@ -29,8 +29,36 @@ const LOOKBACK_DAYS = Number(process.env.REPO_LINK_LOOKBACK_DAYS ?? 14);
 /** Re-ask about a program with no repo this often, not every pass. */
 const RECHECK_HOURS = Number(process.env.REPO_LINK_RECHECK_HOURS ?? 72);
 
-export async function sweepRepoLinks(network: Network = "mainnet"): Promise<void> {
-  if (!env.GITHUB_TOKEN) return; // unset = feature off, no noise
+export interface SweepResult {
+  checked: number;
+  linked: number;
+  /** why nothing happened, when nothing happened */
+  skipped?: "no-token" | "no-eligible-rows";
+}
+
+/** Search for one program's repo and record the outcome — hit or miss. Used by
+ *  the sweep and by the admin lever, which forces a single program. */
+export async function linkOne(
+  programId: string,
+  crate: string | null,
+  network: Network = "mainnet",
+  bustCache = false,
+) {
+  const link = await searchRepoByProgramId(programId, { crateName: crate, bustCache });
+  const patch: Record<string, unknown> = { repoLinkCheckedAt: new Date().toISOString() };
+  if (link) patch.repoLink = link;
+  await db
+    .update(schema.subjects)
+    .set({
+      facts: sql`coalesce(${schema.subjects.facts}, '{}'::jsonb) || ${JSON.stringify(patch)}::jsonb`,
+      updatedAt: new Date(),
+    })
+    .where(and(eq(schema.subjects.id, programId), eq(schema.subjects.network, network)));
+  return link;
+}
+
+export async function sweepRepoLinks(network: Network = "mainnet"): Promise<SweepResult> {
+  if (!env.GITHUB_TOKEN) return { checked: 0, linked: 0, skipped: "no-token" };
 
   const rows = await db
     .select({ id: schema.subjects.id, crate: schema.subjects.crate })
@@ -71,26 +99,15 @@ export async function sweepRepoLinks(network: Network = "mainnet"): Promise<void
     )
     .limit(SWEEP_MAX);
 
-  if (!rows.length) return;
+  if (!rows.length) return { checked: 0, linked: 0, skipped: "no-eligible-rows" };
   let linked = 0;
 
   for (const row of rows) {
     // subjects.crate is the workspace crate recovered from panic paths — the
     // same string the reverse lookup confirms against, so no bytecode refetch
-    const link = await searchRepoByProgramId(row.id, { crateName: row.crate });
-    const patch: Record<string, unknown> = { repoLinkCheckedAt: new Date().toISOString() };
-    if (link) {
-      patch.repoLink = link;
-      linked++;
-    }
-    await db
-      .update(schema.subjects)
-      .set({
-        facts: sql`coalesce(${schema.subjects.facts}, '{}'::jsonb) || ${JSON.stringify(patch)}::jsonb`,
-        updatedAt: new Date(),
-      })
-      .where(and(eq(schema.subjects.id, row.id), eq(schema.subjects.network, network)));
+    if (await linkOne(row.id, row.crate, network)) linked++;
   }
 
   logger.info({ network, checked: rows.length, linked }, "repo-link sweep");
+  return { checked: rows.length, linked };
 }
