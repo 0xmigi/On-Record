@@ -39,7 +39,12 @@ export async function sweepRepoLinks(network: Network = "mainnet"): Promise<void
       and(
         eq(schema.subjects.kind, "program"),
         eq(schema.subjects.network, network),
-        eq(schema.subjects.noveltyBand, "novel"),
+        // Everything but clones. `novel` alone was too tight: a program that
+        // resembles something in the corpus is still somebody's real project —
+        // Shyft, and both corsur programs, all land in `variant`, and those are
+        // precisely the ones with a public repo. Clones are the factory output
+        // this is pointless for.
+        sql`${schema.subjects.noveltyBand} in ('novel', 'variant')`,
         // nobody declared one: no verified build, no security.txt, no URL in
         // the binary — upsertSubject collapses all three into repoUrl
         isNull(schema.subjects.repoUrl),
