@@ -372,7 +372,13 @@ export interface ApiFunnel {
   byFramework?: Record<string, number>;
   byIntegration?: Record<string, number>;
   byCapability?: Record<string, number>;
-  volume?: { t: number; count: number }[]; // 30-day hourly deploy/upgrade volume
+  volume?: { t: number; count: number }[]; // 30-day hourly deploy/upgrade volume, this cluster
+  /** the same 30-day series for BOTH clusters, so the chart can put mainnet and
+   *  devnet volume side by side while the rest of the page stays single-cluster */
+  volumeByNetwork?: Record<
+    Network,
+    { t: number; count: number; deploys: number; upgrades: number }[]
+  >;
   identity?: { named: number; withRepo: number; opaque: number };
   lineage?: { novel: number; variant: number; fork: number };
   control?: { mutable: number; frozen: number; verified: number };

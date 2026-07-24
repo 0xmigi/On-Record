@@ -227,32 +227,37 @@ export async function computeWindowFunnel(
     })
     .sort((a, b) => b.current - a.current);
 
-  // 30-day hourly deploy/upgrade volume for the chart
+  // 30-day hourly deploy/upgrade volume for the chart. Grouped BY NETWORK
+  // rather than filtered to one: the chart plots mainnet and devnet side by
+  // side so the two clusters' volumes are comparable at a glance, while every
+  // other panel on the page stays scoped to `network`. One scan serves both.
   const volStart = new Date(now - 30 * 24 * HOUR);
   const bucket = sql<string>`to_char(date_trunc('hour', ${eventTime}), 'YYYY-MM-DD"T"HH24:00:00"Z"')`;
   const volRows = await db
     .select({
       bucket,
+      network: schema.events.network,
       n: sql<number>`count(*)`,
       deploys: sql<number>`count(*) filter (where ${schema.events.type} = 'deploy')`,
       upgrades: sql<number>`count(*) filter (where ${schema.events.type} = 'upgrade')`,
     })
     .from(schema.events)
-    .where(
-      and(
-        eq(schema.events.network, network),
-        inArray(schema.events.type, ["deploy", "upgrade"]),
-        eventTimeGte(volStart),
-      ),
-    )
-    .groupBy(bucket)
+    .where(and(inArray(schema.events.type, ["deploy", "upgrade"]), eventTimeGte(volStart)))
+    .groupBy(bucket, schema.events.network)
     .orderBy(bucket);
-  const volume = volRows.map((r) => ({
+  const toPoint = (r: (typeof volRows)[number]) => ({
     t: Math.floor(new Date(r.bucket).getTime() / 1000),
     count: Number(r.n),
     deploys: Number(r.deploys),
     upgrades: Number(r.upgrades),
-  }));
+  });
+  // `volume` keeps its meaning — this request's cluster — so nothing reading it
+  // changes; `volumeByNetwork` is the explicit cross-cluster pair.
+  const volume = volRows.filter((r) => r.network === network).map(toPoint);
+  const volumeByNetwork = {
+    mainnet: volRows.filter((r) => r.network === "mainnet").map(toPoint),
+    devnet: volRows.filter((r) => r.network === "devnet").map(toPoint),
+  };
 
   const raw = deploys + upgrades;
 
@@ -273,6 +278,7 @@ export async function computeWindowFunnel(
     byIntegration,
     byCapability,
     volume,
+    volumeByNetwork,
     identity,
     lineage,
     control,

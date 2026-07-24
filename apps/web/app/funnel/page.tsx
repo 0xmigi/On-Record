@@ -1,10 +1,11 @@
 import type { Metadata } from "next";
+import { cookies } from "next/headers";
 import Link from "next/link";
 import { Mark } from "@/components/Mark";
 import { SectionHeader } from "@/components/SectionHeader";
 import { FlowChart } from "@/components/FlowChart";
 import { BotExplainer } from "@/components/BotExplainer";
-import { CATEGORY_LABELS, fetchFunnel, type Category } from "@/lib/api";
+import { CATEGORY_LABELS, fetchFunnel, type Category, type Network } from "@/lib/api";
 import { groupNum, utcStamp } from "@/lib/format";
 
 const WINDOW_KEYS = ["24h", "48h", "7d", "30d"] as const;
@@ -70,13 +71,26 @@ function Breakdown({
 export default async function FunnelPage({
   searchParams,
 }: {
-  searchParams: Promise<{ window?: string }>;
+  searchParams: Promise<{ window?: string; network?: string }>;
 }) {
   const sp = await searchParams;
   const win: WindowKey = (WINDOW_KEYS as readonly string[]).includes(sp.window ?? "")
     ? (sp.window as WindowKey)
     : "48h";
-  const funnel = await fetchFunnel(win);
+  // Cluster is sticky the same way the radar's is: explicit ?network= wins, else
+  // the cookie the toggle persists, else mainnet. This page used to call
+  // fetchFunnel(win) with no network at all, so every panel — volume chart
+  // included — silently reported mainnet even with the app toggled to devnet.
+  const cookieNetwork = (await cookies()).get("network")?.value;
+  const network: Network =
+    sp.network === "devnet"
+      ? "devnet"
+      : sp.network === "mainnet"
+        ? "mainnet"
+        : cookieNetwork === "devnet"
+          ? "devnet"
+          : "mainnet";
+  const funnel = await fetchFunnel(win, network);
 
   if (!funnel) {
     return (
@@ -104,7 +118,7 @@ export default async function FunnelPage({
         {WINDOW_KEYS.map((k) => (
           <Link
             key={k}
-            href={`/funnel?window=${k}`}
+            href={`/funnel?window=${k}${network === "devnet" ? "&network=devnet" : ""}`}
             className={`chart-win-btn${win === k ? " active" : ""}`}
             aria-current={win === k ? "page" : undefined}
           >
@@ -115,6 +129,10 @@ export default async function FunnelPage({
 
       <div className="stream-status">
         <span className="stream-dot" aria-hidden="true" />
+        {/* every panel here is one cluster's data — say which, so the numbers
+            are never read as a mainnet+devnet total */}
+        <span className="stream-status-strong">{network}</span>
+        <span className="stream-sep">·</span>
         <span className="stream-status-strong">last {aggH}h</span>
         <span className="stream-sep">·</span>
         <span>{groupNum(raw)} programs</span>
@@ -134,9 +152,16 @@ export default async function FunnelPage({
         <section className="stat-card stat-card-wide">
           <SectionHeader
             title="Deploys over time"
-            info="New deploys and upgrades, stacked, per time bucket. The window buttons above drive the whole page. Older buckets undercount — the loader only stores each program's last deploy slot."
+            info="New deploys and upgrades, stacked, per time bucket. This chart is the one panel that shows both clusters — mainnet solid, devnet faded, on a shared scale — so their volumes are comparable; every other panel on this page is the selected cluster only. The window buttons above drive the whole page. Older buckets undercount — the loader only stores each program's last deploy slot."
           />
-          <FlowChart volume={funnel.volume} windowSecs={WINDOW_SECS[win]} />
+          {/* the comparison is mainnet-vs-devnet, so only pair them up while
+              viewing mainnet — in devnet mode devnet is already the main series */}
+          <FlowChart
+            volume={funnel.volume}
+            devnetVolume={network === "mainnet" ? funnel.volumeByNetwork?.devnet : undefined}
+            networkLabel={network}
+            windowSecs={WINDOW_SECS[win]}
+          />
         </section>
       ) : null}
 

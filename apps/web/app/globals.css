@@ -2710,6 +2710,28 @@ a.copy-addr-text:hover {
 .flow-swatch-upgrade {
   background: var(--chart-upgrade);
 }
+/* devnet keeps the SAME hues — hue means deploy-vs-upgrade throughout — and is
+   separated by weight instead, so the pairing reads as one bucket, not four
+   unrelated series. Pre-launch data should sit behind mainnet, not compete. */
+.flow-swatch-deploy-devnet {
+  background: var(--chart-deploy);
+  opacity: 0.42;
+}
+.flow-swatch-upgrade-devnet {
+  background: var(--chart-upgrade);
+  opacity: 0.42;
+}
+.flow-legend-sep {
+  color: var(--ink-faint);
+}
+.flow-tip-net {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+  margin-top: 2px;
+}
 .flow-plot {
   position: relative;
 }
@@ -2721,6 +2743,14 @@ a.copy-addr-text:hover {
 }
 .flow-bar-upgrade {
   fill: var(--chart-upgrade);
+}
+.flow-bar-deploy-devnet {
+  fill: var(--chart-deploy);
+  opacity: 0.42;
+}
+.flow-bar-upgrade-devnet {
+  fill: var(--chart-upgrade);
+  opacity: 0.42;
 }
 .flow-grid {
   stroke: var(--border);
