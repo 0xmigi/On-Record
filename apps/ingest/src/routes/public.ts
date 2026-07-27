@@ -385,7 +385,10 @@ export function registerPublicRoutes(app: FastifyInstance): void {
     // these dates sit on the dossier's lineage rail next to firstDeployAt for
     // the subject itself, and firstSeenAt dated a year-old program to the day
     // the poller noticed it
-    const memberDeployedAt = sql<Date | null>`coalesce(${schema.subjects.firstDeployAt}, ${schema.subjects.firstSeenAt})`;
+    // a raw fragment skips drizzle's per-column decoding, so this comes back as
+    // whatever the driver hands over (a string, not a Date) — normalise below
+    // rather than trusting either shape
+    const memberDeployedAt = sql<string | Date | null>`coalesce(${schema.subjects.firstDeployAt}, ${schema.subjects.firstSeenAt})`;
     const members = await db
       .select({
         programId: schema.subjects.id,
@@ -406,7 +409,7 @@ export function registerPublicRoutes(app: FastifyInstance): void {
       members: members.map((m) => ({
         programId: m.programId,
         name: m.name,
-        deployedAt: m.deployedAt?.toISOString() ?? null,
+        deployedAt: m.deployedAt ? new Date(m.deployedAt).toISOString() : null,
         closed: m.closedAt != null,
       })),
     };
