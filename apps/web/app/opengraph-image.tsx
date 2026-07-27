@@ -7,7 +7,9 @@ import { ORB_RING, MARK_CENTRE, MARK_DOT_R } from "@/components/Mark";
 // Without this file the site had no og:image at all, so X rendered the small
 // summary tile with a placeholder icon — the link looked like a broken page.
 // Deliberately data-free: an unfurl that depends on the API would show a
-// half-empty card the moment the backend hiccups.
+// half-empty card the moment the backend hiccups. Kept to three elements —
+// the platform already prints og:description and the domain underneath, so
+// repeating them on the card is noise the reader has to skip twice.
 // ---------------------------------------------------------------------------
 
 export const size = { width: 1200, height: 630 };
@@ -65,7 +67,8 @@ export default async function OgImage() {
               <div
                 style={{
                   display: "flex",
-                  fontSize: 62,
+                  whiteSpace: "nowrap",
+                  fontSize: 64,
                   fontWeight: 600,
                   lineHeight: 1.15,
                   letterSpacing: -1,
@@ -77,7 +80,8 @@ export default async function OgImage() {
               <div
                 style={{
                   display: "flex",
-                  fontSize: 62,
+                  whiteSpace: "nowrap",
+                  fontSize: 64,
                   fontWeight: 600,
                   lineHeight: 1.15,
                   letterSpacing: -1,
@@ -86,24 +90,11 @@ export default async function OgImage() {
               >
                 radar for Solana
               </div>
-              <div
-                style={{
-                  display: "flex",
-                  marginTop: 26,
-                  fontSize: 25,
-                  lineHeight: 1.5,
-                  color: OG.inkSoft,
-                  maxWidth: 620,
-                }}
-              >
-                Every program deployed or upgraded on mainnet. Clones stripped, what&apos;s
-                left ranked by novelty.
-              </div>
             </div>
 
             {/* the mark at a size where the ring's segments actually read */}
             <div style={{ display: "flex", flexShrink: 0 }}>
-              <svg width={232} height={232} viewBox="0 0 329 329">
+              <svg width={236} height={236} viewBox="0 0 329 329">
                 <path d={ORB_RING} fill={OG.accent} />
                 <circle cx={MARK_CENTRE} cy={MARK_CENTRE} r={MARK_DOT_R} fill={OG.accent} />
               </svg>
@@ -121,7 +112,6 @@ export default async function OgImage() {
             }}
           >
             <span>STRIP THE COPY-PASTE. RANK WHAT&apos;S NEW.</span>
-            <span>on-record.azuolas.xyz</span>
           </div>
         </div>
       </div>
