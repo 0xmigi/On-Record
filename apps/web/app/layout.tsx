@@ -32,6 +32,9 @@ export const metadata: Metadata = {
     "On Record watches every program deployed or upgraded on Solana mainnet, strips out the copy-paste clones, and ranks what's left by a novelty score.",
   // og:site_name — Discord/Slack show this above the title; without it the card reads anonymous
   openGraph: { siteName: "On Record", type: "website" },
+  // X defaults to the small "summary" tile, which showed a placeholder icon
+  // instead of the card. Set here so every route inherits it, not just dossiers.
+  twitter: { card: "summary_large_image" },
 };
 
 export default function RootLayout({

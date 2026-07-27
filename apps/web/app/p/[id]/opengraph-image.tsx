@@ -1,10 +1,9 @@
-import { readFile } from "node:fs/promises";
-import { join } from "node:path";
 import { ImageResponse } from "next/og";
 import { deriveSignals, type Signal } from "@/lib/signals";
 import { fetchProgram } from "@/lib/api";
 import { formatBytes, truncateAddress } from "@/lib/format";
 import { ORB_RING, MARK_CENTRE, MARK_DOT_R } from "@/components/Mark";
+import { loadOgFont } from "@/lib/og";
 
 // ---------------------------------------------------------------------------
 // Share card: og:image for a program dossier. Name + facts on the left, the
@@ -34,22 +33,6 @@ function pentagonPoints(signals: Signal[], r: number, c: number, scaleFor: (s: S
       return `${(c + r * k * Math.cos(a)).toFixed(1)},${(c + r * k * Math.sin(a)).toFixed(1)}`;
     })
     .join(" ");
-}
-
-/** cwd differs between monorepo dev (repo root) and Vercel (apps/web) — try both */
-async function loadFont(file: string): Promise<Buffer> {
-  const candidates = [
-    join(process.cwd(), "assets/og", file),
-    join(process.cwd(), "apps/web/assets/og", file),
-  ];
-  for (const p of candidates) {
-    try {
-      return await readFile(p);
-    } catch {
-      /* try next */
-    }
-  }
-  throw new Error(`og font not found: ${file}`);
 }
 
 /** Best icon URL for a program: its developer-declared on-chain logo, else a
@@ -93,8 +76,8 @@ export default async function OgImage({ params }: { params: Promise<{ id: string
   const { id } = await params;
   const [program, fontRegular, fontSemiBold] = await Promise.all([
     fetchProgram(id),
-    loadFont("IBMPlexMono-Regular.ttf"),
-    loadFont("IBMPlexMono-SemiBold.ttf"),
+    loadOgFont("IBMPlexMono-Regular.ttf"),
+    loadOgFont("IBMPlexMono-SemiBold.ttf"),
   ]);
 
   const fonts = [
