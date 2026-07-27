@@ -112,7 +112,11 @@ export function computeInterest(
   // as a fork (mild discount, other signals can carry it); a 15-a-day family
   // is a factory regardless of whether today's instance is still alive.
   //   2 members → ×0.59 · 5 → ×0.42 · 15 → ×0.30 · 50 → ×0.23
-  if (row.bucketId && familySize >= 2) penalty = 1 / (1 + Math.log2(familySize));
+  // Not gated on bucketId: that was a leftover from when the bucket was the
+  // only family we could see, and it let the worst case through — a program
+  // that recompiles enough to land in NO bucket kept a clean ×1 while its
+  // crate said six siblings (profit_guard, scored 0.1646 on a family of 6).
+  if (familySize >= 2) penalty = 1 / (1 + Math.log2(familySize));
   if (row.noveltyBand === "clone") penalty = Math.min(penalty, 0.2);
   if (facts.closedAt) penalty = Math.min(penalty, 0.05);
   const isSniper =
