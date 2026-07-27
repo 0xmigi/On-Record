@@ -1,5 +1,5 @@
-import { eq, sql } from "drizzle-orm";
-import { db, schema } from "@onrecord/core";
+import { and, eq, ne, sql } from "drizzle-orm";
+import { db, schema, isSourceRelative, pathOverlap, sharedPathCount } from "@onrecord/core";
 
 // ---------------------------------------------------------------------------
 // Interest score v0.1 — the surfacing methodology (VISION §5a), made concrete.
@@ -20,6 +20,9 @@ import { db, schema } from "@onrecord/core";
 //
 //   × 0.05 closed (rent reclaimed — the churn tail)
 //   × 0.20 byte-clone (recycled code; sniper-flavored clones × 0.05)
+//   ÷ family — 1/(1+log₂ n), where n is the LARGER of the copy bucket and the
+//     same-crate source family (see sourceFamilySize: a factory that recompiles
+//     between deploys is invisible to the bucket and obvious to the crate)
 //
 // Stored on subjects.noveltyScore (the column the radar index already covers —
 // it held the old placeholder blend, which this replaces) + facts.interest
@@ -45,10 +48,17 @@ export interface Interest {
   components: Record<string, number>;
   penalty: number;
   sizePrior: number;
+  /** what the churn discount was computed from, and which evidence set it */
+  familySize: number;
+  familyBasis: "none" | "bucket" | "source";
   computedAt: string;
 }
 
-export function computeInterest(row: SubjectRow, familySize = 1): Interest {
+export function computeInterest(
+  row: SubjectRow,
+  familySize = 1,
+  familyBasis: Interest["familyBasis"] = familySize > 1 ? "bucket" : "none",
+): Interest {
   const facts = (row.facts ?? {}) as InterestFacts;
 
   const txns24h = facts.momentum?.txns24h ?? row.earlySigners ?? 0;
@@ -127,24 +137,70 @@ export function computeInterest(row: SubjectRow, familySize = 1): Interest {
     components,
     penalty,
     sizePrior,
+    familySize,
+    familyBasis,
     computedAt: new Date().toISOString(),
   };
 }
 
-/** Recompute and persist a program's interest score (index column + facts). */
-export async function refreshInterest(programId: string): Promise<Interest | null> {
+/** How many programs share this one's SOURCE — same crate, with path evidence
+ *  (a shared crate name alone proves nothing; isSourceRelative decides).
+ *
+ *  The bytecode bucket is a weak proxy for family. A factory that recompiles
+ *  between deploys lands in a fresh, tiny bucket every time and collects only
+ *  the mild 2-member discount: smart_arb ran 20 program ids through 11 buckets
+ *  in 16 days, each new id taking the top of the radar on the strength of its
+ *  bot traffic while its 19 siblings sat closed. The crate and its file tree
+ *  survive the recompile, so they see the family the bucket can't. */
+async function sourceFamilySize(row: SubjectRow): Promise<number> {
+  if (!row.crate) return 1;
+  const candidates = await db
+    .select({ crate: schema.subjects.crate, sourcePaths: schema.subjects.sourcePaths })
+    .from(schema.subjects)
+    .where(
+      and(
+        eq(schema.subjects.network, row.network),
+        eq(schema.subjects.crate, row.crate),
+        ne(schema.subjects.id, row.id),
+      ),
+    )
+    .limit(500);
+  const mine = row.sourcePaths ?? [];
+  let n = 1; // this program
+  for (const c of candidates) {
+    const theirs = c.sourcePaths ?? [];
+    if (isSourceRelative(row.crate, c.crate, sharedPathCount(mine, theirs), pathOverlap(mine, theirs))) {
+      n += 1;
+    }
+  }
+  return n;
+}
+
+/** Recompute a program's interest score (index column + facts).
+ *  `persist: false` computes without writing — for previewing a scorer change. */
+export async function refreshInterest(
+  programId: string,
+  opts: { persist?: boolean } = {},
+): Promise<Interest | null> {
   const rows = await db.select().from(schema.subjects).where(eq(schema.subjects.id, programId));
   const row = rows[0];
   if (!row) return null;
-  let familySize = 1;
+  let bucketSize = 1;
   if (row.bucketId) {
     const bucket = await db
       .select({ n: schema.copyBuckets.memberCount })
       .from(schema.copyBuckets)
       .where(eq(schema.copyBuckets.id, row.bucketId));
-    familySize = bucket[0]?.n ?? 1;
+    bucketSize = bucket[0]?.n ?? 1;
   }
-  const interest = computeInterest(row, familySize);
+  // whichever family is bigger is the honest one — a recompile hides from the
+  // bucket, a rename hides from the crate, and neither should buy a clean slate
+  const srcSize = await sourceFamilySize(row);
+  const familySize = Math.max(bucketSize, srcSize);
+  const basis: Interest["familyBasis"] =
+    familySize <= 1 ? "none" : srcSize > bucketSize ? "source" : "bucket";
+  const interest = computeInterest(row, familySize, basis);
+  if (opts.persist === false) return interest;
   await db
     .update(schema.subjects)
     .set({

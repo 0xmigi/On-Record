@@ -13,7 +13,8 @@
     "dev:live": "tsx watch src/live.ts",
     "start": "node dist/server.js",
     "start:worker": "node dist/worker.js",
-    "start:live": "node dist/live.js"
+    "start:live": "node dist/live.js",
+    "rescore": "INLINE_PIPELINE=1 tsx src/rescore.ts"
   },
   "dependencies": {
     "@fastify/basic-auth": "^6.0.1",
