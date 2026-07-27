@@ -4,6 +4,7 @@ import { Mark } from "@/components/Mark";
 import { ProgramRow } from "@/components/ProgramRow";
 import { RadarFilters } from "@/components/RadarFilters";
 import { SectionHeader } from "@/components/SectionHeader";
+import { Chevron } from "@/components/Chevron";
 import {
   fetchFunnel,
   fetchRadar,
@@ -154,9 +155,7 @@ function RecycledSection({
   return (
     <details className="recycled-section" open={open}>
       <summary className="recycled-summary">
-        <span className="recycled-chev" aria-hidden="true">
-          ⌄
-        </span>
+        <Chevron className="recycled-chev" />
         <span
           title="Bots and factories redeploy the same binary under new addresses — each copy teaches nothing the original doesn't. One entry per code."
         >
@@ -188,9 +187,7 @@ function ClosedSection({
   return (
     <details className="recycled-section closed-section">
       <summary className="recycled-summary">
-        <span className="recycled-chev" aria-hidden="true">
-          ⌄
-        </span>
+        <Chevron className="recycled-chev" />
         <span
           title="Closing deallocates the code and refunds the rent — deployed-then-closed same day means disposable by design, usually a bot cashing out. The code can never run again."
         >

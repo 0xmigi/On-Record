@@ -19,6 +19,7 @@ import { SectionExplainer } from "@/components/SectionExplainer";
 import { BotExplainer } from "@/components/BotExplainer";
 import { SectionHeader } from "@/components/SectionHeader";
 import { SaveButton } from "@/components/SaveButton";
+import { Lineage } from "@/components/Lineage";
 import {
   CATEGORY_LABELS,
   fetchCluster,
@@ -46,11 +47,6 @@ const EVENT_LABELS: Record<ApiRawEvent["type"], string> = {
   close: "CLOSE",
 };
 
-// absolute short date for lineage timestamps (server-rendered, locale-stable)
-function fmtDay(iso: string): string {
-  return new Date(iso).toLocaleDateString("en-US", { year: "numeric", month: "short", day: "numeric" });
-}
-
 // Size bar fill: log scale across the range programs actually occupy (~8 KB to
 // ~4 MiB), NOT the 10 MiB account ceiling almost nothing reaches. This keeps the
 // fill aligned with the lean/moderate/heavy/extra-heavy bands; true whales (4 MiB+)
@@ -61,14 +57,6 @@ function sizeFillPct(bytes: number): number {
   const p = (Math.log10(bytes) - FLOOR) / (CEIL - FLOOR);
   return Math.max(3, Math.min(100, p * 100));
 }
-
-// how a mainnet program was tied back to its devnet sighting
-const INCUBATION_MATCH: Record<"sha256" | "tlsh" | "authority" | "program_id", string> = {
-  sha256: "identical bytecode",
-  tlsh: "near-identical bytecode",
-  authority: "same upgrade authority",
-  program_id: "same program address",
-};
 
 export async function generateMetadata({
   params,
@@ -215,30 +203,13 @@ export default async function ProgramDossierPage({
   // the code family: other deploys of (nearly) this bytecode
   const cluster = program.bucketId ? await fetchCluster(program.bucketId) : null;
   const family = cluster && cluster.members.length > 1 ? cluster : null;
-  const familyOldest = family ? family.members[family.members.length - 1] : null;
-  const familyNewest = family ? family.members[0] : null;
-  const familyClosed = family ? family.members.filter((m) => m.closed).length : 0;
 
-  // one timeline: this program's own loader events + sibling deploys of the
-  // same code, merged newest-first
-  type TimelineRow =
-    | { kind: "event"; t: number; ev: ApiProgramDetail["events"][number] }
-    | { kind: "sibling"; t: number; m: NonNullable<typeof family>["members"][number] };
-  const timeline: TimelineRow[] = [
-    ...program.events.map((ev) => ({
-      kind: "event" as const,
-      t: ev.blockTime ? Date.parse(ev.blockTime) : 0,
-      ev,
-    })),
-    ...(family?.members ?? [])
-      .filter((m) => m.programId !== program.id)
-      .slice(0, 20)
-      .map((m) => ({
-        kind: "sibling" as const,
-        t: m.deployedAt ? Date.parse(m.deployedAt) : 0,
-        m,
-      })),
-  ].sort((a, b) => b.t - a.t);
+  // The record is an event log: what happened to THIS program id, with a
+  // receipt for each. Sibling deploys are other programs existing, not events
+  // here — they belong in Lineage, which owns "related programs".
+  const timeline = [...program.events].sort(
+    (a, b) => (b.blockTime ? Date.parse(b.blockTime) : 0) - (a.blockTime ? Date.parse(a.blockTime) : 0),
+  );
 
   const mutability =
     program.authorityClass === "none"
@@ -475,150 +446,7 @@ export default async function ProgramDossierPage({
   const compositionPanel = (
     <>
       <SectionHeader title="Lineage" info="Is it new code, or derived from something known?" />
-      <div className="facts-panel">
-        {program.incubation ? (
-          // Only a same-address or same-authority match is this program's OWN
-          // devnet history. A sha256/tlsh hit just means code that LOOKS like
-          // this was on devnet first — which for a fork is somebody else's
-          // history entirely, and claiming it as incubation invents provenance
-          // (a 23h-old Phoenix clone read "3.8 days on devnet before mainnet").
-          (() => {
-            const own =
-              program.incubation.matchedOn === "program_id" ||
-              program.incubation.matchedOn === "authority";
-            return (
-          <Row label={own ? "Devnet origin" : "Seen on devnet"}>
-            <span
-              className="incubation-line"
-              title={`first seen on devnet ${fmtDay(program.incubation.firstDevnetAt)}${program.incubation.lastDevnetAt ? `, last ${fmtDay(program.incubation.lastDevnetAt)}` : ""} · matched on ${INCUBATION_MATCH[program.incubation.matchedOn]}`}
-            >
-              <strong>
-                {program.incubation.incubationDays >= 1
-                  ? `${program.incubation.incubationDays} day${program.incubation.incubationDays === 1 ? "" : "s"}`
-                  : "under a day"}
-              </strong>{" "}
-              {own ? "on devnet before mainnet" : "earlier, matching code on devnet"}
-              <span className="cell-dim">
-                {" · "}
-                {program.incubation.devnetDeploysTotal != null &&
-                program.incubation.devnetDeploysTotal > program.incubation.devnetIterations
-                  ? `${program.incubation.devnetIterations} of ${program.incubation.devnetDeploysTotal} deploys pre-launch`
-                  : `${program.incubation.devnetIterations} deploy${program.incubation.devnetIterations === 1 ? "" : "s"} pre-launch`}
-              </span>
-            </span>
-            {program.incubation.devnetProgramId ? (
-              <>
-                <span className="cell-dim">{" · "}</span>
-                {program.incubation.matchedOn === "program_id" ? (
-                  <Ext
-                    href={`https://explorer.solana.com/address/${program.incubation.devnetProgramId}?cluster=devnet`}
-                    text="same address on devnet"
-                  />
-                ) : (
-                  <Link href={`/p/${program.incubation.devnetProgramId}`} className="neighbor-addr">
-                    devnet {truncateAddress(program.incubation.devnetProgramId)}
-                  </Link>
-                )}
-              </>
-            ) : null}
-          </Row>
-            );
-          })()
-        ) : null}
-        {program.codeMatch ? (
-          <Row label="Exact code match">
-            <Link href={`/p/${program.codeMatch.programId}`} className="neighbor-addr">
-              {truncateAddress(program.codeMatch.programId)}
-            </Link>
-            <span className="cell-dim"> · byte-identical to </span>
-            <Ext href={program.codeMatch.repository} text={shortUrl(program.codeMatch.repository)} />
-          </Row>
-        ) : null}
-        <Row label="Closest relative">
-          {program.nearest ? (
-            ((n) => {
-              const simPct = Math.round(n.similarity * 100);
-              const tt =
-                "Structural similarity of the compiled bytecode (TLSH fuzzy hash) — a lead, not proof of copied code. Predecessor / fork is inferred from deploy order and similarity, not confirmed derivation.";
-              // a pack of similar-shaped programs → no single source to trace to
-              if (n.peersWithin5 != null && n.peersWithin5 >= 6) {
-                return (
-                  <span className="cell-dim" title={tt}>
-                    no distinct source · {n.peersWithin5} lookalikes at ~{simPct}%
-                  </span>
-                );
-              }
-              const self = program.firstDeployAt ?? program.deployedAt;
-              const older =
-                self && n.deployedAt ? new Date(n.deployedAt).getTime() < new Date(self).getTime() : null;
-              return (
-                <span title={tt}>
-                  {/* Always link to the relative's dossier and show its address:
-                      the name alone is spoofable (a fork inherits it from copied
-                      bytecode), so the address is what tells the real program
-                      apart from a lookalike sharing its name. Reference-corpus
-                      entries are tracked subjects too, so they link like any
-                      other. */}
-                  {n.id ? (
-                    <Link href={`/p/${n.id}`} className="neighbor-addr">
-                      {n.name ? (
-                        <>
-                          {n.name}{" "}
-                          <span className="cell-dim">{truncateAddress(n.id)}</span>
-                        </>
-                      ) : (
-                        truncateAddress(n.id)
-                      )}
-                    </Link>
-                  ) : (
-                    <span className="dossier-name">{n.name ?? "a peer deploy"}</span>
-                  )}
-                  <span className="cell-dim">
-                    {" · "}
-                    {simPct}% structural match
-                  </span>
-                  {older != null ? (
-                    <span className="rel-tag">
-                      {older ? "predecessor" : "fork"}
-                      {n.deployedAt ? ` · ${relativeTime(n.deployedAt)}` : ""}
-                    </span>
-                  ) : null}
-                </span>
-              );
-            })(program.nearest)
-          ) : (
-            <span className="cell-dim">no close match — novel code</span>
-          )}
-        </Row>
-        {/* Shared source, which bytecode distance cannot see. tail.trade is a
-            build of Drift's crate — 88 shared files — at TLSH distance 182, so
-            "closest relative" above reports novel code. The crate name and file
-            tree survive every build in the panic paths, so they answer "same
-            source?" where the fuzzy hash answers "same binary?". */}
-        {program.sourceKin?.length ? (
-          <Row label="Same source">
-            <span
-              title="Recovered from Rust panic paths baked into the binary: these programs were compiled from a crate of the same name, and share this many of their own source files. Shared code, not necessarily an affiliated team."
-            >
-              <span className="cell-dim">compiled from the </span>
-              <code>{program.sourceKin[0]!.crate}</code>
-              <span className="cell-dim"> crate · </span>
-              {program.sourceKin.slice(0, 3).map((k, i) => (
-                <span key={k.programId}>
-                  {i > 0 ? <span className="cell-dim">, </span> : null}
-                  <Link href={`/p/${k.programId}`} className="neighbor-addr">
-                    {k.name ?? truncateAddress(k.programId)}
-                  </Link>
-                  <span className="cell-dim"> ({k.sharedFiles} shared files)</span>
-                </span>
-              ))}
-              {program.sourceKin.length > 3 ? (
-                <span className="cell-dim"> +{program.sourceKin.length - 3} more</span>
-              ) : null}
-            </span>
-          </Row>
-        ) : null}
-      </div>
+      <Lineage program={program} family={family} />
 
       <SectionHeader
         title="Framework"
@@ -864,37 +692,11 @@ export default async function ProgramDossierPage({
           )}
         </Row>
       </div>
-      {family ? (
-        <>
-          <SectionHeader
-            title="Code family"
-            info="Other deploys of (nearly) this exact bytecode — same code under fresh ids. The deploy cadence IS the signal: a factory redeploys and closes; a fork ships once. Sibling deploys appear in the record below."
-          />
-          <div className="facts-panel">
-            <Row label="First seen">
-              {familyOldest?.deployedAt ? relativeTime(familyOldest.deployedAt) : "—"}
-              <span className="cell-dim">
-                {" "}· {family.members.length} deploys tracked
-                {family.memberCount > family.members.length
-                  ? ` (${family.memberCount} recorded)`
-                  : ""}{" "}
-                · newest {familyNewest?.deployedAt ? relativeTime(familyNewest.deployedAt) : "—"}
-              </span>
-            </Row>
-            {familyClosed > 0 ? (
-              <Row label="Already closed">
-                {familyClosed} of {family.members.length}
-                <span className="cell-dim"> · deployed, run, rent reclaimed</span>
-              </Row>
-            ) : null}
-          </div>
-        </>
-      ) : null}
       {timeline.length > 0 ? (
         <>
           <SectionHeader
             title="The record"
-            info="One timeline: this program's loader events, plus every sibling deploy of the same code."
+            info="Every loader event on this program id — deploy, upgrade, authority change, close — with the transaction that proves it. Related programs live under Lineage."
           />
           <div className="table-scroll">
             <table className="record-table">
@@ -907,58 +709,31 @@ export default async function ProgramDossierPage({
                 </tr>
               </thead>
               <tbody>
-                {timeline.map((row) =>
-                  row.kind === "event" ? (
-                    <tr key={row.ev.id}>
-                      <td>
-                        <span className={`evt-tag evt-${row.ev.type}`}>
-                          {EVENT_LABELS[row.ev.type]}
+                {timeline.map((ev) => (
+                  <tr key={ev.id}>
+                    <td>
+                      <span className={`evt-tag evt-${ev.type}`}>{EVENT_LABELS[ev.type]}</span>
+                    </td>
+                    <td className="cell-dim">
+                      {ev.blockTime ? relativeTime(ev.blockTime) : "—"}
+                    </td>
+                    <td>slot {ev.slot.toLocaleString("en-US")}</td>
+                    <td>
+                      {isSyntheticSignature(ev.signature) ? (
+                        // observed by polling account state — there is no
+                        // transaction to cite, and a fake link is worse than none
+                        <span
+                          className="cell-dim"
+                          title="Observed from ProgramData account state — no transaction signature to cite"
+                        >
+                          —
                         </span>
-                      </td>
-                      <td className="cell-dim">
-                        {row.ev.blockTime ? relativeTime(row.ev.blockTime) : "—"}
-                      </td>
-                      <td>slot {row.ev.slot.toLocaleString("en-US")}</td>
-                      <td>
-                        {isSyntheticSignature(row.ev.signature) ? (
-                          // observed by polling account state — there is no
-                          // transaction to cite, and a fake link is worse than none
-                          <span
-                            className="cell-dim"
-                            title="Observed from ProgramData account state — no transaction signature to cite"
-                          >
-                            —
-                          </span>
-                        ) : (
-                          <Ext
-                            href={orbTx(row.ev.signature)}
-                            text={truncateAddress(row.ev.signature)}
-                          />
-                        )}
-                      </td>
-                    </tr>
-                  ) : (
-                    <tr key={row.m.programId} className="record-sibling">
-                      <td>
-                        <span className="evt-tag evt-sibling">SIBLING DEPLOY</span>
-                      </td>
-                      <td className="cell-dim">
-                        {row.m.deployedAt ? relativeTime(row.m.deployedAt) : "—"}
-                      </td>
-                      <td>
-                        <Link href={`/p/${row.m.programId}`} className="neighbor-addr">
-                          {row.m.name ?? truncateAddress(row.m.programId)}
-                        </Link>
-                        {row.m.closed ? (
-                          <span className="recycled-kind rk-closed"> closed</span>
-                        ) : null}
-                      </td>
-                      <td>
-                        <span className="cell-dim">same code, fresh id</span>
-                      </td>
-                    </tr>
-                  ),
-                )}
+                      ) : (
+                        <Ext href={orbTx(ev.signature)} text={truncateAddress(ev.signature)} />
+                      )}
+                    </td>
+                  </tr>
+                ))}
               </tbody>
             </table>
           </div>

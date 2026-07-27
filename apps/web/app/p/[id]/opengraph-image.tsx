@@ -4,6 +4,7 @@ import { ImageResponse } from "next/og";
 import { deriveSignals, type Signal } from "@/lib/signals";
 import { fetchProgram } from "@/lib/api";
 import { formatBytes, truncateAddress } from "@/lib/format";
+import { ORB_RING, MARK_CENTRE, MARK_DOT_R } from "@/components/Mark";
 
 // ---------------------------------------------------------------------------
 // Share card: og:image for a program dossier. Name + facts on the left, the
@@ -201,15 +202,14 @@ export default async function OgImage({ params }: { params: Promise<{ id: string
             }}
           >
             <span style={{ display: "flex", alignItems: "center", gap: 14 }}>
-              <span
-                style={{
-                  width: 16,
-                  height: 16,
-                  background: ACCENT,
-                  borderRadius: 999,
-                  display: "flex",
-                }}
-              />
+              {/* the real mark, not a stand-in dot — Satori renders inline SVG,
+                  so the ring path travels to the share card intact. 30px, not
+                  the label's 22: the segment gaps are ~6% of the diameter and
+                  close up into a solid ring below that. */}
+              <svg width={30} height={30} viewBox="0 0 329 329">
+                <path d={ORB_RING} fill={ACCENT} />
+                <circle cx={MARK_CENTRE} cy={MARK_CENTRE} r={MARK_DOT_R} fill={ACCENT} />
+              </svg>
               ON RECORD
             </span>
             <span>{program.deployType === "upgrade" ? "UPGRADED PROGRAM" : "NEW PROGRAM"}</span>

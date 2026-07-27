@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { Chevron } from "@/components/Chevron";
 
 /**
  * A collapsed "What's X?" explainer that lives at the bottom of the section it
@@ -16,9 +17,7 @@ export function SectionExplainer({
     <details className="explainer explainer-section">
       <summary className="explainer-summary">
         <span>{title}</span>
-        <span className="explainer-chev" aria-hidden="true">
-          ⌄
-        </span>
+        <Chevron className="explainer-chev" />
       </summary>
       <div className="explainer-body">{children}</div>
     </details>

@@ -381,16 +381,21 @@ export function registerPublicRoutes(app: FastifyInstance): void {
     const rows = await db.select().from(schema.copyBuckets).where(eq(schema.copyBuckets.id, req.params.id));
     const bucket = rows[0];
     if (!bucket) return reply.code(404).send({ error: "cluster not found" });
+    // the member's ORIGINAL deploy, not when this service first recorded it —
+    // these dates sit on the dossier's lineage rail next to firstDeployAt for
+    // the subject itself, and firstSeenAt dated a year-old program to the day
+    // the poller noticed it
+    const memberDeployedAt = sql<Date | null>`coalesce(${schema.subjects.firstDeployAt}, ${schema.subjects.firstSeenAt})`;
     const members = await db
       .select({
         programId: schema.subjects.id,
         name: schema.subjects.name,
-        deployedAt: schema.subjects.firstSeenAt,
+        deployedAt: memberDeployedAt,
         closedAt: sql<string | null>`${schema.subjects.facts} ->> 'closedAt'`,
       })
       .from(schema.subjects)
       .where(eq(schema.subjects.bucketId, bucket.id))
-      .orderBy(desc(schema.subjects.firstSeenAt))
+      .orderBy(desc(memberDeployedAt))
       .limit(200);
     const cluster: ApiCluster = {
       id: bucket.id,

@@ -425,7 +425,7 @@ a {
   text-align: center;
 }
 
-/* "POWERED BY ⊙ HELIUS" pill, as on orb */
+/* "POWERED BY [helius]" pill, as on orb — the logo is Helius's own artwork */
 .footer-credit {
   display: inline-flex;
   align-items: center;
@@ -448,7 +448,13 @@ a {
 }
 
 .footer-helius {
-  font-weight: 700;
+  display: block;
+  height: 15px;
+  width: auto;
+  /* the wordmark carries its own letterspacing — don't let the pill's tracking
+     pull the logo off the baseline of "POWERED BY" */
+  position: relative;
+  top: 0.5px;
 }
 
 /* ---------------- section headers ---------------- */
@@ -552,15 +558,16 @@ a {
   line-height: 1.45;
   text-align: left;
   white-space: normal;
-  opacity: 0;
-  visibility: hidden;
   pointer-events: none;
-  transition: opacity 0.12s ease;
+  /* display:none, not visibility:hidden — a hidden box still occupies its
+   * 300px of layout, and a dot near the right edge pushed the document wider
+   * than the screen, which is what made phones render the whole site zoomed
+   * out to fit. */
+  display: none;
 }
 .info-dot:hover::after,
 .info-dot:focus-visible::after {
-  opacity: 1;
-  visibility: visible;
+  display: block;
 }
 
 .page-lede {
@@ -2601,17 +2608,12 @@ a.copy-addr-text:hover {
   text-transform: none;
   white-space: normal;
   box-shadow: 0 6px 20px rgba(0, 0, 0, 0.18);
-  opacity: 0;
-  visibility: hidden;
-  transform: translateY(3px);
-  transition: opacity 0.12s ease, transform 0.12s ease;
   pointer-events: none;
+  display: none; /* see .info-dot::after — a hidden box still widens the page */
 }
 .cat-chip.has-tip:hover .tip-pop,
 .cat-chip.has-tip:focus-visible .tip-pop {
-  opacity: 1;
-  visibility: visible;
-  transform: none;
+  display: block;
 }
 
 /* ---- flow chart window toggle ---- */
@@ -3833,11 +3835,22 @@ a.copy-addr-text:hover {
 .explainer-summary::-webkit-details-marker {
   display: none;
 }
-.explainer-chev {
-  font-size: 18px;
-  line-height: 1;
+.chev {
+  display: block;
+  flex: none;
   color: var(--ink-faint);
-  transition: transform 0.15s ease;
+  transition: transform 0.18s ease;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .chev {
+    transition: none;
+  }
+}
+
+.explainer-chev {
+  width: 16px;
+  height: 16px;
 }
 .explainer[open] .explainer-chev {
   transform: rotate(180deg);
@@ -3931,10 +3944,8 @@ a.copy-addr-text:hover {
   display: none;
 }
 .cluster-stack-chev {
-  font-size: 15px;
-  line-height: 1;
-  color: var(--ink-faint);
-  transition: transform 0.15s ease;
+  width: 15px;
+  height: 15px;
 }
 .cluster-stack[open] .cluster-stack-chev {
   transform: rotate(180deg);
@@ -4080,10 +4091,8 @@ a.copy-addr-text:hover {
   color: var(--ink);
 }
 .recycled-chev {
-  font-size: 16px;
-  line-height: 1;
-  color: var(--ink-faint);
-  transition: transform 0.15s ease;
+  width: 15px;
+  height: 15px;
 }
 .recycled-section[open] .recycled-chev {
   transform: rotate(180deg);
@@ -4211,24 +4220,228 @@ a.copy-addr-text:hover {
   padding: 2px 6px;
   white-space: nowrap;
 }
-/* closest-relative direction — predecessor (older) vs fork (newer). Plain,
-   uncoloured: the word carries the meaning, no traffic-light needed. */
-.rel-tag {
-  font-family: var(--font-mono);
-  font-size: 10px;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-  color: var(--ink-faint);
+/* ---- lineage: one read, then the family as a dated rail ---- */
+
+/* ---------------- lineage ---------------- */
+
+/* One record per relative: date, id, relation — three columns sized to their
+ * content and packed left. Stretching them across the panel left a void the
+ * width of the page between the id and the relation, which read as a broken
+ * table. Column gaps live in the cell padding (not grid gap) so the "this
+ * program" row can carry a continuous tint. */
+.lineage-panel {
+  position: relative;
+  background: var(--card);
   border: 1px solid var(--border);
-  background: var(--bg);
-  border-radius: 2px;
-  padding: 2px 6px;
-  margin-left: 8px;
+  border-radius: var(--radius);
+  margin-top: 14px;
+  font-family: var(--font-mono);
+}
+
+.lin-list {
+  display: grid;
+  grid-template-columns: max-content max-content minmax(0, 1fr);
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.lin-row {
+  display: contents;
+}
+
+.lin-list span {
+  padding: 7px 28px 7px 0;
+  font-size: 12.5px;
+  line-height: 1.4;
+}
+
+.lin-when {
+  color: var(--ink-faint);
   white-space: nowrap;
 }
 
-.incubation-line {
+.lin-who {
+  color: var(--ink);
+  white-space: nowrap;
+}
+
+.lin-why {
   color: var(--ink-soft);
+  padding-right: 0 !important;
+  overflow-wrap: anywhere;
+}
+
+/* you are here — a tint, not a marker in a gutter */
+.lin-self span {
+  background: var(--bg);
+}
+
+.lin-self .lin-when {
+  padding-left: 8px;
+  margin-left: -8px;
+  border-radius: 3px 0 0 3px;
+}
+
+.lin-self .lin-why {
+  padding-right: 8px !important;
+  margin-right: -8px;
+  border-radius: 0 3px 3px 0;
+}
+
+.lin-more span {
+  color: var(--ink-faint);
+}
+
+/* Collapsed shows the header alone; open reveals the rows under it. Same
+ * label/value shape the radar cards use, so it reads as data, not a sentence. */
+.lin-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 11px 20px;
+  cursor: pointer;
+  list-style: none;
+  user-select: none;
+}
+
+.lin-head::-webkit-details-marker {
+  display: none;
+}
+
+.lin-head-fields {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 6px 26px;
+  min-width: 0;
+}
+
+.lin-field {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 8px;
+  min-width: 0;
+}
+
+.lin-k {
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+}
+
+.lin-v {
+  font-size: 12.5px;
+  color: var(--ink);
+  overflow-wrap: anywhere;
+}
+
+.lin-head-chev {
+  flex: none;
+  align-self: center;
+  width: 15px;
+  height: 15px;
+}
+
+.lineage-panel[open] .lin-head-chev {
+  transform: rotate(180deg);
+}
+
+.lineage-panel[open] .lin-head {
+  padding-bottom: 6px;
+  border-bottom: 1px solid var(--border);
+}
+
+.lin-body {
+  padding: 6px 20px 10px;
+}
+
+/* facts about the family or this id's own past — a different axis from the
+ * rows, so they sit under the list, one per line */
+.lin-meta {
+  margin: 2px 0 4px;
+  padding-top: 10px;
+  border-top: 1px solid var(--border);
+  font-size: 12.5px;
+  color: var(--ink-soft);
+  line-height: 1.5;
+}
+
+.lin-meta + .lin-meta {
+  margin-top: 0;
+  padding-top: 6px;
+  border-top: none;
+}
+
+.lin-meta-label {
+  display: inline-block;
+  min-width: 96px;
+  color: var(--ink-faint);
+  margin-right: 14px;
+}
+
+/* nothing found — one dim line, not an empty card */
+.lineage-none {
+  padding: 12px 20px;
+  font-size: 12.5px;
+  color: var(--ink-faint);
+}
+
+/* narrow: the three columns won't fit, so each record becomes two lines —
+ * id, then date · relation. Flex (not the grid) so the id can lead. */
+@media (max-width: 720px) {
+  .lin-head {
+    padding: 11px 16px;
+  }
+
+  .lin-body {
+    padding: 6px 16px 10px;
+  }
+
+  .lin-list {
+    display: block;
+  }
+
+  .lin-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 0 8px;
+    padding: 7px 0;
+  }
+
+  .lin-list span {
+    padding: 0 !important;
+  }
+
+  .lin-who {
+    order: -1;
+    flex: 0 0 100%;
+    padding-bottom: 2px !important;
+  }
+
+  .lin-when::after {
+    content: " ·";
+  }
+
+  /* the "+N more" row has no date — no dangling separator */
+  .lin-when:empty::after {
+    content: none;
+  }
+
+  .lin-self {
+    background: var(--bg);
+    border-radius: 3px;
+    padding: 7px 8px;
+    margin: 0 -8px;
+  }
+
+  .lin-self span {
+    background: none;
+    margin: 0 !important;
+  }
 }
 
 .churn-note {
