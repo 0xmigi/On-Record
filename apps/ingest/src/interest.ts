@@ -173,9 +173,14 @@ async function sourceFamilySize(row: SubjectRow): Promise<number> {
   let n = 1; // this program
   for (const c of candidates) {
     const theirs = c.sourcePaths ?? [];
-    if (isSourceRelative(row.crate, c.crate, sharedPathCount(mine, theirs), pathOverlap(mine, theirs))) {
-      n += 1;
-    }
+    const shared = sharedPathCount(mine, theirs);
+    if (!isSourceRelative(row.crate, c.crate, shared, pathOverlap(mine, theirs))) continue;
+    // isSourceRelative clears a pair on overlap alone, which is right for
+    // *showing* lineage — one file out of a two-file tree is a lead worth a
+    // link. It is not enough to halve a score: arb_router lost half of its on
+    // a single shared path. Charging money needs a second file.
+    if (shared < 2) continue;
+    n += 1;
   }
   return n;
 }
