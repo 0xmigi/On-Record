@@ -20,9 +20,13 @@ import { db, schema, isSourceRelative, pathOverlap, sharedPathCount } from "@onr
 //
 //   × 0.05 closed (rent reclaimed — the churn tail)
 //   × 0.20 byte-clone (recycled code; sniper-flavored clones × 0.05)
-//   ÷ family — 1/(1+log₂ n), where n is the LARGER of the copy bucket and the
-//     same-crate source family (see sourceFamilySize: a factory that recompiles
-//     between deploys is invisible to the bucket and obvious to the crate)
+//   ÷ family — 1/(1+log₂ n) scaled by how much of the family has been CLOSED,
+//     where n is the larger of the copy bucket and the same-crate source family
+//     (see familyOf). Size alone cannot tell a factory from a standard:
+//     LayerZero's `oft` is on record 46 times and smart_arb 26, but oft has
+//     closed none of them and smart_arb has closed 24. Rent is the tell — an
+//     open program is SOL still locked up, a closed one is SOL taken back, so a
+//     family that never closes anything is a family paying to stay.
 //
 // Stored on subjects.noveltyScore (the column the radar index already covers —
 // it held the old placeholder blend, which this replaces) + facts.interest
@@ -51,14 +55,19 @@ export interface Interest {
   /** what the churn discount was computed from, and which evidence set it */
   familySize: number;
   familyBasis: "none" | "bucket" | "source";
+  /** share of the family already closed — 0 discounts nothing, 1 discounts fully */
+  familyChurn: number;
   computedAt: string;
 }
 
-export function computeInterest(
-  row: SubjectRow,
-  familySize = 1,
-  familyBasis: Interest["familyBasis"] = familySize > 1 ? "bucket" : "none",
-): Interest {
+export interface Family {
+  size: number;
+  /** siblings with their rent reclaimed */
+  closed: number;
+  basis: Interest["familyBasis"];
+}
+
+export function computeInterest(row: SubjectRow, family: Family = { size: 1, closed: 0, basis: "none" }): Interest {
   const facts = (row.facts ?? {}) as InterestFacts;
 
   const txns24h = facts.momentum?.txns24h ?? row.earlySigners ?? 0;
@@ -108,15 +117,22 @@ export function computeInterest(
   const base = Object.values(components).reduce((a, b) => a + b, 0);
 
   let penalty = 1;
-  // near-copy family, scaled by how industrial it is: a 2-member family reads
-  // as a fork (mild discount, other signals can carry it); a 15-a-day family
-  // is a factory regardless of whether today's instance is still alive.
-  //   2 members → ×0.59 · 5 → ×0.42 · 15 → ×0.30 · 50 → ×0.23
+  // Near-copy family, scaled by how industrial it is — but only to the extent
+  // the family behaves like one. Size says how many; churn says whether they
+  // were meant to last. A family that has closed nothing pays nothing however
+  // large it is (LayerZero's oft: 46 deploys, 0 closed, 20 verified), while one
+  // that buries its own pays the full rate (smart_arb: 26 deploys, 24 closed).
+  //   full rate: 2 members → ×0.59 · 5 → ×0.42 · 15 → ×0.30 · 50 → ×0.23
   // Not gated on bucketId: that was a leftover from when the bucket was the
   // only family we could see, and it let the worst case through — a program
   // that recompiles enough to land in NO bucket kept a clean ×1 while its
   // crate said six siblings (profit_guard, scored 0.1646 on a family of 6).
-  if (familySize >= 2) penalty = 1 / (1 + Math.log2(familySize));
+  const familyChurn =
+    family.size >= 2 ? Math.max(0, Math.min(1, family.closed / (family.size - 1))) : 0;
+  if (family.size >= 2) {
+    const full = 1 / (1 + Math.log2(family.size));
+    penalty = 1 - familyChurn * (1 - full);
+  }
   if (row.noveltyBand === "clone") penalty = Math.min(penalty, 0.2);
   if (facts.closedAt) penalty = Math.min(penalty, 0.05);
   const isSniper =
@@ -141,13 +157,14 @@ export function computeInterest(
     components,
     penalty,
     sizePrior,
-    familySize,
-    familyBasis,
+    familySize: family.size,
+    familyBasis: family.basis,
+    familyChurn: Math.round(familyChurn * 1000) / 1000,
     computedAt: new Date().toISOString(),
   };
 }
 
-/** How many programs share this one's SOURCE — same crate, with path evidence
+/** The programs sharing this one's SOURCE — same crate, with path evidence
  *  (a shared crate name alone proves nothing; isSourceRelative decides).
  *
  *  The bytecode bucket is a weak proxy for family. A factory that recompiles
@@ -156,10 +173,14 @@ export function computeInterest(
  *  in 16 days, each new id taking the top of the radar on the strength of its
  *  bot traffic while its 19 siblings sat closed. The crate and its file tree
  *  survive the recompile, so they see the family the bucket can't. */
-async function sourceFamilySize(row: SubjectRow): Promise<number> {
-  if (!row.crate) return 1;
+async function sourceFamily(row: SubjectRow): Promise<Family> {
+  if (!row.crate) return { size: 1, closed: 0, basis: "none" };
   const candidates = await db
-    .select({ crate: schema.subjects.crate, sourcePaths: schema.subjects.sourcePaths })
+    .select({
+      crate: schema.subjects.crate,
+      sourcePaths: schema.subjects.sourcePaths,
+      closedAt: sql<string | null>`${schema.subjects.facts} ->> 'closedAt'`,
+    })
     .from(schema.subjects)
     .where(
       and(
@@ -170,7 +191,8 @@ async function sourceFamilySize(row: SubjectRow): Promise<number> {
     )
     .limit(500);
   const mine = row.sourcePaths ?? [];
-  let n = 1; // this program
+  let size = 1; // this program
+  let closed = 0;
   for (const c of candidates) {
     const theirs = c.sourcePaths ?? [];
     const shared = sharedPathCount(mine, theirs);
@@ -180,9 +202,29 @@ async function sourceFamilySize(row: SubjectRow): Promise<number> {
     // link. It is not enough to halve a score: arb_router lost half of its on
     // a single shared path. Charging money needs a second file.
     if (shared < 2) continue;
-    n += 1;
+    size += 1;
+    if (c.closedAt) closed += 1;
   }
-  return n;
+  return { size, closed, basis: size > 1 ? "source" : "none" };
+}
+
+/** The copy bucket, and how many of its members have been closed. Size stays
+ *  the bucket's own counter (what the discount has always used); the closed
+ *  count comes from the rows themselves. */
+async function bucketFamily(row: SubjectRow): Promise<Family> {
+  if (!row.bucketId) return { size: 1, closed: 0, basis: "none" };
+  const [bucket] = await db
+    .select({ n: schema.copyBuckets.memberCount })
+    .from(schema.copyBuckets)
+    .where(eq(schema.copyBuckets.id, row.bucketId));
+  const [agg] = await db
+    .select({
+      closed: sql<number>`count(*) filter (where ${schema.subjects.facts} ->> 'closedAt' is not null)`,
+    })
+    .from(schema.subjects)
+    .where(and(eq(schema.subjects.bucketId, row.bucketId), ne(schema.subjects.id, row.id)));
+  const size = bucket?.n ?? 1;
+  return { size, closed: Number(agg?.closed ?? 0), basis: size > 1 ? "bucket" : "none" };
 }
 
 /** Recompute a program's interest score (index column + facts).
@@ -194,21 +236,11 @@ export async function refreshInterest(
   const rows = await db.select().from(schema.subjects).where(eq(schema.subjects.id, programId));
   const row = rows[0];
   if (!row) return null;
-  let bucketSize = 1;
-  if (row.bucketId) {
-    const bucket = await db
-      .select({ n: schema.copyBuckets.memberCount })
-      .from(schema.copyBuckets)
-      .where(eq(schema.copyBuckets.id, row.bucketId));
-    bucketSize = bucket[0]?.n ?? 1;
-  }
   // whichever family is bigger is the honest one — a recompile hides from the
   // bucket, a rename hides from the crate, and neither should buy a clean slate
-  const srcSize = await sourceFamilySize(row);
-  const familySize = Math.max(bucketSize, srcSize);
-  const basis: Interest["familyBasis"] =
-    familySize <= 1 ? "none" : srcSize > bucketSize ? "source" : "bucket";
-  const interest = computeInterest(row, familySize, basis);
+  const [bucket, source] = await Promise.all([bucketFamily(row), sourceFamily(row)]);
+  const family = source.size > bucket.size ? source : bucket;
+  const interest = computeInterest(row, family);
   if (opts.persist === false) return interest;
   await db
     .update(schema.subjects)
