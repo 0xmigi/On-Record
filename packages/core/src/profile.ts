@@ -486,7 +486,28 @@ export function profileProgram(
   }
   if (!syscalls.length) {
     const hay = bytecode.toString("latin1");
-    syscalls = KNOWN_SYSCALLS.filter((s) => s !== "abort" && hay.includes(s));
+    const occurrences = (needle: string) => {
+      let n = 0;
+      for (let i = hay.indexOf(needle); i !== -1; i = hay.indexOf(needle, i + needle.length)) n++;
+      return n;
+    };
+    // "abort" is excluded outright — too short to mean anything as a substring.
+    const hits = new Map<string, number>();
+    for (const s of KNOWN_SYSCALLS) {
+      if (s === "abort") continue;
+      const n = occurrences(s);
+      if (n) hits.set(s, n);
+    }
+    // Several syscall names are prefixes of others: `sol_log_` sits inside
+    // `sol_log_data`, `sol_log_64_` and `sol_log_pubkey`. A plain substring test
+    // reports the short one for every program that only imports a long one, and
+    // that false positive was inflating stored syscall counts. Keep the shorter
+    // name only if it occurs more often than the names containing it.
+    syscalls = [...hits.keys()].filter((s) => {
+      let covered = 0;
+      for (const [other, n] of hits) if (other !== s && other.includes(s)) covered += n;
+      return hits.get(s)! > covered;
+    });
     if (syscalls.length) syscallSource = "strings";
   }
   syscalls = [...new Set(syscalls)].sort();

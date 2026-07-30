@@ -15,7 +15,7 @@
 // and we do not persist bytecode, so each ProgramData account is re-fetched.
 //
 //   set -a && . ../../.env && set +a
-//   DATABASE_URL='postgres://…' ./node_modules/.bin/tsx src/backfill-profile.ts [--network=devnet] [--only=<programId>] [--limit=N] [--dry]
+//   DATABASE_URL='postgres://…' ./node_modules/.bin/tsx src/backfill-profile.ts [--network=devnet] [--only=<programId>] [--limit=N] [--stale-only] [--concurrency=N] [--dry]
 import { and, eq, sql } from "drizzle-orm";
 import {
   db,
@@ -36,9 +36,14 @@ const dry = process.argv.includes("--dry");
 const network = (arg("network") ?? "mainnet") as Network;
 const only = arg("only") ?? null;
 const limit = Number(arg("limit") ?? 0) || null;
+// Only rows this profiler has never written. Every profile it produces carries
+// an `instructionNames` key; the old shape has no such key. Lets a re-run pick
+// up the tail an RPC rate limit skipped without re-fetching thousands of
+// megabyte-sized accounts that already succeeded.
+const staleOnly = process.argv.includes("--stale-only");
 
 const target = requireDatabaseTarget("backfill-profile.ts");
-log.info({ target, network, only, limit, dry }, "target database");
+log.info({ target, network, only, limit, staleOnly, dry }, "target database");
 
 // One bulk read: the newest ProgramData address per program, plus whatever IDL
 // instructions the fingerprint stage already stored (an IDL still wins over
@@ -63,6 +68,7 @@ const rows = await db.execute<{
    where s.network = ${network}
      and e.program_data_address is not null
      ${only ? sql`and e.program_id = ${only}` : sql``}
+     ${staleOnly ? sql`and not coalesce(jsonb_exists(s.profile, 'instructionNames'), false)` : sql``}
    order by e.program_id, e.slot desc
    ${limit ? sql`limit ${limit}` : sql``}
 `);
@@ -76,11 +82,13 @@ let instructionsRecovered = 0;
 let frameworkRelabelled = 0;
 let regressions = 0;
 let upgraded = 0;
+let corrected = 0;
 let written = 0;
 
 // Modest concurrency: this is a background repair sharing the RPC budget with
-// live ingest, not a race.
-const CONCURRENCY = 6;
+// live ingest, not a race. Lower it when a run reports HTTP 429 skips — those
+// rows are simply dropped, so the tail needs a slower --stale-only re-run.
+const CONCURRENCY = Number(arg("concurrency") ?? 6) || 6;
 let cursor = 0;
 const updates: { id: string; profile: ReturnType<typeof profileProgram>; count: number | null }[] = [];
 
@@ -110,13 +118,28 @@ await Promise.all(
         // the corpus went 189KB → 5.9KB, and refusing that update would pin a
         // stale profile forever. So compare hashes first.
         const sameImage = r.old_sha != null && r.old_sha === sha256Hex(parsed.bytecode);
-        if (sameImage && before > profile.syscalls.length) {
+
+        // A stored name the new read drops is only a loss when it is not simply
+        // a substring of one the new read kept. The old string-scan fallback
+        // matched `sol_log_` inside `sol_log_data`, so those rows carry a syscall
+        // the program never imported — dropping it is the correction, not a
+        // regression, and refusing the write would preserve the false positive.
+        const dropped = (r.old_syscalls ?? []).filter((s) => !profile.syscalls.includes(s));
+        const lost = dropped.filter((s) => !profile.syscalls.some((k) => k !== s && k.includes(s)));
+        if (sameImage && lost.length) {
           regressions++;
           log.warn(
-            { programId: r.program_id, before, after: profile.syscalls.length },
+            { programId: r.program_id, before, after: profile.syscalls.length, lost },
             "syscall set shrank on identical bytecode — not overwriting",
           );
           continue;
+        }
+        if (sameImage && dropped.length) {
+          corrected++;
+          log.info(
+            { programId: r.program_id, dropped },
+            "dropped substring false positives from the old string scan",
+          );
         }
         if (!sameImage && before > profile.syscalls.length) {
           upgraded++;
@@ -168,7 +191,7 @@ if (!dry) {
 }
 
 log.info(
-  { scanned, written, missing, syscallsRecovered, instructionsRecovered, frameworkRelabelled, upgraded, regressions, dry },
+  { scanned, written, missing, syscallsRecovered, instructionsRecovered, frameworkRelabelled, upgraded, corrected, regressions, dry },
   "done",
 );
 
@@ -180,6 +203,7 @@ PROFILE BACKFILL — ${network}${dry ? " (dry run, nothing written)" : ""}
   instructions recovered  ${instructionsRecovered}
   framework relabelled    ${frameworkRelabelled}
   reprofiled (upgraded)   ${upgraded}
+  false positives fixed   ${corrected}
   regressions skipped     ${regressions}
   rows written            ${written}
 
