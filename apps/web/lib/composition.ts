@@ -89,19 +89,47 @@ function humanize(name: string): string {
 const STDLIB_CRATES = new Set(["alloc", "core", "std", "proc_macro", "test"]);
 const TOOLCHAIN_RE = /library\/|platform-tools|\.cargo|crates\.io|rustc|registry\/src/;
 
+/** Which workspace crate the binary was built from, when its panic paths name
+ *  several — the crate most of the recovered `.rs` tree hangs off, not the first
+ *  one to appear. A program that CPIs into its siblings compiles their modules
+ *  in too, and first-match-wins labelled Ripstr's pool binary `ripstr_amm`:
+ *  an imported dependency, and the name of a different program of theirs.
+ *
+ *  Mirrors dominantCrate() in packages/core/src/sourcetree.ts — the web app
+ *  deliberately doesn't depend on core, so keep the two in step. */
+function dominantCrate(strings: string[]): string | null {
+  const files = new Map<string, Set<string>>(); // insertion order = the tie-break
+  for (const raw of strings) {
+    // deliberately no TOOLCHAIN_RE guard — `programs/<crate>/src/` is the
+    // workspace layout, and strings are concatenated, so a `.cargo` fragment
+    // earlier in the same blob says nothing about this path
+    for (const m of raw.matchAll(/programs\/([a-z0-9][a-z0-9_-]{0,40})\/src\/([a-z0-9_/-]+?\.rs)?/gi)) {
+      const crate = m[1].toLowerCase();
+      const seen = files.get(crate) ?? new Set<string>();
+      if (m[2]) seen.add(m[2].toLowerCase());
+      files.set(crate, seen);
+    }
+  }
+  let best: string | null = null;
+  let bestCount = -1;
+  for (const [crate, seen] of files) {
+    if (seen.size > bestCount) {
+      best = crate;
+      bestCount = seen.size;
+    }
+  }
+  return best;
+}
+
 /** Pull the program's own source modules out of the recovered strings,
  *  filtering Rust stdlib/toolchain paths. Works per-string because the
  *  recovered strings are concatenated with no separators — joining them and
  *  regexing globally would bleed adjacent paths together. */
 function recoverModules(strings: string[]): { crate: string | null; paths: string[] } {
-  let crate: string | null = null;
+  const crate = dominantCrate(strings);
   const paths = new Set<string>();
 
   for (const raw of strings) {
-    // workspace crate name: programs/<crate>/src/…  (best identity signal)
-    const ws = raw.match(/programs\/([a-z0-9_-]+)\/src\//i);
-    if (ws && !crate) crate = ws[1];
-
     // <cratedir>/src/<rest>.rs — the program's own tree. Non-greedy `.rs`.
     for (const m of raw.matchAll(/([a-z0-9_-]+)\/src\/([a-z0-9_/-]+?\.rs)/gi)) {
       if (STDLIB_CRATES.has(m[1].toLowerCase())) continue;

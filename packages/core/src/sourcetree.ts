@@ -57,17 +57,70 @@ export interface SourceTree {
   paths: string[];
 }
 
+/** Which workspace crate was this binary BUILT from, when its panic paths name
+ *  several?
+ *
+ *  A program that CPIs into its siblings compiles their state and instruction
+ *  modules in too, so `programs/<crate>/src/…` is not a single answer. Ripstr's
+ *  pool binary is the case that exposed it: 33 `.rs` files under
+ *  `programs/ripstr_pool/`, plus 5 each under `ripstr_amm` and `ripstr_rewards`
+ *  — the CPI-side types it imports. Taking the first match meant taking
+ *  whichever crate happened to appear in the longest extracted string, which
+ *  named that binary `ripstr_amm`: one of its own dependencies, and the name of
+ *  a DIFFERENT program the same team deployed 25 seconds later.
+ *
+ *  Weight decides instead. The crate that owns the binary is the one most of
+ *  the recovered tree hangs off; an imported sibling contributes a handful of
+ *  files. Ties keep first-seen order, so single-crate binaries — the common
+ *  case, and every corpus row before this — resolve exactly as they did. */
+export function dominantCrate(strings: string[]): string | null {
+  return crateCandidates(strings)[0]?.crate ?? null;
+}
+
+/** Every workspace crate the binary's panic paths name, with how many distinct
+ *  `.rs` files were recovered under each — heaviest first, so the head is the
+ *  dominant crate. The tail is what the binary merely IMPORTED, which is how a
+ *  name we already stored can be told apart from a name that is simply unknown
+ *  to us: a stored name appearing here, but not at the head, is a
+ *  misattribution this rule now corrects. */
+export function crateCandidates(strings: string[]): { crate: string; files: number }[] {
+  // crate → its distinct .rs files. Insertion-ordered, and Array.sort is stable,
+  // which is what makes the tie-break "first seen" without tracking positions.
+  const files = new Map<string, Set<string>>();
+
+  for (const raw of strings) {
+    // No toolchain guard here, unlike the generic `<dir>/src/<file>.rs` scan
+    // below: `programs/<crate>/src/` is the workspace layout and can only be the
+    // developer's own tree. Guarding it on a toolchain fragment appearing EARLIER
+    // in the same string is wrong, because the extractor concatenates adjacent
+    // literals — a lone `programs/donor_kebab/src/lib.rs` sharing a blob with a
+    // `.cargo` path would be thrown away, and the crate lost entirely.
+    //
+    // The `.rs` tail is optional: a crate that leaks only `programs/<crate>/src/`
+    // with no file after it is still a candidate, as it was before.
+    // {0,40}: Cargo allows a one-character package name, and the tree scan this
+    // replaced accepted them — don't narrow what we recognise on the way past
+    for (const m of raw.matchAll(/programs\/([a-z0-9][a-z0-9_-]{0,40})\/src\/([a-z0-9_/-]+?\.rs)?/gi)) {
+      const crate = m[1]!.toLowerCase();
+      const seen = files.get(crate) ?? new Set<string>();
+      if (m[2]) seen.add(m[2].toLowerCase());
+      files.set(crate, seen);
+    }
+  }
+
+  return [...files.entries()]
+    .map(([crate, seen]) => ({ crate, files: seen.size }))
+    .sort((a, b) => b.files - a.files);
+}
+
 /** Recover the program's own source tree from strings extracted out of its
  *  bytecode. Works per-string: the extractor concatenates adjacent literals
  *  with no separator, so joining and regexing globally bleeds paths together. */
 export function recoverSourceTree(strings: string[]): SourceTree {
-  let crate: string | null = null;
+  const crate = dominantCrate(strings);
   const paths = new Set<string>();
 
   for (const raw of strings) {
-    const ws = raw.match(/programs\/([a-z0-9_-]+)\/src\//i);
-    if (ws?.[1] && !crate) crate = ws[1].toLowerCase();
-
     for (const m of raw.matchAll(/([a-z0-9_-]+)\/src\/([a-z0-9_/-]+?\.rs)/gi)) {
       if (STDLIB_CRATES.has((m[1] ?? "").toLowerCase())) continue;
       if (TOOLCHAIN_RE.test(raw.slice(0, m.index))) continue;

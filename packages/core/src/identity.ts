@@ -1,6 +1,7 @@
 import { env } from "./config.js";
 import { extractStrings } from "./fingerprint.js";
 import { logger } from "./logger.js";
+import { dominantCrate } from "./sourcetree.js";
 import type { BytecodeIdentity, RepoLink } from "./types.js";
 
 // ---------------------------------------------------------------------------
@@ -79,8 +80,13 @@ export function deriveBytecodeIdentity(bytecode: Uint8Array): BytecodeIdentity {
   const firstMatch = (re: RegExp): string | null =>
     strings.map((s) => s.match(re)?.[0]).find(Boolean) ?? null;
 
-  // project/crate name from leaked Rust panic paths: programs/<name>/src/...
-  const nameFromPath = crateFromStrings(strings);
+  // Project/crate name from leaked Rust panic paths: programs/<name>/src/…
+  //
+  // `name` may come from security.txt instead, so the crate is kept separately
+  // (below): it is not a label but a real directory that must also exist in the
+  // source repo — the hinge the reverse lookup further down turns on. Which
+  // crate wins when a binary leaks several is sourcetree.ts's call.
+  const nameFromPath = dominantCrate(strings);
 
   // repo: the project's declared source (security.txt) wins; else a github URL
   // from the strings that isn't a known dependency org.
@@ -110,18 +116,6 @@ export function deriveBytecodeIdentity(bytecode: Uint8Array): BytecodeIdentity {
     anchor,
     crate: nameFromPath,
   };
-}
-
-/** The crate the binary leaks through Rust panic paths. `name` may come from
- *  security.txt instead, so the crate is kept separately: it is not a label but
- *  a real directory (`programs/<crate>/`) that must also exist in the source
- *  repo — the hinge the reverse lookup below turns on. */
-function crateFromStrings(strings: string[]): string | null {
-  for (const s of strings) {
-    const m = s.match(/programs\/([a-z0-9][a-z0-9_-]{1,40})\/src\//i);
-    if (m) return m[1]!;
-  }
-  return null;
 }
 
 // ---------------------------------------------------------------------------
