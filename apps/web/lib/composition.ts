@@ -162,9 +162,11 @@ export function deriveComposition(p: ApiProgramDetail): Composition {
   const { crate, paths } = recoverModules(strings);
   const moduleGroups = groupModules(paths);
 
-  // instructions: prefer the IDL (authoritative); else recover from the
-  // instructions/ module basenames.
+  // instructions, strongest evidence first: the IDL (authoritative), then the
+  // handler names the profiler read off the binary, then — weakest — the
+  // instructions/ module basenames recovered from panic paths.
   const idlInstr = (p.idlInstructions ?? []).filter(Boolean);
+  const binInstr = (p.instructionNames ?? []).filter(Boolean);
   // state/util/config files sometimes sit under instructions/ — they're not
   // handlers, so keep the list to real entrypoints.
   const NON_HANDLER = /(?:_config|_state|_common|_account|_utils?|_helpers?|_error|_events?)$|^(?:config|state|common|utils?|helpers?|error|events?|mod|admin|lib|constants)$/;
@@ -172,8 +174,17 @@ export function deriveComposition(p: ApiProgramDetail): Composition {
     .filter((g) => g.dir === "instructions" || g.dir === "instruction" || g.dir === "handlers")
     .flatMap((g) => g.files)
     .filter((f) => !NON_HANDLER.test(f));
-  const instructions = idlInstr.length ? idlInstr : modInstr.map(humanize);
-  const instructionsApprox = idlInstr.length === 0 && modInstr.length > 0;
+  const instructions = idlInstr.length
+    ? idlInstr
+    : binInstr.length
+      ? binInstr
+      : modInstr.map(humanize);
+  // "approx" means the names are a reconstruction rather than a declaration. An
+  // IDL and an Anchor log literal are both exact; a Debug-derived enum and a
+  // module-basename guess are not.
+  const instructionsApprox =
+    idlInstr.length === 0 &&
+    (binInstr.length ? p.instructionSource !== "anchor-log" : modInstr.length > 0);
 
   const publishesIdl = strings.join(" ").includes("IdlCreateAccount");
 

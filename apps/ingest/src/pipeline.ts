@@ -533,7 +533,11 @@ export async function scoreStage(eventId: string): Promise<void> {
   const band = cls?.band ?? "variant";
   const structural = cls?.structuralNovelty ?? 0;
   const idlPresent = Boolean(fp?.idl);
-  const instructionCount = fp?.idl?.instructions.length ?? null;
+  // An IDL is authoritative, but most programs never publish one. The profiler
+  // recovers the handler names from the binary for those, so interface surface
+  // is no longer scored as zero for everything that isn't Anchor-with-an-IDL.
+  const instructionCount =
+    fp?.idl?.instructions.length ?? enrichment.profile?.instructionCount ?? null;
   const category: Category = categorize(fp, id);
 
   // funding trail is an RPC walk — only worth it for novel candidates

@@ -370,6 +370,13 @@ export interface ApiProgramDetail extends ApiProgram {
   strings: string[];
   /** sol_* syscall imports read off the ELF — the evidence behind capabilities */
   syscalls: string[];
+  /** which ELF shape the syscalls came from: dynamic imports (SBPFv1), hashed
+   *  static call immediates (SBPFv2+), or a last-resort string scan */
+  syscallSource: "dynsym" | "static" | "strings" | null;
+  /** handler names recovered from the binary — the interface surface for the
+   *  majority of programs, which never publish an IDL */
+  instructionNames: string[];
+  instructionSource: "idl" | "anchor-log" | "debug-enum" | null;
   /** the developer's embedded security.txt, verbatim fields */
   securityTxt: SecurityTxt | null;
   /** repo found by searching public code for the program id — an inference,

@@ -172,6 +172,11 @@ export interface ApiProgramDetail extends ApiProgram {
   idlInstructions: string[];
   strings: string[]; // notable printable strings from bytecode
   syscalls: string[]; // sol_* imports read off the ELF (the capability evidence)
+  /** how the syscall set was read: dynamic imports, hashed static calls, or a scan */
+  syscallSource?: "dynsym" | "static" | "strings" | null;
+  /** handler names recovered from the binary when no IDL was published */
+  instructionNames?: string[];
+  instructionSource?: "idl" | "anchor-log" | "debug-enum" | null;
   securityTxt: SecurityTxt | null; // embedded security.txt, verbatim
   /** repo found by searching public code for the program id. An inference —
    *  kept apart from repoUrl, which somebody declared. */

@@ -195,6 +195,10 @@ export function serializeProgramDetail(
     idlInstructions,
     strings,
     syscalls: row.profile?.syscalls ?? [],
+    syscallSource: row.profile?.syscallSource ?? null,
+    // handler names read off the binary — present for programs with no IDL
+    instructionNames: row.profile?.instructionNames ?? [],
+    instructionSource: row.profile?.instructionSource ?? null,
     securityTxt: facts.securityTxt ?? null,
     // the repo URL is a search hit rendered as an href — same scheme guard as
     // every other string that came out of a binary or a third party
