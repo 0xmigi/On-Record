@@ -41,6 +41,7 @@ import {
   watchDevnetNovel,
 } from "@onrecord/enrich";
 import { refreshInterest } from "./interest.js";
+import { linkIncubation } from "./incubation.js";
 import { recordGenesisDeploy } from "./timeline.js";
 
 type EventRow = typeof schema.events.$inferSelect;
@@ -508,6 +509,18 @@ export async function classifyStage(eventId: string): Promise<void> {
     log.info({ eventId, outcome: "devnet_recorded" }, "done");
     return; // devnet never surfaces on the mainnet radar
   }
+
+  // Same-address devnet lineage — the strongest incubation link, and the one the
+  // watchlist path above cannot see (it needs a novel, still-similar devnet
+  // build). Runs on upgrades too, not just the debut: a team that keeps staging
+  // on devnet after launch should have that reflected, and devnet history we
+  // polled late still gets picked up. The chain probe is reserved for genuine
+  // debuts — on an upgrade, our own record is already the better source.
+  await linkIncubation(
+    event.programId,
+    enrichment.deploy?.firstDeployAt ? new Date(enrichment.deploy.firstDeployAt) : event.blockTime,
+    { probeChain: event.type === "deploy" },
+  );
 
   await enqueue("score", { eventId });
   log.info({ eventId, ms: Date.now() - start, band: enrichment.classification?.band, outcome: "ok" }, "done");
