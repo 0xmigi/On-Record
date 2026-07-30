@@ -5,7 +5,7 @@ import { snapshotFunnel, todayKey } from "./funnel.js";
 import { sampleMomentum } from "./momentum.js";
 import { sweepClosed } from "./closed.js";
 import { reclassifyRecent } from "./reclassify.js";
-import { sweepRepoLinks } from "./repo-link.js";
+import { sweepRepoLinks, sweepRepoLiveness } from "./repo-link.js";
 
 // ---------------------------------------------------------------------------
 // Scheduled work (SPEC §10): TVL refresh (6h), a live funnel snapshot (15m),
@@ -36,6 +36,12 @@ export function startCron(): void {
   // entirely without GITHUB_TOKEN.
   every(Number(process.env.REPO_LINK_INTERVAL_MS ?? 3_600_000), "repo-link-sweep", async () => {
     await sweepRepoLinks("mainnet");
+  });
+  // a DECLARED repo can 404 — check the ones we already show, on a slow cycle,
+  // so a dead pointer stops being rendered as source and stops scoring as
+  // disclosure. Needs no token: it is a plain HEAD against the URL.
+  every(Number(process.env.REPO_LIVENESS_INTERVAL_MS ?? 6 * 3_600_000), "repo-liveness-sweep", async () => {
+    await sweepRepoLiveness("mainnet");
   });
 }
 
