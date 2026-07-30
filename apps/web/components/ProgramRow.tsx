@@ -78,12 +78,17 @@ export function ProgramRow({
     (i) => !UBIQUITOUS_INTEGRATIONS.has(i),
   );
   const txns24h = program.momentum?.txns24h ?? null;
+  // A weak match is a real measurement of the wrong thing — a lookalike crowd,
+  // or two binaries too far apart in size to share code (lineage.ts). Naming one
+  // is the most damaging thing this card can do: it put "fork of Tensor" on
+  // Marinade Liquid Staking. So a weak nearest never becomes a claim about a
+  // named program; the dossier still shows it, with the reason.
+  const namedMatch = program.nearest && !program.nearest.weak ? program.nearest : null;
   const isFork =
     program.band === "variant" &&
-    Boolean(program.nearest?.isReference) &&
-    (program.nearest?.similarity ?? 0) >= 0.6;
-  const resembles =
-    Boolean(program.nearest?.isReference) && (program.nearest?.similarity ?? 0) >= 0.4;
+    Boolean(namedMatch?.isReference) &&
+    (namedMatch?.similarity ?? 0) >= 0.6;
+  const resembles = Boolean(namedMatch?.isReference) && (namedMatch?.similarity ?? 0) >= 0.4;
   // lastEventAt is the program's most recent loader event — for an upgraded
   // program that IS the code change. Falls back to leading with the deploy date
   // if the row has never carried one.
@@ -170,9 +175,9 @@ export function ProgramRow({
               ✓ verified
             </span>
           ) : null}
-          {isFork && program.nearest?.name ? (
-            <span className="fork-chip" title={`${Math.round(program.nearest.similarity * 100)}% code match to ${program.nearest.name}`}>
-              fork of {program.nearest.name}
+          {isFork && namedMatch?.name ? (
+            <span className="fork-chip" title={`${Math.round(namedMatch.similarity * 100)}% code match to ${namedMatch.name}`}>
+              fork of {namedMatch.name}
             </span>
           ) : null}
           {kind === "recycled" ? (
@@ -226,10 +231,10 @@ export function ProgramRow({
           {notableIntegrations.length > 0 ? (
             <Fact label="talks to" value={notableIntegrations.slice(0, 2).join(", ")} />
           ) : null}
-          {resembles && program.nearest?.name ? (
+          {resembles && namedMatch?.name ? (
             <Fact
               label="resembles"
-              value={`${program.nearest.name} ${Math.round(program.nearest.similarity * 100)}%`}
+              value={`${namedMatch.name} ${Math.round(namedMatch.similarity * 100)}%`}
             />
           ) : null}
           {program.multisig ? (

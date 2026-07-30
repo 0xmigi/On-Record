@@ -31,3 +31,50 @@ export function lineageSizeWindow(sizeBytes: number): [number, number] {
     Math.ceil(sizeBytes * LINEAGE_SIZE_CEIL),
   ];
 }
+
+// ---------------------------------------------------------------------------
+// When the nearest match must not be PRESENTED as a specific relative.
+//
+// The window above is for the scan — it is deliberately permissive, because a
+// fork can be many times its origin and we would rather compare too much than
+// miss the relationship. What it is not is a licence to put a name on the
+// result. Two failure modes were live on the radar:
+//
+//  1. A crowd. Thirty-six programs within five similarity points of each other
+//     means the "nearest" is one arbitrary member of a lookalike pack — the
+//     score is measuring "is a Pinocchio program", not kinship.
+//
+//  2. A size chasm. TLSH encodes body length in one byte and penalises the
+//     difference, but past roughly 3x the penalty saturates and what is left is
+//     byte-distribution shape. Measured on 3,458 mainnet pairs, every one of
+//     the 13 false "fork of X" chips on the radar sat between 4.3x and 5.0x —
+//     Marinade Liquid Staking labelled a fork of Tensor (1,224 KB vs 258 KB),
+//     Token-2022 a fork of NOTCH Classic, raydium-clmm a fork of stork. None
+//     share a line of code.
+//
+// So the ratio below is calibrated on this corpus, not derived: 3x sits under
+// the observed failure band with margin and marks 4.4% of matches weak. A weak
+// match is still shown — it is a real measurement and the row keeps it — but it
+// stops being the headline and stops being called a fork.
+// ---------------------------------------------------------------------------
+
+/** Distinct programs within 5 similarity points before "nearest" means nothing. */
+export const NEAREST_CROWD_PEERS = 6;
+/** How far apart in size two binaries may be and still be called relatives. */
+export const NEAREST_MAX_SIZE_RATIO = 3;
+
+export type NearestWeakness = "crowd" | "size";
+
+/** Why this match can't carry a name, or null if it can. */
+export function nearestWeakness(
+  peersWithin5: number | null | undefined,
+  sizeBytes: number | null | undefined,
+  neighborSizeBytes: number | null | undefined,
+): NearestWeakness | null {
+  if ((peersWithin5 ?? 0) >= NEAREST_CROWD_PEERS) return "crowd";
+  if (sizeBytes && neighborSizeBytes) {
+    const ratio = Math.max(sizeBytes / neighborSizeBytes, neighborSizeBytes / sizeBytes);
+    if (ratio >= NEAREST_MAX_SIZE_RATIO) return "size";
+  }
+  return null;
+}

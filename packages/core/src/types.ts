@@ -1,3 +1,5 @@
+import type { NearestWeakness } from "./lineage.js";
+
 // ---------------------------------------------------------------------------
 // Shared domain types. The API returns these shapes verbatim — the website is
 // just one consumer (SPEC §7), so treat them as the public contract.
@@ -277,7 +279,14 @@ export interface ApiProgram {
   integrations: string[];
   syscallCount: number | null;
   // --- recovered identity (de-opaquing) ---
+  /** A repo somebody declared AND that answered when we last asked. Null once
+   *  the liveness sweep finds it gone — see repoUrlDeclared. */
   repoUrl: string | null;
+  /** The declared repo when it 404s. Kept, because publishing a source pointer
+   *  on chain that then breaks is itself a fact about the project — but served
+   *  under a name no consumer will render as a working link or score as
+   *  disclosure (apps/ingest/src/repo-link.ts). */
+  repoUrlDeclared: string | null;
   social: string | null;
   website: string | null;
   hasSecurityTxt: boolean;
@@ -356,6 +365,11 @@ export interface ApiNearest {
   /** distinct programs within 5 similarity points of this match — high = the match
    *  is generic framework shape (a crowd), not a specific relative */
   peersWithin5: number | null;
+  /** Set when this match must not be read as a specific relative — the score is
+   *  measuring generic shape. "crowd": many programs are equally close.
+   *  "size": the two binaries are too far apart in size to share a body of code.
+   *  Callers must not name a weak match as a fork or a source (lineage.ts). */
+  weak: NearestWeakness | null;
   /** 2nd-nearest program's similarity (0..1) — the gap that marks a standout */
   runnerUpSimilarity: number | null;
 }

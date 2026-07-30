@@ -55,7 +55,10 @@ export interface ApiProgram {
   /** upgradeCount is a floor (deploy-history page cap hit) — render as "N+" */
   upgradeCountTruncated?: boolean;
   // identity recovered from the program binary (the de-opaquer)
+  /** a declared repo that answered when the API last checked it */
   repoUrl: string | null;
+  /** the declared repo when it 404s — a real disclosure fact, but never a link */
+  repoUrlDeclared: string | null;
   social: string | null; // x.com / twitter
   website: string | null;
   hasSecurityTxt: boolean;
@@ -77,6 +80,10 @@ export interface ApiProgram {
     deployedAt: string | null; // neighbor's first deploy — for before/after-this direction
     peersWithin5: number | null; // distinct programs within 5 pts — high = generic crowd
     runnerUpSimilarity: number | null; // 2nd-nearest similarity (0..1) — gap = standout
+    /** set by the API when this match can't carry a name: "crowd" = many
+     *  programs equally close, "size" = too far apart in size to share code.
+     *  Never render a weak match as a fork or a source (core/lineage.ts). */
+    weak: "crowd" | "size" | null;
   } | null;
   // exact lineage — byte-identical to a verified build of a known program
   codeMatch: {

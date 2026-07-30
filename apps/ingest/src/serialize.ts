@@ -1,5 +1,6 @@
 import {
   httpUrl,
+  nearestWeakness,
   schema,
   type ApiNearest,
   type ApiProgram,
@@ -30,6 +31,7 @@ export interface NearestMeta {
   name: string | null;
   isReference: boolean;
   deployedAt: string | null; // neighbor's first deploy — for the before/after-this hint
+  sizeBytes: number | null; // against this program's size — see nearestWeakness()
 }
 
 /** TLSH distance → display similarity. 0 = identical code, ≥300 = unrelated
@@ -38,7 +40,11 @@ function similarityFromDistance(distance: number): number {
   return Math.max(0, Math.min(1, 1 - distance / 300));
 }
 
-function nearestOf(facts: { nearest?: NearestFact }, meta?: Map<string, NearestMeta>): ApiNearest | null {
+function nearestOf(
+  facts: { nearest?: NearestFact },
+  sizeBytes: number | null,
+  meta?: Map<string, NearestMeta>,
+): ApiNearest | null {
   const n = facts.nearest;
   if (!n || typeof n.distance !== "number") return null;
   const m = meta?.get(n.id);
@@ -53,6 +59,9 @@ function nearestOf(facts: { nearest?: NearestFact }, meta?: Map<string, NearestM
       typeof n.runnerUpDistance === "number"
         ? Math.round(similarityFromDistance(n.runnerUpDistance) * 100) / 100
         : null,
+    // computed here, not in the UI: the radar card, the dossier and anything
+    // else reading the API must agree on when this match can carry a name
+    weak: nearestWeakness(n.peersWithin5, sizeBytes, m?.sizeBytes),
   };
 }
 
@@ -89,6 +98,8 @@ export function serializeProgram(
     deployCostLamports?: number;
     idlSource?: "pmp" | "anchor-legacy";
     logoUrl?: string;
+    repoUrlDead?: boolean;
+    repoUrlRoot?: string;
     codeMatch?: ApiProgram["codeMatch"];
     incubation?: ApiProgram["incubation"];
     multisig?: ApiProgram["multisig"];
@@ -123,8 +134,16 @@ export function serializeProgram(
     integrations: profile?.integrations ?? [],
     syscallCount: profile?.syscalls?.length ?? null,
     // scheme-guarded: these came out of attacker-controlled binaries and are
-    // rendered as hrefs — rows ingested before the guard may hold bad schemes
-    repoUrl: httpUrl(row.repoUrl),
+    // rendered as hrefs — rows ingested before the guard may hold bad schemes.
+    // A repo the liveness sweep found gone is withheld from `repoUrl` rather
+    // than flagged beside it: six consumers read this field (dossier link,
+    // radar icon, avatar favicon, OG image, disclosure score, radar filter) and
+    // a flag is only as good as the last one to remember to check it.
+    // A stale pin (the repo lives, the commit it named is gone) falls back to
+    // the repo root — still the source, still reachable. Only a genuinely dead
+    // pointer is withheld.
+    repoUrl: facts.repoUrlDead ? null : (httpUrl(facts.repoUrlRoot) ?? httpUrl(row.repoUrl)),
+    repoUrlDeclared: facts.repoUrlDead ? httpUrl(row.repoUrl) : null,
     social: httpUrl(facts.social),
     website: httpUrl(facts.website),
     hasSecurityTxt: Boolean(facts.hasSecurityTxt),
@@ -143,7 +162,7 @@ export function serializeProgram(
       typeof facts.deployCostLamports === "number"
         ? Math.round((facts.deployCostLamports / 1e9) * 1000) / 1000
         : null,
-    nearest: nearestOf(facts, nearestMeta),
+    nearest: nearestOf(facts, row.sizeBytes, nearestMeta),
     codeMatch: facts.codeMatch ?? null,
     incubation: facts.incubation ?? null,
     multisig: facts.multisig ?? null,

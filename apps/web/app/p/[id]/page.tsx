@@ -382,6 +382,15 @@ export default async function ProgramDossierPage({
                 <span className="cell-dim">{program.securityTxt.source_revision}</span>
               </Row>
             ) : null}
+            {/* Declared source that doesn't resolve. Shown, because a broken
+                on-chain pointer is a fact about the disclosure — but as text,
+                never a link, and it is not counted as a repo anywhere else. */}
+            {program.repoUrlDeclared ? (
+              <Row label="Source code">
+                <span className="cell-dim">{shortUrl(program.repoUrlDeclared)}</span>{" "}
+                <span className="cell-dim">· declared, but the URL 404s</span>
+              </Row>
+            ) : null}
           </div>
           <SectionExplainer title="What's a security.txt?">
             <p className="explainer-read">

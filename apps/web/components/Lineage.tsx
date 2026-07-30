@@ -17,8 +17,8 @@ import { Chevron } from "@/components/Chevron";
 // the classifier calls TLSH distance ≥150 novel — similarity = 1 − d/300
 const NOVEL_SIM = 0.5;
 const FAMILY_SIM = 0.83;
-// a pack of same-shaped programs → the nearest is a lookalike, not a source
-const CROWD_PEERS = 6;
+// (the crowd/size thresholds that decide a weak match live in core/lineage.ts —
+// the API applies them so the radar card and this panel can't disagree)
 const MAX_ROWS = 6;
 // a clone family can run to thousands — the list shows a few, the family line counts them
 const MAX_BUCKET_ROWS = 3;
@@ -34,6 +34,10 @@ type Relative = {
   exactRepo: string | null; // byte-identical to this verified build
   sameBucket: boolean; // clone bucket: identical sha256, or TLSH inside 50
   closed: boolean; // ProgramData gutted, rent reclaimed
+  /** set when the similarity is measuring generic shape, not kinship — the API
+   *  decides this (core/lineage.ts) so every surface agrees */
+  weak: "crowd" | "size" | null;
+  peersWithin5: number | null; // how big the lookalike crowd is, when it is one
 };
 
 // how a mainnet program was tied back to its devnet sighting
@@ -68,6 +72,8 @@ function relativesOf(p: ApiProgramDetail, family: ApiCluster | null): Relative[]
       exactRepo: null,
       sameBucket: false,
       closed: false,
+      weak: null,
+      peersWithin5: null,
     };
     byId.set(id, {
       ...cur,
@@ -81,6 +87,8 @@ function relativesOf(p: ApiProgramDetail, family: ApiCluster | null): Relative[]
       name: p.nearest.name,
       deployedAt: p.nearest.deployedAt,
       similarity: p.nearest.similarity,
+      weak: p.nearest.weak,
+      peersWithin5: p.nearest.peersWithin5,
     });
   }
   for (const k of p.sourceKin ?? []) {
@@ -103,7 +111,9 @@ function relativesOf(p: ApiProgramDetail, family: ApiCluster | null): Relative[]
 function strength(r: Relative): number {
   if (r.exactRepo) return 4;
   if (r.sameBucket) return 3;
-  if (r.similarity != null && r.similarity >= FAMILY_SIM) return 2;
+  // a weak match scores as if it had no similarity at all — it must never be
+  // the row a reader takes as "what this was forked from"
+  if (!r.weak && r.similarity != null && r.similarity >= FAMILY_SIM) return 2;
   if (r.sharedFiles) return 1;
   return 0;
 }
@@ -113,15 +123,16 @@ function ts(iso: string | null): number {
   return Number.isNaN(t) ? Infinity : t; // undated (reference corpus) sorts last
 }
 
-/** What ties this relative to the program. */
-function evidenceOf(r: Relative, crowdOf: number | null): string {
+/** What ties this relative to the program. A weak similarity is still printed —
+ *  it is a real measurement — but never bare: an unqualified "93% match" reads
+ *  as kinship, and the whole point is that this one isn't. */
+function evidenceOf(r: Relative): string {
   const why: string[] = [];
   if (r.exactRepo) why.push("byte-identical");
   if (r.sameBucket) why.push("same code");
   if (r.similarity != null) why.push(`${Math.round(r.similarity * 100)}% match`);
-  // in a crowd the nearest is one arbitrary member of a lookalike pack, not a
-  // source — say so on the row so it can't be read as the thing it came from
-  if (crowdOf != null) why.push(`one of ${crowdOf}`);
+  if (r.weak === "crowd") why.push(r.peersWithin5 ? `one of ${r.peersWithin5}` : "one of a crowd");
+  if (r.weak === "size") why.push("different size class");
   if (r.sharedFiles != null) why.push(`${r.sharedFiles} files shared`);
   if (r.closed) why.push("closed");
   return why.join(" · ");
@@ -136,15 +147,7 @@ function relName(r: Relative, selfName: string | null): string | null {
 }
 
 /** One record: when, what, how it relates. */
-function RelativeRow({
-  r,
-  selfName,
-  crowdOf,
-}: {
-  r: Relative;
-  selfName: string | null;
-  crowdOf: number | null;
-}) {
+function RelativeRow({ r, selfName }: { r: Relative; selfName: string | null }) {
   const name = relName(r, selfName);
   return (
     <li className="lin-row">
@@ -170,7 +173,7 @@ function RelativeRow({
               : SIM_TIP
         }
       >
-        {evidenceOf(r, crowdOf)}
+        {evidenceOf(r)}
         {r.exactRepo ? (
           <>
             {" "}
@@ -300,11 +303,6 @@ export function Lineage({
   const hidden = all.length - shown.length;
   const selfAt = program.firstDeployAt ?? program.deployedAt;
   const selfIndex = shown.filter((r) => ts(r.deployedAt) <= ts(selfAt)).length;
-  const crowd =
-    program.nearest?.peersWithin5 != null && program.nearest.peersWithin5 >= CROWD_PEERS
-      ? program.nearest.peersWithin5
-      : null;
-  const crowdOf = (r: Relative) => (r.id === program.nearest?.id ? crowd : null);
 
   // nothing to show — one dim line, no empty card
   if (!all.length && !program.incubation && !family) {
@@ -321,7 +319,7 @@ export function Lineage({
   // more" in a way a count never does. Every row is rendered either way.
   const rows = [
     ...shown.slice(0, selfIndex).map((r) => (
-      <RelativeRow key={r.id} r={r} selfName={program.name} crowdOf={crowdOf(r)} />
+      <RelativeRow key={r.id} r={r} selfName={program.name} />
     )),
     <li className="lin-row lin-self" key="self">
       <span className="lin-when">{selfAt ? dayStamp(selfAt) : "undated"}</span>
@@ -329,7 +327,7 @@ export function Lineage({
       <span className="lin-why">this program</span>
     </li>,
     ...shown.slice(selfIndex).map((r) => (
-      <RelativeRow key={r.id} r={r} selfName={program.name} crowdOf={crowdOf(r)} />
+      <RelativeRow key={r.id} r={r} selfName={program.name} />
     )),
     ...(hidden > 0
       ? [
@@ -348,14 +346,19 @@ export function Lineage({
   // clone sibling outranks a fuzzy neighbour for the list, but "99% match"
   // says more in a header than "same code"
   const bySim = all
-    .filter((r) => r.similarity != null)
+    .filter((r) => r.similarity != null && !r.weak)
     .sort((a, b) => b.similarity! - a.similarity!)[0];
+  // the header is the one line most readers take away, so it only ever carries a
+  // match that can bear a name — a weak one falls through to the next-best
+  // evidence, and to "devnet origin" or nothing if there isn't any
   const closest =
     all.find((r) => r.exactRepo) ??
-    (bySim && bySim.similarity! >= FAMILY_SIM ? bySim : (byStrength[0] ?? null));
+    (bySim && !bySim.weak && bySim.similarity! >= FAMILY_SIM
+      ? bySim
+      : (byStrength.find((r) => strength(r) > 0) ?? null));
   const fields: [string, string][] = [];
   if (all.length) fields.push(["related", `${all.length}${hidden > 0 ? "+" : ""}`]);
-  if (closest) fields.push(["closest", evidenceOf(closest, crowdOf(closest))]);
+  if (closest) fields.push(["closest", evidenceOf(closest)]);
   if (!fields.length && program.incubation) {
     fields.push([
       program.incubation.matchedOn === "program_id" || program.incubation.matchedOn === "authority"
