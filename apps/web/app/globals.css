@@ -2006,6 +2006,22 @@ a.copy-addr-text:hover {
   border-bottom-color: var(--accent);
 }
 
+/* Cluster label for devnet rows in the merged radar feed. Quiet by design —
+   it qualifies the row, it isn't a warning. */
+.devnet-chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 0 6px;
+  height: 18px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  font-size: 11px;
+  letter-spacing: 0.03em;
+  color: var(--ink-faint);
+  background: transparent;
+  white-space: nowrap;
+}
+
 .sec-badge {
   font-family: var(--font-mono);
   font-size: 9px;

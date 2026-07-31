@@ -11,7 +11,6 @@ import {
   isRadarType,
   isWindow,
   type ApiProgram,
-  type Network,
   type RadarType,
   type RadarWindow,
 } from "@/lib/api";
@@ -25,6 +24,7 @@ import {
   parseFramework,
   parseSize,
   withPatch,
+  type NetworkFilter,
   type RadarParams,
   type View,
 } from "@/lib/radar-url";
@@ -240,16 +240,16 @@ export default async function RadarPage({
   const type: RadarType = isRadarType(sp.type) ? sp.type : "deploy";
   const window: RadarWindow = isWindow(sp.window) ? sp.window : "today";
   // network is sticky: an explicit ?network= wins, else the persisted cookie
-  // (set by the toggle), else mainnet — so leaving and returning keeps cluster.
+  // (set by the toggle), else "all" — the merged feed is the default view.
   const cookieNetwork = (await cookies()).get("network")?.value;
-  const network: Network =
-    sp.network === "devnet"
-      ? "devnet"
-      : sp.network === "mainnet"
-        ? "mainnet"
-        : cookieNetwork === "devnet"
-          ? "devnet"
-          : "mainnet";
+  const network: NetworkFilter =
+    sp.network === "devnet" || sp.network === "mainnet"
+      ? sp.network
+      : sp.network === "all"
+        ? "all"
+        : cookieNetwork === "devnet" || cookieNetwork === "mainnet"
+          ? cookieNetwork
+          : "all";
   const isDevnet = network === "devnet";
   const isDeploy = type === "deploy";
   const view: View | undefined = isDeploy && isView(sp.view) ? sp.view : undefined;
@@ -288,7 +288,7 @@ export default async function RadarPage({
       : Promise.resolve([]),
     !isDeploy ? fetchRadar({ type, window, limit: 50, network }) : Promise.resolve(EMPTY),
     // funnel is per-cluster now — devnet gets its own live-computed stats
-    fetchFunnel(FUNNEL_WINDOW[window], network),
+    fetchFunnel(FUNNEL_WINDOW[window], network === "all" ? "mainnet" : network),
   ]);
 
   // attribute facets narrow every downstream view — the band pages, the tier

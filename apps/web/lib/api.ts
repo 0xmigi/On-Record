@@ -317,8 +317,8 @@ export async function fetchRadar(
     band?: Band;
     /** "only" = the closed graveyard; default hides closed programs */
     closed?: "only" | "include";
-    /** devnet = the incubation stream (recency-sorted server-side) */
-    network?: Network;
+    /** omit (or "all") for the merged feed — both clusters in one ranking */
+    network?: Network | "all";
   } = {}
 ): Promise<ApiCursorPage<ApiProgram>> {
   const params = new URLSearchParams();
@@ -327,7 +327,9 @@ export async function fetchRadar(
   if (opts.cursor) params.set("cursor", opts.cursor);
   if (opts.band) params.set("band", opts.band);
   if (opts.closed) params.set("closed", opts.closed === "only" ? "only" : "1");
-  if (opts.network === "devnet") params.set("network", "devnet");
+  if (opts.network === "devnet" || opts.network === "mainnet") {
+    params.set("network", opts.network);
+  }
   params.set("limit", String(opts.limit ?? 50));
   const page = await getJson<ApiCursorPage<ApiProgram>>(
     `/api/radar?${params.toString()}`

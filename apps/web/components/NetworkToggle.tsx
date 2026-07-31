@@ -4,39 +4,47 @@ import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import { usePathname, useSearchParams } from "next/navigation";
 
+type Net = "all" | "mainnet" | "devnet";
+
 /** Gear menu in the top nav (Orb-style): a settings dropdown with a NETWORK
- *  section — Mainnet / Devnet, checkmark on the active cluster. */
+ *  section — All / Mainnet / Devnet, checkmark on the active one.
+ *
+ *  "All" is the default and the merged radar: one feed across both clusters,
+ *  devnet rows labelled inline rather than living on a separate page. The other
+ *  two narrow the same feed to one surface. */
 export function NetworkToggle() {
   const pathname = usePathname();
   const search = useSearchParams();
   const [open, setOpen] = useState(false);
-  const [cookieNet, setCookieNet] = useState<"mainnet" | "devnet" | null>(null);
+  const [cookieNet, setCookieNet] = useState<Net | null>(null);
   const rootRef = useRef<HTMLDivElement>(null);
 
   const onRadar = pathname === "/";
   // active cluster: an explicit ?network= wins, else the persisted cookie
   const paramNet = search.get("network");
-  const current: "mainnet" | "devnet" =
-    paramNet === "devnet" ? "devnet" : paramNet === "mainnet" ? "mainnet" : cookieNet ?? "mainnet";
-  const isDevnet = current === "devnet";
+  const current: Net =
+    paramNet === "devnet" || paramNet === "mainnet" || paramNet === "all"
+      ? paramNet
+      : cookieNet ?? "all";
 
   // read the persisted cluster after mount (document.cookie is client-only)
   useEffect(() => {
-    const m = document.cookie.match(/(?:^|;\s*)network=(devnet|mainnet)/);
-    if (m) setCookieNet(m[1] as "mainnet" | "devnet");
+    const m = document.cookie.match(/(?:^|;\s*)network=(devnet|mainnet|all)/);
+    if (m) setCookieNet(m[1] as Net);
   }, []);
 
   // persist the choice so leaving the radar and returning keeps the cluster
-  const choose = (net: "mainnet" | "devnet") => {
+  const choose = (net: Net) => {
     document.cookie = `network=${net}; path=/; max-age=31536000; samesite=lax`;
     setCookieNet(net);
     setOpen(false);
   };
 
-  const href = (net: "mainnet" | "devnet"): string => {
+  const href = (net: Net): string => {
     const params = new URLSearchParams(onRadar ? search : undefined);
     params.delete("network");
-    if (net === "devnet") params.set("network", "devnet");
+    // "all" is the default, so it stays out of the URL
+    if (net !== "all") params.set("network", net);
     const qs = params.toString();
     return qs ? `/?${qs}` : "/";
   };
@@ -58,8 +66,8 @@ export function NetworkToggle() {
     };
   }, [open]);
 
-  const Item = ({ net, label }: { net: "mainnet" | "devnet"; label: string }) => {
-    const active = net === "devnet" ? isDevnet : !isDevnet;
+  const Item = ({ net, label }: { net: Net; label: string }) => {
+    const active = net === current;
     return (
       <Link className="net-menu-item" href={href(net)} onClick={() => choose(net)}>
         <span>{label}</span>
@@ -90,6 +98,7 @@ export function NetworkToggle() {
       {open ? (
         <div className="net-menu-panel" role="menu" aria-label="Settings">
           <div className="net-menu-head">Network</div>
+          <Item net="all" label="All networks" />
           <Item net="mainnet" label="Mainnet" />
           <Item net="devnet" label="Devnet" />
         </div>

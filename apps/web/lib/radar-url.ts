@@ -4,7 +4,18 @@
 // and every link stays shareable (the whole point: a filtered radar is a URL
 // you can paste into a tweet).
 
-import type { ApiProgram, Category, Framework, Network, RadarType, RadarWindow } from "@/lib/api";
+import type { ApiProgram, Category, Framework, RadarType, RadarWindow } from "@/lib/api";
+
+/** Which cluster the radar is showing. "all" is the default and the point of
+ *  the merged feed — one radar, both surfaces, devnet rows labelled inline.
+ *  mainnet/devnet narrow it to a focused view of one. */
+export type NetworkFilter = "all" | "mainnet" | "devnet";
+export const NETWORK_FILTERS: NetworkFilter[] = ["all", "mainnet", "devnet"];
+export const NETWORK_FILTER_LABEL: Record<NetworkFilter, string> = {
+  all: "All networks",
+  mainnet: "Mainnet",
+  devnet: "Devnet",
+};
 
 export type View = "novel" | "variant" | "recycled";
 // Mirrors composition.ts SizeBand thresholds — kept local so the radar list
@@ -68,7 +79,7 @@ export interface RadarParams {
   type: RadarType;
   window: RadarWindow;
   view?: View;
-  network: Network;
+  network: NetworkFilter;
   // attribute facets — compose with everything above (and each other)
   // status (multi-select toggles)
   verified: boolean;
@@ -166,9 +177,9 @@ export function buildRadarHref(p: RadarParams): string {
   if (p.type !== "deploy") params.set("type", p.type);
   if (p.window !== "today") params.set("window", p.window);
   if (p.view) params.set("view", p.view);
-  // always emit the cluster: a persisted devnet cookie must not hijack an
-  // explicit mainnet view (or vice-versa) when the next link omits it.
-  params.set("network", p.network);
+  // always emit a narrowed cluster, so a persisted cookie can't hijack an
+  // explicit view. "all" is the default and stays out of the URL.
+  if (p.network !== "all") params.set("network", p.network);
   if (p.verified) params.set("verified", "1");
   if (p.sectxt) params.set("sectxt", "1");
   if (p.idl) params.set("idl", "1");

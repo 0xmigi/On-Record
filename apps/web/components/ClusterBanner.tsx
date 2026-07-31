@@ -25,8 +25,8 @@ export function ClusterBanner() {
   // re-read the persisted cluster on every navigation (the toggle may have
   // just changed it); document.cookie is client-only, hence the effect.
   useEffect(() => {
-    const m = document.cookie.match(/(?:^|;\s*)network=(devnet|mainnet)/);
-    setCookieNet(m ? (m[1] as "mainnet" | "devnet") : null);
+    const m = document.cookie.match(/(?:^|;\s*)network=(devnet|mainnet|all)/);
+    setCookieNet(m && m[1] !== "all" ? (m[1] as "mainnet" | "devnet") : null);
   }, [search]);
 
   const param = search.get("network");
