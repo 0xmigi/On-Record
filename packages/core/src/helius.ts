@@ -9,6 +9,13 @@ import type { Network } from "./types.js";
 // ---------------------------------------------------------------------------
 
 export const LOADER_PROGRAM_ID = "BPFLoaderUpgradeab1e11111111111111111111111";
+/** The two pre-upgradeable BPF loaders. Their programs are immutable and have
+ *  no ProgramData account — the program account itself holds the ELF. */
+export const LOADER_V1_PROGRAM_ID = "BPFLoader1111111111111111111111111111111111";
+export const LOADER_V2_PROGRAM_ID = "BPFLoader2111111111111111111111111111111111";
+/** Built into the validator (Vote, Compute Budget). No bytecode exists on
+ *  chain at all — the account data is just the program's name. */
+export const NATIVE_LOADER_PROGRAM_ID = "NativeLoader1111111111111111111111111111111";
 
 export function rpcUrl(network: Network): string {
   const host = network === "mainnet" ? "mainnet.helius-rpc.com" : "devnet.helius-rpc.com";
@@ -281,6 +288,59 @@ export function parseProgramDataHeader(
   const hasAuthority = data[12] === 1;
   const upgradeAuthority = hasAuthority ? base58Encode(data.subarray(13, 45)) : null;
   return { deployedSlot, upgradeAuthority };
+}
+
+/** ELF magic. The only thing that distinguishes a loader-v1/v2 program account
+ *  (raw ELF) from a native one (a short name string) without trusting the owner. */
+const ELF_MAGIC = Buffer.from([0x7f, 0x45, 0x4c, 0x46]);
+
+export type ProgramAccount =
+  /** upgradeable loader: bytecode lives in a separate ProgramData account */
+  | { kind: "upgradeable"; programDataAddress: string }
+  /** loader v1/v2: immutable, and the program account IS the ELF */
+  | { kind: "immutable"; bytecode: Buffer }
+  /** built into the validator — there is no bytecode to fingerprint */
+  | { kind: "native" }
+  | { kind: "absent" }
+  | { kind: "unrecognized"; owner: string; executable: boolean };
+
+/** What kind of program account this is — and, for the immutable loaders whose
+ *  program account holds the ELF directly, the bytecode itself.
+ *
+ *  `getProgramDataAddress` answers this for the upgradeable loader only, and
+ *  returns a bare null for everything else. That null is why SPL Token, Memo
+ *  and the Associated Token Account program were unreachable: they are ordinary
+ *  BPF programs with real, fingerprintable bytecode, just deployed before the
+ *  upgradeable loader existed. One getAccountInfo tells the cases apart. */
+export async function inspectProgramAccount(
+  network: Network,
+  programId: string,
+): Promise<ProgramAccount> {
+  const result = await rpc<{ value: AccountInfo | null }>(network, "getAccountInfo", [
+    programId,
+    { encoding: "base64+zstd", commitment: "confirmed" },
+  ]);
+  if (!result.value) return { kind: "absent" };
+  const { owner } = result.value;
+  const [payload, encoding] = result.value.data;
+  const raw = Buffer.from(payload, "base64");
+  const data = encoding === "base64+zstd" ? Buffer.from(decompress(raw)) : raw;
+
+  if (owner === LOADER_PROGRAM_ID) {
+    const parsed = parseProgramAccount(data);
+    return parsed
+      ? { kind: "upgradeable", programDataAddress: base58Encode(parsed.programDataAddress) }
+      : { kind: "unrecognized", owner, executable: true };
+  }
+  if (owner === NATIVE_LOADER_PROGRAM_ID) return { kind: "native" };
+  if (owner === LOADER_V1_PROGRAM_ID || owner === LOADER_V2_PROGRAM_ID) {
+    // Trust the bytes, not the owner: a v1/v2-owned account that isn't an ELF
+    // is not something we can fingerprint, and silently hashing a name string
+    // would put a garbage neighbor into the lineage corpus.
+    if (data.subarray(0, 4).equals(ELF_MAGIC)) return { kind: "immutable", bytecode: data };
+    return { kind: "unrecognized", owner, executable: true };
+  }
+  return { kind: "unrecognized", owner, executable: false };
 }
 
 /** The Program account (enum tag 2) points at its ProgramData address. Used to

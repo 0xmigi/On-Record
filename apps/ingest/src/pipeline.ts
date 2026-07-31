@@ -6,6 +6,7 @@ import {
   enqueue,
   getQueue,
   getAccountBytes,
+  inspectProgramAccount,
   parseProgramDataAccount,
   sha256Hex,
   tlshHash,
@@ -118,20 +119,44 @@ export async function fingerprintStage(eventId: string): Promise<void> {
     }
   }
 
+  // Where the bytecode lives depends on the loader. Under the upgradeable
+  // loader it is in a separate ProgramData account behind a 45-byte header;
+  // under loader v1/v2 the program account IS the ELF, with no header and no
+  // deploy slot. The seeder is the only producer of the latter (a live loader
+  // event always names a ProgramData address), so a null here is deliberate.
   const address = event.programDataAddress;
-  if (!address) throw new Error("deploy/upgrade event without ProgramData address");
-  const raw = await getAccountBytes(network, address);
-  if (!raw) {
-    enrichment.error = "programdata account not found (closed already?)";
-    await saveEnrichment(eventId, enrichment, "fingerprint_failed");
-    log.warn({ eventId, outcome: "account_missing" }, "done");
-    return;
-  }
-  const parsed = parseProgramDataAccount(raw);
-  if (!parsed) {
-    enrichment.error = "account is not a ProgramData account";
-    await saveEnrichment(eventId, enrichment, "fingerprint_failed");
-    return;
+  let bytecode: Buffer;
+  let programDataBytes: number;
+  let upgradeAuthority: string | null = null;
+  if (address) {
+    const raw = await getAccountBytes(network, address);
+    if (!raw) {
+      enrichment.error = "programdata account not found (closed already?)";
+      await saveEnrichment(eventId, enrichment, "fingerprint_failed");
+      log.warn({ eventId, outcome: "account_missing" }, "done");
+      return;
+    }
+    const parsed = parseProgramDataAccount(raw);
+    if (!parsed) {
+      enrichment.error = "account is not a ProgramData account";
+      await saveEnrichment(eventId, enrichment, "fingerprint_failed");
+      return;
+    }
+    bytecode = parsed.bytecode;
+    programDataBytes = raw.length;
+    upgradeAuthority = parsed.upgradeAuthority;
+  } else {
+    const acct = await inspectProgramAccount(network, event.programId);
+    if (acct.kind !== "immutable") {
+      enrichment.error = `expected an immutable loader program, got ${acct.kind}`;
+      await saveEnrichment(eventId, enrichment, "fingerprint_failed");
+      log.warn({ eventId, kind: acct.kind, outcome: "not_immutable" }, "done");
+      return;
+    }
+    bytecode = acct.bytecode;
+    // There is no ProgramData account, so there is no deploy rent to quote —
+    // 0 keeps deployCostLamports off the record rather than inventing a figure.
+    programDataBytes = 0;
   }
 
   // one batched probe: PMP idl + PMP security + legacy anchor:idl accounts
@@ -140,12 +165,12 @@ export async function fingerprintStage(eventId: string): Promise<void> {
     : { idl: null, idlSource: null, security: null };
 
   const fp: Fingerprint = {
-    sha256: sha256Hex(parsed.bytecode),
-    tlsh: await tlshHash(parsed.bytecode),
-    sizeBytes: parsed.bytecode.length,
-    programDataBytes: raw.length,
+    sha256: sha256Hex(bytecode),
+    tlsh: await tlshHash(bytecode),
+    sizeBytes: bytecode.length,
+    programDataBytes,
     idl: md.idl,
-    strings: extractStrings(parsed.bytecode),
+    strings: extractStrings(bytecode),
   };
   enrichment.fingerprint = fp;
   enrichment.metadata = { idlSource: md.idlSource, security: md.security };
@@ -153,14 +178,14 @@ export async function fingerprintStage(eventId: string): Promise<void> {
   // structured profile from the SBF bytecode: framework, syscalls, capabilities,
   // integrations (docs/GRADING.md §5). Feeds the radar's framework chip + the
   // eventual grading axes.
-  enrichment.profile = profileProgram(parsed.bytecode, {
+  enrichment.profile = profileProgram(bytecode, {
     strings: fp.strings,
     idlInstructions: fp.idl?.instructions,
   });
 
   // recovered identity from the binary: name (Rust panic paths / security.txt),
   // repo, socials, website — de-opaques ~half of anonymous programs.
-  enrichment.bytecodeIdentity = deriveBytecodeIdentity(parsed.bytecode);
+  enrichment.bytecodeIdentity = deriveBytecodeIdentity(bytecode);
 
   await db
     .update(schema.events)
@@ -168,7 +193,7 @@ export async function fingerprintStage(eventId: string): Promise<void> {
       enrichment: enrichment as Record<string, unknown>,
       pipelineStage: "fingerprinted",
       sha256After: fp.sha256,
-      authorityAfter: event.authorityAfter ?? parsed.upgradeAuthority,
+      authorityAfter: event.authorityAfter ?? upgradeAuthority,
     })
     .where(eq(schema.events.id, eventId));
 
@@ -322,7 +347,11 @@ async function upsertSubject(event: EventRow, enrichment: EventEnrichment): Prom
   const pmpName = typeof md?.security?.name === "string" ? md.security.name : null;
   const sourceTree = recoverSourceTree(fp?.strings ?? []);
   const pmpLogo = typeof md?.security?.logo === "string" ? md.security.logo : null;
-  const when = event.blockTime ?? new Date();
+  // An undated seed (immutable loader-v1/v2 landmark — see EventEnrichment)
+  // must stay undated: `now` would date a 2020 program as today's deploy and
+  // float it to the top of the radar. Null keeps it out of every dated stream
+  // while leaving it searchable and in the lineage corpus.
+  const when = enrichment.undated ? null : (event.blockTime ?? new Date());
   const values = {
     kind: "program" as const,
     network: event.network,
