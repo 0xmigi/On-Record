@@ -239,9 +239,14 @@ export default async function RadarPage({
   const sp = await searchParams;
   const type: RadarType = isRadarType(sp.type) ? sp.type : "deploy";
   const window: RadarWindow = isWindow(sp.window) ? sp.window : "today";
-  // network is sticky: an explicit ?network= wins, else the persisted cookie
-  // (set by the toggle), else "all" — the merged feed is the default view.
-  const cookieNetwork = (await cookies()).get("network")?.value;
+  // network is sticky: an explicit ?network= wins, else the persisted cookie,
+  // else "all" — the merged feed is the default view.
+  //
+  // Deliberately a NEW cookie name. Everyone who ever used the old two-state
+  // toggle has `network=mainnet|devnet` saved, and honouring that would pin
+  // every existing visitor to a focused view and hide the merged feed from the
+  // people most likely to notice it was gone.
+  const cookieNetwork = (await cookies()).get("cluster")?.value;
   const network: NetworkFilter =
     sp.network === "devnet" || sp.network === "mainnet"
       ? sp.network

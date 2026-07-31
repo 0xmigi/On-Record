@@ -29,13 +29,13 @@ export function NetworkToggle() {
 
   // read the persisted cluster after mount (document.cookie is client-only)
   useEffect(() => {
-    const m = document.cookie.match(/(?:^|;\s*)network=(devnet|mainnet|all)/);
+    const m = document.cookie.match(/(?:^|;\s*)cluster=(devnet|mainnet|all)/);
     if (m) setCookieNet(m[1] as Net);
   }, []);
 
   // persist the choice so leaving the radar and returning keeps the cluster
   const choose = (net: Net) => {
-    document.cookie = `network=${net}; path=/; max-age=31536000; samesite=lax`;
+    document.cookie = `cluster=${net}; path=/; max-age=31536000; samesite=lax`;
     setCookieNet(net);
     setOpen(false);
   };

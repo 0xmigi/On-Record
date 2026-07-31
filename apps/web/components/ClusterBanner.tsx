@@ -25,7 +25,7 @@ export function ClusterBanner() {
   // re-read the persisted cluster on every navigation (the toggle may have
   // just changed it); document.cookie is client-only, hence the effect.
   useEffect(() => {
-    const m = document.cookie.match(/(?:^|;\s*)network=(devnet|mainnet|all)/);
+    const m = document.cookie.match(/(?:^|;\s*)cluster=(devnet|mainnet|all)/);
     setCookieNet(m && m[1] !== "all" ? (m[1] as "mainnet" | "devnet") : null);
   }, [search]);
 
@@ -55,7 +55,7 @@ export function ClusterBanner() {
         href="/?network=mainnet"
         className="cluster-banner-switch"
         onClick={() => {
-          document.cookie = "network=mainnet; path=/; max-age=31536000; samesite=lax";
+          document.cookie = "cluster=mainnet; path=/; max-age=31536000; samesite=lax";
         }}
       >
         view mainnet →
