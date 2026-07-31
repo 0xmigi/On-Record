@@ -165,14 +165,6 @@ export function ProgramRow({
               deployed {relativeTime(program.deployedAt)}
             </span>
           ) : null}
-          {/* The merged feed mixes clusters, so a devnet row says so inline —
-              it is the one fact that changes how everything else on the row
-              should be read. Mainnet carries no label: it is the default. */}
-          {program.network === "devnet" ? (
-            <span className="devnet-chip" title="Deployed on devnet, not mainnet">
-              devnet
-            </span>
-          ) : null}
           {program.hasSecurityTxt ? (
             <span className="sec-badge" title="Embeds a security.txt in its binary">
               security.txt

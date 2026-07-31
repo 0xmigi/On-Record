@@ -1907,6 +1907,14 @@ a.copy-addr-text:hover {
   background: var(--surface-2, rgba(0, 0, 0, 0.04));
 }
 
+/* Devnet rows in the merged feed: an accent ring on the icon. Colour on a
+   fixed anchor beats another chip — the eye finds it before it reads anything,
+   and mainnet stays unmarked because it is the default. */
+.radar-favicon.is-devnet {
+  box-shadow: 0 0 0 1.5px var(--accent);
+  outline: 1.5px solid transparent; /* keeps the ring visible in forced-colors */
+}
+
 /* fallback avatar: first two chars of the program id (Orb-style) */
 .radar-avatar {
   display: inline-flex;
@@ -2006,21 +2014,6 @@ a.copy-addr-text:hover {
   border-bottom-color: var(--accent);
 }
 
-/* Cluster label for devnet rows in the merged radar feed. Quiet by design —
-   it qualifies the row, it isn't a warning. */
-.devnet-chip {
-  display: inline-flex;
-  align-items: center;
-  padding: 0 6px;
-  height: 18px;
-  border: 1px solid var(--border);
-  border-radius: 4px;
-  font-size: 11px;
-  letter-spacing: 0.03em;
-  color: var(--ink-faint);
-  background: transparent;
-  white-space: nowrap;
-}
 
 .sec-badge {
   font-family: var(--font-mono);
