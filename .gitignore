@@ -14,3 +14,10 @@ data/
 
 # scratch scripts from interactive sessions
 scripts/.tmp-*
+
+# local-only research: recordings, transcripts, posting notes
+research/
+
+# daily output of the content routine (docs/CONTENT-ROUTINE.md) — regenerated
+# every morning, so tracking it means a dirty tree every day
+docs/programs/
