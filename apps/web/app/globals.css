@@ -4626,3 +4626,52 @@ a.copy-addr-text:hover {
   color: var(--ink);
   border-bottom-color: var(--accent);
 }
+
+/* The saved-list backup link. Quiet panel — it is a one-time instruction, not
+   a call to action, so it should read once and then disappear into the page. */
+.saved-backup {
+  margin: 14px 0 18px;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface-2, rgba(0, 0, 0, 0.015));
+}
+
+.saved-backup-copy {
+  font-size: 13px;
+  color: var(--ink-soft);
+  line-height: 1.5;
+}
+
+.saved-backup-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 9px;
+}
+
+.saved-backup-url {
+  flex: 1;
+  min-width: 0;
+  overflow-x: auto;
+  white-space: nowrap;
+  font-size: 12px;
+  color: var(--ink-faint);
+  background: transparent;
+}
+
+.saved-backup-btn {
+  flex: none;
+  font-size: 12px;
+  padding: 4px 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--ink-soft);
+  cursor: pointer;
+}
+
+.saved-backup-btn:hover {
+  border-color: var(--border-strong);
+  color: var(--ink);
+}

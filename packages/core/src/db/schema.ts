@@ -260,3 +260,22 @@ export const entities = pgTable(
   },
   (t) => [uniqueIndex("entities_slug_uq").on(t.slug)],
 );
+
+// ---------------------------------------------------------------------------
+// saved_lists — a personal shortlist, without accounts.
+//
+// Saves used to live only in localStorage, so clearing browsing data wiped
+// them with nothing to restore from. This is the smallest thing that survives
+// that: the browser mints a random key, the list syncs here under it, and the
+// key doubles as a bookmarkable URL. Whoever holds the link holds the list —
+// a capability, not an identity. There is no login, no email, no recovery,
+// and nothing personal in the row: it is a set of public program addresses.
+// ---------------------------------------------------------------------------
+export const savedLists = pgTable("saved_lists", {
+  /** the capability key — unguessable, minted client-side */
+  id: text("id").primaryKey(),
+  /** program ids, newest first; capped on write */
+  programIds: jsonb("program_ids").$type<string[]>().default([]).notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+});

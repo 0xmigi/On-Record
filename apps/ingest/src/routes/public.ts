@@ -594,6 +594,49 @@ ${items}
 </rss>`;
   });
 
+  // --- saved lists: a shortlist that survives a cache clear ----------------
+  //
+  // No accounts. The browser mints an unguessable key, the list lives under it,
+  // and the key doubles as a bookmarkable URL — whoever holds the link holds the
+  // list. Everything stored is a public program address, so the only thing a
+  // leaked key exposes is which programs someone bookmarked.
+  //
+  // Guarded because it is an unauthenticated write: the key must look like one
+  // we would have minted, the ids must be real addresses, and the list is
+  // capped. Otherwise it is free storage for anyone who finds the endpoint.
+  const SAVE_KEY = /^[A-Za-z0-9_-]{16,64}$/;
+  const SAVE_ADDRESS = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/;
+  const SAVE_MAX = 500;
+
+  app.get<{ Params: { key: string } }>("/api/saves/:key", async (req, reply) => {
+    if (!SAVE_KEY.test(req.params.key)) return reply.code(400).send({ error: "bad key" });
+    const [row] = await db
+      .select({ ids: schema.savedLists.programIds, updatedAt: schema.savedLists.updatedAt })
+      .from(schema.savedLists)
+      .where(eq(schema.savedLists.id, req.params.key));
+    // an unknown key is an empty list, not a 404 — a fresh browser and a
+    // wiped one should behave identically
+    return { programIds: row?.ids ?? [], updatedAt: row?.updatedAt?.toISOString() ?? null };
+  });
+
+  app.put<{ Params: { key: string }; Body: { programIds?: unknown } }>(
+    "/api/saves/:key",
+    async (req, reply) => {
+      if (!SAVE_KEY.test(req.params.key)) return reply.code(400).send({ error: "bad key" });
+      const raw = Array.isArray(req.body?.programIds) ? req.body.programIds : null;
+      if (!raw) return reply.code(400).send({ error: "programIds must be an array" });
+      const ids = [...new Set(raw.filter((v): v is string => typeof v === "string" && SAVE_ADDRESS.test(v)))].slice(0, SAVE_MAX);
+      await db
+        .insert(schema.savedLists)
+        .values({ id: req.params.key, programIds: ids })
+        .onConflictDoUpdate({
+          target: schema.savedLists.id,
+          set: { programIds: ids, updatedAt: new Date() },
+        });
+      return { programIds: ids };
+    },
+  );
+
   app.get("/health", async () => ({ ok: true }));
 }
 
