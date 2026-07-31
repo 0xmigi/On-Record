@@ -170,13 +170,16 @@ export function registerPublicRoutes(app: FastifyInstance): void {
     "/api/radar",
     async (req): Promise<ApiCursorPage<ApiProgram>> => {
       const limit = parseLimit(req.query.limit, 30, 100);
-      const network = req.query.network === "devnet" ? "devnet" : "mainnet";
-      // interest ordering (interest.ts v0.1 blend, stored on noveltyScore) is
-      // the default — "most worth seeing first". ?sort=recent restores the
-      // plain stream (and keeps cursor paging; interest pages have no cursor).
-      // Devnet has no interest scores by design (no usage/money signals —
-      // pipeline stops at classify), so it always serves the recency stream.
-      const sort = req.query.sort === "recent" || network === "devnet" ? "recent" : "interest";
+      // ONE radar. Both clusters are surfaces of the same feed, so ?network is a
+      // filter over it, not a separate product — omitted means both, and devnet
+      // rows carry a label rather than living somewhere else. Devnet is scored by
+      // the same formula now (pipeline.ts), which is what makes them orderable
+      // against each other at all.
+      const network =
+        req.query.network === "devnet" || req.query.network === "mainnet" ? req.query.network : null;
+      // Chronological is the default: it is already consumable, and the score is
+      // still being tuned. ?sort=interest opts into the ranked view.
+      const sort = req.query.sort === "interest" ? "interest" : "recent";
       const hasBand = !!(req.query.band && BANDS.has(req.query.band as NoveltyBand));
       const band = hasBand ? (req.query.band as NoveltyBand) : "novel";
       const type = req.query.type === "upgrade" ? "upgrade" : "deploy";
@@ -202,18 +205,23 @@ export function registerPublicRoutes(app: FastifyInstance): void {
       // ?closed=1 shows them, ?closed=only isolates the graveyard.
       const closedMode = req.query.closed === "1" ? "include" : req.query.closed === "only" ? "only" : "hide";
 
-      const conditions = [
-        eq(schema.subjects.network, network),
-        eq(schema.subjects.kind, "program"),
-      ];
+      const conditions = [eq(schema.subjects.kind, "program")];
+      if (network) conditions.push(eq(schema.subjects.network, network));
       // The deploy stream tiers by novelty (novel/variant/clone) and always
       // passes an explicit band. The upgrade stream spans all bands — an
       // upgrade's lineage band is orthogonal to the fact that it was upgraded,
       // so only constrain by band when one is explicitly requested. Forcing the
       // default "novel" here is what left the upgrade tab empty: nearly every
       // real upgrade lands in variant/clone.
-      if (hasBand || type === "deploy") {
+      if (hasBand) {
         conditions.push(eq(schema.subjects.noveltyBand, band));
+      } else if (type === "deploy") {
+        // No explicit band: show real deploys, which means novel AND variant.
+        // `novel` alone hid most genuine finds (both of the last two were
+        // variants) and `clone` is the bot tail — snipers, throwaways and
+        // recycled bytecode are ALL band=clone (see web lib/lifecycle.ts
+        // botKind), so excluding that one band is the bot filter.
+        conditions.push(inArray(schema.subjects.noveltyBand, ["novel", "variant"]));
       }
       if (closedMode === "hide") {
         conditions.push(sql`(${schema.subjects.facts} ->> 'closedAt') is null`);

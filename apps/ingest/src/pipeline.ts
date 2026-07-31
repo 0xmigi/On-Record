@@ -489,26 +489,17 @@ export async function classifyStage(eventId: string): Promise<void> {
       }
     }
 
-    // Devnet is input only (SPEC §3): novel devnet fingerprints go to the
-    // watchlist and the pipeline stops here.
-    if (network === "devnet") {
-      if (classification.band === "novel") {
-        await watchDevnetNovel(event.programId, fp, event.authorityAfter);
-      }
-      await appendToCorpus(network, event.programId, fp);
-      await saveEnrichment(eventId, enrichment, "classified_devnet");
-      log.info({ eventId, ms: Date.now() - start, outcome: "devnet_recorded" }, "done");
-      return;
+    // Devnet still feeds the watchlist, but it no longer stops here. One radar:
+    // the same pipeline and the same score run on both clusters, because two
+    // scores would produce two incomparable numbers and a merged feed could
+    // never order them against each other.
+    if (network === "devnet" && classification.band === "novel") {
+      await watchDevnetNovel(event.programId, fp, event.authorityAfter);
     }
   }
 
   if (fp) await appendToCorpus(network, event.programId, fp);
   await saveEnrichment(eventId, enrichment, "classified");
-
-  if (network === "devnet") {
-    log.info({ eventId, outcome: "devnet_recorded" }, "done");
-    return; // devnet never surfaces on the mainnet radar
-  }
 
   // Same-address devnet lineage — the strongest incubation link, and the one the
   // watchlist path above cannot see (it needs a novel, still-similar devnet
@@ -516,11 +507,13 @@ export async function classifyStage(eventId: string): Promise<void> {
   // on devnet after launch should have that reflected, and devnet history we
   // polled late still gets picked up. The chain probe is reserved for genuine
   // debuts — on an upgrade, our own record is already the better source.
-  await linkIncubation(
-    event.programId,
-    enrichment.deploy?.firstDeployAt ? new Date(enrichment.deploy.firstDeployAt) : event.blockTime,
-    { probeChain: event.type === "deploy" },
-  );
+  if (network === "mainnet") {
+    await linkIncubation(
+      event.programId,
+      enrichment.deploy?.firstDeployAt ? new Date(enrichment.deploy.firstDeployAt) : event.blockTime,
+      { probeChain: event.type === "deploy" },
+    );
+  }
 
   await enqueue("score", { eventId });
   log.info({ eventId, ms: Date.now() - start, band: enrichment.classification?.band, outcome: "ok" }, "done");

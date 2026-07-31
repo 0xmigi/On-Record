@@ -11,12 +11,24 @@ import { db, schema, isSourceRelative, pathOverlap, sharedPathCount } from "@onr
 // recorded, not hidden. The score exists to ORDER the radar — the UI keeps
 // showing the underlying signals, never this number.
 //
-//   momentum   .30  log₁₀ txns in last 24h (10k caps)
-//   adoption   .15  fraction of the last 48 hours with ≥1 txn (sustained ≠ spike)
-//   novelty    .20  structural distance to nearest known code
-//   disclosure .15  name/repo/site/IDL/security.txt/verified, of 6
+//   disclosure .30  name/repo/site/IDL/security.txt/verified, of 6
+//   novelty    .25  structural distance to nearest known code
+//   newness    .20  e^(−age in days) — fresh deploys surface, then must earn it
+//   momentum   .10  log₁₀ txns in last 24h (10k caps)
 //   conviction .10  log₁₀ SOL locked by the deploy (100 SOL caps)
-//   newness    .10  e^(−age in days) — fresh deploys surface, then must earn it
+//   adoption   .05  fraction of the last 48 hours with ≥1 txn (sustained ≠ spike)
+//
+// Usage was 45% of this (momentum .30 + adoption .15) and it is now 15%. Two
+// reasons. It buried the finds: a program worth writing about is usually found
+// BEFORE it has users, so scoring on traffic selects for things already past
+// the interesting moment. And once devnet joined the same radar, usage stopped
+// being comparable at all — a devnet program has no real traffic by definition,
+// so weighting it heavily would have sorted an entire cluster to the bottom for
+// a reason that says nothing about the code.
+//
+// Disclosure carries the most weight now because it is the sharpest bot filter
+// we have that is not a band: a name, a repo, a site, an IDL, a security.txt
+// and a verified build are six things a sniper never bothers with.
 //
 //   × 0.05 closed (rent reclaimed — the churn tail)
 //   × 0.20 byte-clone (recycled code; sniper-flavored clones × 0.05)
@@ -107,12 +119,12 @@ export function computeInterest(row: SubjectRow, family: Family = { size: 1, clo
   const newness = Math.exp(-ageDays);
 
   const components = {
-    momentum: momentum * 0.3,
-    adoption: adoption * 0.15,
-    novelty: novelty * 0.2,
-    disclosure: disclosure * 0.15,
+    momentum: momentum * 0.1,
+    adoption: adoption * 0.05,
+    novelty: novelty * 0.25,
+    disclosure: disclosure * 0.3,
     conviction: conviction * 0.1,
-    newness: newness * 0.1,
+    newness: newness * 0.2,
   };
   const base = Object.values(components).reduce((a, b) => a + b, 0);
 
