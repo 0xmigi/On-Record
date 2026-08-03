@@ -20,7 +20,32 @@ export type AuthorityClass = "none" | "squads" | "program" | "hot_wallet";
 export type NoveltyBand = "clone" | "variant" | "novel";
 
 /** Rule-based category tag (SPEC §4). `unknown` is honest, not a failure. */
-export type Category = "defi" | "token" | "nft" | "infra" | "governance" | "unknown";
+/** What a program does, derived from its own instruction surface (categorize.ts).
+ *
+ *  Six buckets used to do this job and 83% of everything landed in `defi` —
+ *  true, and useless as a filter. These are the distinctions the evidence can
+ *  actually carry: each one has instruction vocabulary that separates it.
+ *
+ *  Deliberately absent: behavioural labels (arb bot, sniper, trading bot). Those
+ *  are read off transaction patterns, not code — the radar's clone band and the
+ *  Pump.fun integration chip already carry that signal, and a category claiming
+ *  it from bytecode would be a guess. */
+export type Category =
+  | "dex"
+  | "perps"
+  | "lending"
+  | "staking"
+  | "launchpad"
+  | "bridge"
+  | "oracle"
+  | "nft"
+  | "governance"
+  | "airdrop"
+  | "token"
+  | "infra"
+  /** finance-shaped, but nothing more specific survived the evidence */
+  | "defi"
+  | "unknown";
 
 // ---------------------------------------------------------------------------
 // Event enrichment — accumulated by pipeline stages inside events.enrichment
@@ -40,6 +65,9 @@ export interface Fingerprint {
 export interface Identity {
   entityId: string | null;
   entityName: string | null;
+  /** the registry's own category string for this entity (labels.yaml), before
+   *  it is mapped onto Category. Absent on events enriched before this existed. */
+  entityCategory?: string | null;
   verified: boolean;
   repoUrl: string | null;
   repoCommit: string | null;
@@ -189,6 +217,16 @@ export interface EventEnrichment {
   classification?: Classification;
   score?: ScoreResult;
   skippedSpamWave?: boolean;
+  /** This event carries no real chain timestamp and must not be dated.
+   *
+   *  Set only by the landmark seeder for immutable loader-v1/v2 programs: they
+   *  have no ProgramData history, and their deploy slot is not cheaply
+   *  recoverable (walking a program account's signatures back to genesis is
+   *  billions of pages for SPL Token). Stamping `now` would put programs from
+   *  2020 at the top of the 24h radar, so they stay undated instead — indexed,
+   *  searchable, and in the fingerprint corpus, but out of every dated stream.
+   *  The radar already excludes undated rows from `sort=recent` by design. */
+  undated?: boolean;
   error?: string;
 }
 

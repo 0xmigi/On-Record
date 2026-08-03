@@ -5,7 +5,7 @@ import { Mark } from "@/components/Mark";
 import { SectionHeader } from "@/components/SectionHeader";
 import { FlowChart } from "@/components/FlowChart";
 import { BotExplainer } from "@/components/BotExplainer";
-import { CATEGORY_LABELS, fetchFunnel, type Category, type Network } from "@/lib/api";
+import { categoryLabel, fetchFunnel, type Category, type Network } from "@/lib/api";
 import { groupNum, utcStamp } from "@/lib/format";
 
 const WINDOW_KEYS = ["24h", "48h", "7d", "30d"] as const;
@@ -23,11 +23,19 @@ export const metadata: Metadata = {
 };
 
 const CATEGORY_ORDER: Category[] = [
-  "defi",
-  "token",
+  "dex",
+  "staking",
+  "launchpad",
+  "lending",
+  "perps",
+  "bridge",
+  "oracle",
   "nft",
-  "infra",
   "governance",
+  "airdrop",
+  "token",
+  "infra",
+  "defi",
   "unknown",
 ];
 
@@ -201,7 +209,7 @@ export default async function FunnelPage({
             info="Category from the recovered name or IDL. 'unknown' = not enough to tag."
           />
           <Breakdown
-            rows={CATEGORY_ORDER.map((c) => [CATEGORY_LABELS[c], funnel.byCategory[c] ?? 0])}
+            rows={CATEGORY_ORDER.map((c) => [categoryLabel(c), funnel.byCategory[c] ?? 0])}
             labelWidth={80}
           />
         </section>

@@ -12,11 +12,19 @@ export type Band = "clone" | "variant" | "novel";
 // Mirrors the backend Category enum (packages/enrich categorize.ts) — only add
 // values here once the classifier can actually produce them.
 export type Category =
-  | "defi"
-  | "token"
+  | "dex"
+  | "perps"
+  | "lending"
+  | "staking"
+  | "launchpad"
+  | "bridge"
+  | "oracle"
   | "nft"
-  | "infra"
   | "governance"
+  | "airdrop"
+  | "token"
+  | "infra"
+  | "defi"
   | "unknown";
 export type AuthorityClass = "none" | "squads" | "program" | "hot_wallet" | null;
 export type Framework = "anchor" | "pinocchio" | "native" | "unknown";
@@ -484,12 +492,32 @@ export const BAND_LABELS: Record<Band, string> = {
   novel: "NOVEL",
 };
 
+/** Label for a category, tolerating one the backend added before this deploy.
+ *
+ *  The backend can widen Category and re-label rows before the frontend that
+ *  renders them ships — that ordering is normal, and indexing the map directly
+ *  meant every affected row rendered an EMPTY chip rather than a wrong one.
+ *  Uppercasing the raw value is a worse label than a curated one and a much
+ *  better one than nothing. */
+export function categoryLabel(category: Category | string | null | undefined): string {
+  if (!category) return CATEGORY_LABELS.unknown;
+  return CATEGORY_LABELS[category as Category] ?? category.toUpperCase();
+}
+
 export const CATEGORY_LABELS: Record<Category, string> = {
-  defi: "DEFI",
-  token: "TOKEN",
+  dex: "DEX",
+  perps: "PERPS",
+  lending: "LENDING",
+  staking: "STAKING",
+  launchpad: "LAUNCHPAD",
+  bridge: "BRIDGE",
+  oracle: "ORACLE",
   nft: "NFT",
-  infra: "INFRA",
   governance: "GOV",
+  airdrop: "AIRDROP",
+  token: "TOKEN",
+  infra: "INFRA",
+  defi: "DEFI",
   unknown: "UNKNOWN",
 };
 

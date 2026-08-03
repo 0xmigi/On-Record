@@ -7,6 +7,7 @@ import {
   getSlot,
   enumerateProgramAccounts,
   enumerateProgramData,
+  type EventEnrichment,
   type Network,
 } from "@onrecord/core";
 import { fingerprintStage, identifyStage, classifyStage, scoreStage } from "./pipeline.js";
@@ -94,14 +95,24 @@ export async function runBackfill(opts: Options): Promise<{ scanned: number; ing
 }
 
 /** Insert a synthetic deploy event for a backfilled program (idempotent on a
- *  synthetic signature keyed by ProgramData address + slot). */
+ *  synthetic signature keyed by ProgramData address + slot).
+ *
+ *  `programDataAddress` is null for immutable loader-v1/v2 programs, which have
+ *  no ProgramData account at all — the signature then keys off the program id,
+ *  which is just as unique and just as stable. `enrichment` seeds the event's
+ *  pipeline state; the seeder uses it to mark such an event undated. */
 export async function recordDeploy(
   network: Network,
   programId: string,
-  header: { programDataAddress: string; deployedSlot: number; upgradeAuthority: string | null },
-  blockTime: Date,
+  header: {
+    programDataAddress: string | null;
+    deployedSlot: number;
+    upgradeAuthority: string | null;
+  },
+  blockTime: Date | null,
+  enrichment: EventEnrichment = {},
 ): Promise<string | null> {
-  const signature = `backfill:${header.programDataAddress}:${header.deployedSlot}`;
+  const signature = `backfill:${header.programDataAddress ?? programId}:${header.deployedSlot}`;
   const id = newId("evt");
   const inserted = await db
     .insert(schema.events)
@@ -117,6 +128,7 @@ export async function recordDeploy(
       programDataAddress: header.programDataAddress,
       authorityBefore: null,
       authorityAfter: header.upgradeAuthority,
+      enrichment: enrichment as Record<string, unknown>,
     })
     .onConflictDoNothing({ target: [schema.events.signature, schema.events.instructionIndex] })
     .returning({ id: schema.events.id });

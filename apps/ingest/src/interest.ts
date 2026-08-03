@@ -114,9 +114,13 @@ export function computeInterest(row: SubjectRow, family: Family = { size: 1, clo
   const costSol = (facts.deployCostLamports ?? 0) / 1e9;
   const conviction = Math.min(1, Math.log10(1 + costSol) / 2);
 
-  const deployedMs = (row.firstDeployAt ?? row.firstSeenAt)?.getTime() ?? now;
-  const ageDays = Math.max(0, (now - deployedMs) / 86_400_000);
-  const newness = Math.exp(-ageDays);
+  // An undated row is a reference-corpus seed (an immutable landmark whose
+  // deploy slot is not recoverable), not something that just landed. Defaulting
+  // its age to `now` scored newness at a full 1.0 and would rank SPL Token
+  // above the day's actual deploys.
+  const deployedMs = (row.firstDeployAt ?? row.firstSeenAt)?.getTime() ?? null;
+  const newness =
+    deployedMs === null ? 0 : Math.exp(-Math.max(0, (now - deployedMs) / 86_400_000));
 
   const components = {
     momentum: momentum * 0.1,
