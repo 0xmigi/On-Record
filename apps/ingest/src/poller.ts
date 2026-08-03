@@ -157,7 +157,7 @@ export async function pollDeploys(opts: PollOptions): Promise<PollResult> {
         if (!blocked) advanceTo = h.deployedSlot;
         continue;
       }
-      await driveEvent(rec.eventId, rec.stage, network);
+      await driveEvent(rec.eventId, rec.stage);
       ingested++;
       if (!blocked) advanceTo = h.deployedSlot;
       logger.info(
@@ -194,16 +194,20 @@ export async function pollDeploys(opts: PollOptions): Promise<PollResult> {
  *  stage advances pipelineStage; terminal stages stop the walk. Resuming from a
  *  half-finished prior tick starts at the stage actually reached, so completed
  *  stages (and their bucket bumps) never re-run. */
-async function driveEvent(eventId: string, stage: string, network: Network): Promise<void> {
+async function driveEvent(eventId: string, stage: string): Promise<void> {
   for (let hops = 0; hops < 6; hops++) {
     if (TERMINAL_STAGES.has(stage)) return;
     if (stage === "ingested") await fingerprintStage(eventId);
     else if (stage === "fingerprinted") await identifyStage(eventId);
     else if (stage === "identified") await classifyStage(eventId);
     else if (stage === "classified") {
-      // devnet stops at classify (SPEC §3): no interest score, and no funding
-      // trail — faucet SOL tells you nothing and the RPC walk isn't free
-      if (network === "devnet") return;
+      // Both clusters score. classifyStage stopped special-casing devnet when
+      // the radar merged into one feed, but this inline driver still returned
+      // here — and with INLINE_PIPELINE=1 its enqueue("score") is a no-op, so
+      // devnet arrivals sat at `classified` with a null noveltyScore forever.
+      // The web feed floors a null score at 0, which sank every devnet row
+      // below every mainnet one and rendered the merged radar as two
+      // concatenated lists.
       await scoreStage(eventId);
     } else return; // unknown stage — leave it rather than loop
     const next = await db
