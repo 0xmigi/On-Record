@@ -196,7 +196,12 @@ function surface(profile: ProgramProfile | undefined, fp: Fingerprint | undefine
         // itself is the same evidence by another route
         (fp?.idl?.instructions ?? []);
   if (!names.length) return "";
-  return names.join(" ").toLowerCase().replace(/[^a-z0-9]/g, "");
+  // Normalise each name SEPARATELY and keep the space between them. Stripping
+  // separators across the whole joined string fuses adjacent instructions and
+  // invents needles that no instruction contains: Jupiter Lend Liquidity's
+  // `UpdateExchangePrice` followed by `UpdateGuardians` produced
+  // "...exchangePRICEUPDATEguardians...", and the program was filed as `oracle`.
+  return names.map((n) => n.toLowerCase().replace(/[^a-z0-9]/g, "")).join(" ");
 }
 
 /** Registry categories are freeform strings written by an operator in
