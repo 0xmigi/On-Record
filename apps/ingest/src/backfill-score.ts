@@ -16,7 +16,11 @@
 // step 3 comes for free.
 //
 //   set -a && . ../../.env && set +a
-//   INLINE_PIPELINE=1 DATABASE_URL='postgres://…' ./node_modules/.bin/tsx src/backfill-score.ts [--network=devnet] [--limit=N] [--dry]
+//   INLINE_PIPELINE=1 DATABASE_URL='postgres://…' ./node_modules/.bin/tsx src/backfill-score.ts [--network=devnet] [--unscored] [--limit=N] [--dry]
+//
+// --unscored restricts the pass to rows with a null novelty_score. Use it to
+// close a gap (rows the live path never scored) without re-deriving — and
+// possibly degrading — rows that already hold a good score.
 import { sql } from "drizzle-orm";
 import { db, schema, stageLogger, type Network } from "@onrecord/core";
 import { scoreStage } from "./pipeline.js";
@@ -27,9 +31,14 @@ const arg = (k: string) => process.argv.find((a) => a.startsWith(`--${k}=`))?.sp
 const dry = process.argv.includes("--dry");
 const network = (arg("network") ?? "mainnet") as Network;
 const limit = Number(arg("limit") ?? 0) || null;
+// Fill a gap rather than re-derive the world. A full pass re-runs scoreStage on
+// every row, which per the note above will overwrite a backfilled
+// instructionCount with null unless the event profiles were synced first — so
+// when the fix is "these rows never got scored at all", target exactly those.
+const unscored = process.argv.includes("--unscored");
 
 const target = requireDatabaseTarget("backfill-score.ts");
-log.info({ target, network, limit, dry }, "target database");
+log.info({ target, network, limit, unscored, dry }, "target database");
 
 // Newest event per program — the one whose enrichment the score is derived from.
 const rows = await db.execute<{ id: string; program_id: string; score: number | null; ix: number | null }>(sql`
@@ -38,6 +47,7 @@ const rows = await db.execute<{ id: string; program_id: string; score: number | 
     from events e
     join subjects s on s.id = e.program_id and s.kind = 'program'
    where s.network = ${network}
+   ${unscored ? sql`and s.novelty_score is null` : sql``}
    order by e.program_id, e.slot desc
    ${limit ? sql`limit ${limit}` : sql``}`);
 
