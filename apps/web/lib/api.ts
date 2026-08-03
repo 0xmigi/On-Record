@@ -492,6 +492,18 @@ export const BAND_LABELS: Record<Band, string> = {
   novel: "NOVEL",
 };
 
+/** Label for a category, tolerating one the backend added before this deploy.
+ *
+ *  The backend can widen Category and re-label rows before the frontend that
+ *  renders them ships — that ordering is normal, and indexing the map directly
+ *  meant every affected row rendered an EMPTY chip rather than a wrong one.
+ *  Uppercasing the raw value is a worse label than a curated one and a much
+ *  better one than nothing. */
+export function categoryLabel(category: Category | string | null | undefined): string {
+  if (!category) return CATEGORY_LABELS.unknown;
+  return CATEGORY_LABELS[category as Category] ?? category.toUpperCase();
+}
+
 export const CATEGORY_LABELS: Record<Category, string> = {
   dex: "DEX",
   perps: "PERPS",

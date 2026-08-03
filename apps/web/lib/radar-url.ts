@@ -80,6 +80,12 @@ export const AUTHORITY_HINT: Record<AuthorityFacet, string> = {
   hot: "A single key can swap the code",
 };
 
+/** Same tolerance as categoryLabel(): a value the backend added before this
+ *  deploy gets a readable label instead of an empty filter chip. */
+export function categoryFilterLabel(category: Category | string): string {
+  return CATEGORY_FILTER_LABEL[category as Category] ?? String(category);
+}
+
 export const CATEGORY_FILTER_LABEL: Record<Category, string> = {
   dex: "DEX",
   perps: "Perps",

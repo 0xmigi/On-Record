@@ -7,7 +7,7 @@ import {
   AUTHORITY_FACETS,
   AUTHORITY_HINT,
   AUTHORITY_LABEL,
-  CATEGORY_FILTER_LABEL,
+  categoryFilterLabel,
   FILTER_CATEGORIES,
   FILTER_FRAMEWORKS,
   FRAMEWORK_LABEL,
@@ -304,7 +304,7 @@ export function RadarFilters({ params }: { params: RadarParams }) {
                   <Chip
                     key={cat}
                     active={draft.category === cat}
-                    label={CATEGORY_FILTER_LABEL[cat]}
+                    label={categoryFilterLabel(cat)}
                     onClick={() => pick("category", cat)}
                   />
                 ))}

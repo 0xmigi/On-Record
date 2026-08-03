@@ -21,7 +21,7 @@ import { SectionHeader } from "@/components/SectionHeader";
 import { SaveButton } from "@/components/SaveButton";
 import { Lineage } from "@/components/Lineage";
 import {
-  CATEGORY_LABELS,
+  categoryLabel,
   fetchCluster,
   fetchIdl,
   fetchProgram,
@@ -838,7 +838,7 @@ export default async function ProgramDossierPage({
         <div className="dossier-head-main">
           <div className="dossier-band-line">
             <span className={`cat-chip cat-${program.category}`}>
-              {CATEGORY_LABELS[program.category]}
+              {categoryLabel(program.category)}
             </span>
             {program.framework && program.framework !== "unknown" ? (
               <span className="fw-chip">{program.framework}</span>
