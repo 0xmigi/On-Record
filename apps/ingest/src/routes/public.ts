@@ -166,7 +166,7 @@ async function clusterSizes(bucketIds: (string | null)[]): Promise<Map<string, n
 
 export function registerPublicRoutes(app: FastifyInstance): void {
   // --- the radar: ranked programs -----------------------------------------
-  app.get<{ Querystring: { window?: string; band?: string; type?: string; cursor?: string; limit?: string; closed?: string; sort?: string; network?: string } }>(
+  app.get<{ Querystring: { window?: string; band?: string; type?: string; cursor?: string; limit?: string; closed?: string; sort?: string; network?: string; category?: string } }>(
     "/api/radar",
     async (req): Promise<ApiCursorPage<ApiProgram>> => {
       const limit = parseLimit(req.query.limit, 30, 100);
@@ -207,6 +207,13 @@ export function registerPublicRoutes(app: FastifyInstance): void {
 
       const conditions = [eq(schema.subjects.kind, "program")];
       if (network) conditions.push(eq(schema.subjects.network, network));
+      // Category filters in SQL, not in the client over one page. It used to be
+      // a client-side pass over the 50 rows already fetched, which was survivable
+      // while there were five categories and most rows said `defi`. With thirteen
+      // — and `unknown` holding most of the corpus — a page of 50 rarely contains
+      // a single `perps` row, so every narrow chip rendered "the radar is quiet"
+      // over a database with 127 of them.
+      if (req.query.category) conditions.push(eq(schema.subjects.category, req.query.category));
       // The deploy stream tiers by novelty (novel/variant/clone) and always
       // passes an explicit band. The upgrade stream spans all bands — an
       // upgrade's lineage band is orthogonal to the fact that it was upgraded,

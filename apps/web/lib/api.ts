@@ -327,6 +327,9 @@ export async function fetchRadar(
     closed?: "only" | "include";
     /** omit (or "all") for the merged feed — both clusters in one ranking */
     network?: Network | "all";
+    /** filtered in SQL — a page of 50 rows is not a big enough sample to
+     *  narrow client-side once categories are this granular */
+    category?: Category | null;
   } = {}
 ): Promise<ApiCursorPage<ApiProgram>> {
   const params = new URLSearchParams();
@@ -338,6 +341,7 @@ export async function fetchRadar(
   if (opts.network === "devnet" || opts.network === "mainnet") {
     params.set("network", opts.network);
   }
+  if (opts.category) params.set("category", opts.category);
   params.set("limit", String(opts.limit ?? 50));
   const page = await getJson<ApiCursorPage<ApiProgram>>(
     `/api/radar?${params.toString()}`

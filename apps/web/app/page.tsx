@@ -277,21 +277,24 @@ export default async function RadarPage({
     size: parseSize(sp.size),
   };
 
+  // narrowed in SQL rather than over a fetched page — see fetchRadar
+  const category = params.category;
+
   const EMPTY = { items: [] as ApiProgram[], total: 0, nextCursor: null };
   const [novelPage, variantPage, clonePage, closedPages, upgradePage, funnel] = await Promise.all([
-    isDeploy ? fetchRadar({ type, window, band: "novel", limit: 100, network }) : Promise.resolve(EMPTY),
-    isDeploy ? fetchRadar({ type, window, band: "variant", limit: 100, network }) : Promise.resolve(EMPTY),
-    isDeploy ? fetchRadar({ type, window, band: "clone", limit: 100, network }) : Promise.resolve(EMPTY),
+    isDeploy ? fetchRadar({ type, window, band: "novel", limit: 100, network, category }) : Promise.resolve(EMPTY),
+    isDeploy ? fetchRadar({ type, window, band: "variant", limit: 100, network, category }) : Promise.resolve(EMPTY),
+    isDeploy ? fetchRadar({ type, window, band: "clone", limit: 100, network, category }) : Promise.resolve(EMPTY),
     // the graveyard: closed programs across all bands (rent reclaimed).
     // Devnet skips it — pre-launch churn there is expected, not a story.
     isDeploy && !isDevnet
       ? Promise.all(
           (["novel", "variant", "clone"] as const).map((band) =>
-            fetchRadar({ type, window, band, closed: "only", limit: 100 }),
+            fetchRadar({ type, window, band, closed: "only", limit: 100, category }),
           ),
         )
       : Promise.resolve([]),
-    !isDeploy ? fetchRadar({ type, window, limit: 50, network }) : Promise.resolve(EMPTY),
+    !isDeploy ? fetchRadar({ type, window, limit: 50, network, category }) : Promise.resolve(EMPTY),
     // funnel is per-cluster now — devnet gets its own live-computed stats
     fetchFunnel(FUNNEL_WINDOW[window], network === "all" ? "mainnet" : network),
   ]);
