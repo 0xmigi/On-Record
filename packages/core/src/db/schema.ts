@@ -252,6 +252,11 @@ export const entities = pgTable(
     website: text("website"),
     llamaSlug: text("llama_slug"), // DeFiLlama protocol slug for TVL refresh
     programIds: jsonb("program_ids").$type<string[]>().default([]).notNull(),
+    // programId → the name THAT program should carry, when the entity name is
+    // too coarse. Jupiter owns a dozen programs; calling all of them "Jupiter"
+    // is accurate and useless. Ids absent from this map fall back to the
+    // entity name, which is right for a single-program protocol.
+    programNames: jsonb("program_names").$type<Record<string, string>>().default({}).notNull(),
     authorities: jsonb("authorities").$type<string[]>().default([]).notNull(),
     tvl: doublePrecision("tvl"),
     tvlUpdatedAt: timestamp("tvl_updated_at", { withTimezone: true }),

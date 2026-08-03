@@ -1,164 +1,774 @@
 # Curated program → entity labels, seeded into the entities table.
-# DeFiLlama mappings and operator naming do the rest. slugs must be unique.
+# DeFiLlama mappings and operator naming do the rest. slugs must be unique, and
+# no program id may appear under two entities — findEntityForProgram takes the
+# first row that matches, so a duplicate makes naming order-dependent.
 #
-# The "landmarks" below exist for a specific reason: the index is built from
-# loader events, so a program that has not deployed or upgraded inside our
-# window has no subject row at all, and one that never leaks a name (no
-# security.txt, no `programs/<name>/src/` panic path) has a row with a null
-# name. Both are unfindable by search. SPL Token was the worst case — the most
-# invoked program on Solana, indexed, and nameless. A registry name outranks
-# every other naming source, so listing an id here is what makes it findable.
+# WHY A REGISTRY AT ALL
+#   The index is built from loader events and names are recovered from the
+#   binary, which works: Rust panic paths and security.txt de-opaque about half
+#   of anonymous programs. What it recovers is the CRATE name, though — `vaults`,
+#   `liquidity`, `order-engine`, `amm`. Those are honest and, for a well-known
+#   protocol, useless: two unrelated programs both came back `amm`. A registry
+#   name outranks every other naming source (pipeline.ts), so an id listed here
+#   is how a landmark gets called what people call it.
+#
+# TWO FORMS UNDER programIds
+#   - <id>                 the program carries the entity name. Right when the
+#                          entity is one program.
+#   - <id>: <name>         the program carries its own name. Jupiter owns
+#                          eighteen mainnet programs and labelling every row
+#                          "Jupiter" is accurate and useless — the aggregator,
+#                          the perps engine and the lend vaults are different
+#                          things and a reader needs to tell them apart.
+#
+# `category` is the entity's own, and it beats the rule-based classifier
+# outright (categorize.ts) — somebody looked, which no needle match can claim.
+# Values are freeform; mapCategory() folds them onto the Category enum and
+# ignores what it does not recognise, so a typo falls through to the rules
+# rather than mislabelling every program the entity owns.
+#
+# Entity grouping, categories and display names are ours. Names drop the
+# trailing " Program" that public listings tend to append — the UI already says
+# it is a program. Behavioural coinages ("Arbitrage Bot (2A6m4)") are
+# deliberately absent: those are read off transaction patterns rather than
+# code, they are invented labels rather than anything a project calls itself,
+# and the radar's clone band already carries that signal.
 #
 # seed-landmarks.ts consumes this file: it names existing rows and ingests the
-# ones that have no row yet.
+# ones that have no row yet. Addresses were verified against chain (owner +
+# executable) before being listed; landmarks.mainnet.txt is the wider ingestion
+# target list, which carries no names at all.
 entities:
-  - name: Jupiter
-    slug: jupiter
-    category: dex-aggregator
-    website: https://jup.ag
-    llamaSlug: jupiter-aggregator
-    programIds:
-      - JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4
-  - name: Raydium
-    slug: raydium
+  - name: 1Sol
+    slug: 1sol
     category: dex
-    website: https://raydium.io
-    llamaSlug: raydium
+    website: https://1sol.io
     programIds:
-      - 675kPX9MHTjS2zt1qfr1NYHuzeLXfQM9H24wFSUt1Mp8
-      - CAMMCzo5YL8w4VFF8KVHrK22GGUsp5VTaW7grrKgrWqK
-  - name: pump.fun
-    slug: pump-fun
-    category: launchpad
-    website: https://pump.fun
-    llamaSlug: pump.fun
-    programIds:
-      - 6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P
-  - name: Marinade
-    slug: marinade
-    category: liquid-staking
-    website: https://marinade.finance
-    llamaSlug: marinade-finance
-    programIds:
-      - MarBmsSgKXdrN1egZf5sqe1TMai9K1rChYNDJgjq7aD
-  - name: Kamino
-    slug: kamino
-    category: lending
-    website: https://kamino.finance
-    llamaSlug: kamino-lend
-    programIds:
-      - KLend2g3cP87fffoy8q1mQqGKjrxjC8boSyAYavgmjD
-  - name: Drift
-    slug: drift
+      - 1MooN32fuBBgApc8ujknKJw5sef3BVwPGgz3pto1BAh
+  - name: Adrena
+    slug: adrena
     category: perps
-    website: https://drift.trade
-    llamaSlug: drift
+    website: https://adrena.xyz
     programIds:
-      - dRiftyHA39MWEi3m9aunc5MzRF1JYuBsbn6VPcn33UH
-  - name: Metaplex
-    slug: metaplex
-    category: nft-infra
-    website: https://metaplex.com
+      - 13gDzEXCdocbj8iAiqrScGo47NiSuYENGsRqi3SEAwet
+  - name: Aldrin
+    slug: aldrin
+    category: dex
+    website: https://aldrin.com
     programIds:
-      - metaqbxxUerdq28cj1RbAWkYQm3ybzjb6a8bt518x1s
-      - CoREENxT6tW1HoK8ypY1SxRMZTcVPm7R94rH4PZNhX7d
-  - name: Squads
-    slug: squads
-    category: multisig
-    website: https://squads.so
+      - AMM55ShdkoGRB5jVYPjWziwk8m5MpwyDgsMWHaMSQWH6: Aldrin AMM V1
+      - CURVGoZn8zycx6FXwwevgBTB2gVvdbGTEpvMJDbgs2t4: Aldrin AMM V2
+  - name: Allbridge
+    slug: allbridge
+    category: bridge
+    website: https://allbridge.io
+    llamaSlug: allbridge
     programIds:
-      - SQDS4ep65T869zMMBKyuUq6aD6EgTu8psMjkvj52pCf
-      - SMPLecH534NA9acpos4G6x7uf3LWbCAwZQE9e8ZekMu
-
-  # --- landmarks: canonical infrastructure most searches expect to find ---
-  - name: SPL Token
-    slug: spl-token
-    category: token-standard
-    website: https://spl.solana.com/token
+      - BrdgN2RPzEMWF96ZbnnJaUtQDQx7VRXYaHHbYCBvceWB
+  - name: AlphaQ
+    slug: alphaq
+    category: dex
     programIds:
-      - TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA
-  - name: Token-2022
-    slug: token-2022
-    category: token-standard
-    website: https://spl.solana.com/token-2022
+      - ALPHAQmeA7bjrVuccPsYPiCvsi428SNwte66Srvs4pHA
+  - name: Ape.pro
+    slug: ape-pro
+    category: dex
+    website: https://ape.pro
     programIds:
-      - TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb
+      - JSW99DKmxNyREQM14SQLDykeBvEUG63TeohrvmofEiw: Ape.pro Smart Wallet
+  - name: Apricot Finance
+    slug: apricot
+    category: lending
+    programIds:
+      - 6UeJYTLU1adaoHWeApWsoj1xNEDbWA2RhM2DLc8CrDDi
   - name: Associated Token Account
     slug: associated-token-account
     category: token-standard
     website: https://spl.solana.com/associated-token-account
     programIds:
       - ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL
-  - name: SPL Memo
-    slug: spl-memo
-    category: infra
-    website: https://spl.solana.com/memo
-    programIds:
-      - MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr
-  - name: SPL Stake Pool
-    slug: spl-stake-pool
-    category: liquid-staking
-    website: https://spl.solana.com/stake-pool
-    programIds:
-      - SPoo1Ku8WFXoNDMHPsrGSTSG1Y47rzgn41SLUNakuHy
-  - name: OpenBook v2
-    slug: openbook-v2
+  - name: AVE
+    slug: ave
     category: dex
-    website: https://openbookdex.com
+    website: https://ave.ai
     programIds:
-      - opnb2LAfJYbRMAHHvqjCwQxanZn7ReEHp1k81EohpZb
-  - name: Serum v3
-    slug: serum-v3
+      - AveaiuA1emN71q9mS2QQ9BEWNAAHmp8sHSvwLFHQjufM
+  - name: Axiom
+    slug: axiom
+    category: dex
+    website: https://axiom.trade
+    programIds:
+      - FLASHX8DrLbgeR8FcfNV1F5krxYcYMUdBkrP1EPBtxB9: Axiom Trade
+  - name: Banana Gun
+    slug: banana-gun
+    category: dex
+    website: https://bananagun.io
+    programIds:
+      - BANANAjs7FJiPQqJTGFzkZJndT9o7UmKiYYGaJz6frGu: Banana Gun Router
+  - name: Binance
+    slug: binance
+    category: dex
+    website: https://binance.com
+    programIds:
+      - BN111JnbLtbmQqqiCh7h2pDKhAhMx4wi77Mj7jJFbyp8: Binance Alpha 2.0 1
+      - BN111AnCthcdPVNJ6jkir9TDaS7xqXT8EhetAmYpNqFt: Binance Wallet 2
+  - name: Bitget
+    slug: bitget
+    category: dex
+    website: https://bitget.com
+    programIds:
+      - s7SunwrPG5SbViEKiViaDThPRJxkkTrNx2iRPN3exNC: Bitget DEX Aggregator
+      - 2UUgGySTVXmKFatH7pGQo84ZrzdSYF5zw9iqrGwBMuuj: Bitget Swap 2
+  - name: Bloom
+    slug: bloom
     category: dex
     programIds:
-      - srmqPvymJeFKQ4zGQed1GFppgkRHL9kaELCbyksJtPX
-  - name: Orca
-    slug: orca
+      - b1oomGGqPKGD6errbyfbVMBuzSC8WtAAYo8MwNafWW1: Bloom Router
+  - name: Bonk
+    slug: bonk
     category: dex
-    website: https://orca.so
-    llamaSlug: orca
+    website: https://bonkcoin.com
     programIds:
-      - whirLbMiicVdio4qvUfM5KAg6Ct8VwpYzGff3uctyCc
-  - name: Meteora
-    slug: meteora
+      - STAKEkKzbdeKkqzKpLkNQD3SUuLgshDKCD7U8duxAbB: Bonk Stake
+      - BSwp6bEBihVLdqJRKGgzjcGLHkcTuzmSo1TQkHepzH8p: Bonk Swap
+  - name: BonkBot
+    slug: bonkbot
     category: dex
-    website: https://meteora.ag
-    llamaSlug: meteora
+    website: https://bonkbot.io
     programIds:
-      - LBUZKhRxPF3XUpBCjp4YzTKgLccjZhTSDM9YuVaPwxo
-      - Eo7WjKq67rjJQSZxS6z3YkapzY3eMj6Xy8X5EQVn5UaB
-  - name: Phoenix
-    slug: phoenix
+      - BBRouter1cVunVXvkcqeKkZQcBK7ruan37PPm3xzWaXD: Telemetry (Bonk Bot) Router
+  - name: Boop.fun
+    slug: boop-fun
+    category: launchpad
+    website: https://boop.fun
+    programIds:
+      - boop8hVGQGqehUK2iVEMEnMrL5RbjywRzHKBmBE7ry4
+  - name: Bophades
+    slug: bophades
     category: dex
-    website: https://ellipsislabs.xyz
     programIds:
-      - PhoeNiXZ8ByJGLkxNfZRnkUfjvmuYqLR89jjFHGqdXY
-  - name: Pyth
-    slug: pyth
+      - NinafKYvKDCH26v6uEpfDjyuDjjpbdfhiPjrJV6FTFs
+  - name: Byreal
+    slug: byreal
+    category: dex
+    website: https://byreal.io
+    programIds:
+      - REALQqNEomY6cQGZJUGwywTBD2UmDT32rZcNnfxQ5N2: Byreal CLMM
+      - REALp6iMBDTctQqpmhBo4PumwJGcybbnDpxtax3ara3: Byreal Router
+  - name: Cabana
+    slug: cabana
+    category: dex
+    programIds:
+      - UMnFStVeG1ecZFc2gc5K3vFy3sMpotq8C91mXBQDGwh
+  - name: Chainlink
+    slug: chainlink
     category: oracle
-    website: https://pyth.network
+    website: https://chain.link
     programIds:
-      - FsJ3A3u2vn5cTVofAjvy6y5kwABJAqYWpe4975bi2epH
-      - rec5EKMGg6MxZYaMdyBfgwp4d5rB9T1VQH5pJv5LtFJ
-  - name: Switchboard
-    slug: switchboard
-    category: oracle
-    website: https://switchboard.xyz
-    programIds:
-      - SW1TCH7qEPTdLsDHRgPuMQjbQxKdH2aBStViMFnt64f
-  - name: Wormhole
-    slug: wormhole
+      - HEvSKofvBgfaexv23kMabbYqxasxU3mQ4ibBMEmJWHny: Chainlink Store
+  - name: Circle CCTP
+    slug: circle-cctp
     category: bridge
-    website: https://wormhole.com
+    website: https://circle.com/cctp
     programIds:
-      - worm2ZoG2kUd4vFXhvjh93UUH596ayRfgQ2MgjNMTth
+      - CCTPiPYPc6AsJuwueEnWgSgucamXDZwBd53dQ11YiKX3: Circle CCTP Message Minter
+      - CCTPmbSD7gX1bxKPAmg77w8oFzNFpaQiQUWD43TKaecd: Circle CCTP Message Transmitter
+  - name: Crema Finance
+    slug: crema
+    category: dex
+    website: https://crema.finance
+    llamaSlug: crema-finance
+    programIds:
+      - 6MLxLqiXaaSUpkgMnWDTuejNZEz3kE7k2woyHGVFw319
+  - name: Cropper Finance
+    slug: cropper
+    category: dex
+    llamaSlug: cropper-finance
+    programIds:
+      - CTMAxxk34HjKWxQ3QLZK1HpaLXmBveao3ESePXbiyfzh
+  - name: deBridge
+    slug: debridge
+    category: bridge
+    website: https://debridge.finance
+    llamaSlug: debridge
+    programIds:
+      - DEbrdGj3HsRsAzx6uH4MKyREKxVAfBydijLUF3ygsFfh: deBridge
+      - dst5MGcFPoBeREFAA5E3tU5ij8m5uVYwkzkSAbsLbNo: deBridge Destination
+      - src5qyZHqTqecJV4aY6Cb6zDZLMDzrDKKezs22MPHr4: deBridge Source
+  - name: DeFiTuna
+    slug: defituna
+    category: lending
+    website: https://defituna.com
+    programIds:
+      - tuna4uSQZncNeeiAMKbstuxA9CUkHH6HmC64wgmnogD
+  - name: Degen Coin Flip
+    slug: degen-coin-flip
+    category: defi
+    programIds:
+      - BmjJ85zsP2xHPesBKpmHYKt136gzeTtNbeVDcdfybHHT
+  - name: Deltafi
+    slug: deltafi
+    category: dex
+    programIds:
+      - GNExJhNUhc9LN2DauuQAUJnXoy6DJ6zey3t9kT9A2PF3: Deltafi Swap
+  - name: DFlow
+    slug: dflow
+    category: dex
+    website: https://dflow.net
+    programIds:
+      - DF1ow4tspfHX9JwWJsAb9epbkA8hmpSEAtxXy1V27QBH: DFlow v4
+  - name: Drift
+    slug: drift
+    category: perps
+    website: https://drift.trade
+    llamaSlug: drift
+    programIds:
+      - dammHkt7jmytvbS3nHTxQNEcP59aE57nxwV21YdqEDN: Drift Protocol Clearing House
+      - dRiftyHA39MWEi3m9aunc5MzRF1JYuBsbn6VPcn33UH: Drift V2
+  - name: Elusiv
+    slug: elusiv
+    category: infra
+    programIds:
+      - 4CgyHKuP6yi1vbmcdsArngEKcETR4nZupqYEMk2hEoQd
+  - name: Flash Trade
+    slug: flash-trade
+    category: perps
+    website: https://flash.trade
+    llamaSlug: flash-trade
+    programIds:
+      - FLASH6Lo6h3iasJKWDs2F8TkW2UKf3s15C8PMGuVfgBn
+  - name: FluxBeam
+    slug: fluxbeam
+    category: dex
+    website: https://fluxbeam.xyz
+    programIds:
+      - FLUXubRmkEi2q6K3Y9kBPg9248ggaZVsoSFhtJHSrm1X
+  - name: Fragmetric
+    slug: fragmetric
+    category: staking
+    website: https://fragmetric.xyz
+    llamaSlug: fragmetric
+    programIds:
+      - fragnAis7Bp6FTsMoa6YcH8UffhEw43Ph79qAiK3iF3: Fragmetric Liquid Restake
+  - name: Francium
+    slug: francium
+    category: lending
+    llamaSlug: francium
+    programIds:
+      - FC81tbGt6JWRXidaWYFXxGnTk4VgobhJHATvTRVMqgWj: Francium Lending
+  - name: Fusion AMM
+    slug: fusion-amm
+    category: dex
+    programIds:
+      - fUSioN9YKKSa3CUC2YUc4tPkHJ5Y6XW1yz8y6F7qWz9
+  - name: Gamba
+    slug: gamba
+    category: defi
+    website: https://gamba.so
+    programIds:
+      - Gamba2hK6KV3quKq854B3sQG1WMdq3zgQLPKqyK4qS18
+  - name: Gate.io
+    slug: gate-io
+    category: dex
+    website: https://gate.io
+    programIds:
+      - 2rwUXt3JeyPtUBjH5pscZLRDBoh9WADfXq7gyoDnLcC4: Gate.io Web3 Router
+  - name: GMGN
+    slug: gmgn
+    category: dex
+    website: https://gmgn.ai
+    programIds:
+      - GMgnVFR8Jb39LoXsEVzb3DvBy3ywCmdmJquHUy1Lrkqb: GMGN Bot
+  - name: Goatswap
+    slug: goatswap
+    category: dex
+    programIds:
+      - Goats192jeQq3r2sn8pe69LyJtisLMfEoq8LyDienct1
+  - name: GoonFi
+    slug: goonfi
+    category: dex
+    programIds:
+      - goonuddtQRrWqqn5nFyczVKaie28f3kDkHWkHtURSLE: GoonFi v2
+  - name: GooseFX
+    slug: goosefx
+    category: dex
+    website: https://goosefx.io
+    llamaSlug: goosefx
+    programIds:
+      - GAMMA7meSFWaBXF25oSUgmGRwaW6sCMFLmBNiMSdbHVT: GooseFX GAMMA
+  - name: Grass
+    slug: grass
+    category: airdrop
+    website: https://grass.io
+    programIds:
+      - Eohp5jrnGQgP74oD7ij9EuCSYnQDLLHgsuAmtSTuxABk: Grass Airdrop
+  - name: Hawksight
+    slug: hawksight
+    category: defi
+    programIds:
+      - FqGg2Y1FNxMiGd51Q6UETixQWkF5fB92MysbYogRJb3P
+  - name: Heaven
+    slug: heaven
+    category: dex
+    programIds:
+      - HEAVENoP2qxoeuF8Dj2oT1GHEnu49U5mJYkdeC8BAX2o: Heaven DEX
+  - name: Helium
+    slug: helium
+    category: infra
+    website: https://helium.com
+    programIds:
+      - credMBJhYFzfn7NxBMdU4aUqFggAjgztaCcv2Fo6fPT: Helium Data Credits
+      - hemjuPXBpNvggtaUnN1MwT3wrdhttKEfosTcc2P9Pg8: Helium Entity Manager
+  - name: Hivemapper
+    slug: hivemapper
+    category: infra
+    website: https://hivemapper.com
+    programIds:
+      - EEjwuvCMVYjgHUeX1BM9qmUog59Pft88c3jbt2ATwcJw: Hivemapper Reward
+  - name: HumidiFi
+    slug: humidifi
+    category: dex
+    programIds:
+      - 9H6tua7jkLhdm3w8BvgpTn5LZNU7g4ZynDmCiNN3q6Rp
+  - name: Hyperlane
+    slug: hyperlane
+    category: bridge
+    website: https://hyperlane.xyz
+    programIds:
+      - E588QtVUvresuXq2KoNEwAmoifCzYGpRBdHByN9KQMbi: Hyperlane Mailbox
+  - name: IO.net
+    slug: io-net
+    category: infra
+    website: https://io.net
+    programIds:
+      - TNEAhD5qctW2xn4YgDkExuWUTfrg6Wqba4bJrzmMwS6
+  - name: Jito
+    slug: jito
+    category: staking
+    website: https://jito.network
+    llamaSlug: jito-liquid-staking
+    programIds:
+      - RestkWeAVL8fRGgzhfeoqFhsqKRchg6aa1XrcH96z4Q: Jito Restaking
+      - T1pyyaTNZsKv2WcRAB8oVnk93mLJw2XzjtVYqCsaHqt: Jito Tip Payment
+      - RouterBmuRBkPUbgEDMtdvTZ75GBdSREZR5uGUxxxpb: Jito Tip Router
+      - Jito4APyf642JPZPx3hGc6WWJ8zPKtRbRs4P815Awbb
+  - name: Jupiter
+    slug: jupiter
+    category: dex
+    website: https://jup.ag
+    llamaSlug: jupiter-aggregator
+    programIds:
+      - JUP3c2Uh3WA4Ng34tw6kPd2G4C5BB21Xo36Je1s32Ph: Jupiter Aggregator V3
+      - JUP4Fb2cqiRUcaTHdrPC8h2gNsA2ETXiPDD33WcGuJB: Jupiter Aggregator V4
+      - JUP5pEAZeHdHrLxh5UCwAbpjGwYKKoquCpda2hfP4u8: Jupiter Aggregator V5.1
+      - JUP5cHjnnCx2DppVsufsLrXs8EBZeEZzGtEK9Gdz6ow: Jupiter Aggregator V5.2
+      - Dis2TfkFnXFkrtvAktEkw37sdb7qwJgY6H7YZJwk51wK: Jupiter ASR Distribution
+      - DCA265Vj8a9CEuX1eb1LWRnDT7uK6q1xMipnNyatn23M: Jupiter DCA
+      - presSVxnf9UU8jMxhgSMqaRwNiT36qeBdNeTRKjTdbj: Jupiter DTF
+      - JUPLdTqUdKztWJ1isGMV92W2QvmEmzs9WTJjhZe4QdJ: Jupiter Flash Fill
+      - GovaE4iu227srtG2s3tZzB4RmWBzw8sTwrCLZz7kN7rY: Jupiter Governance
+      - DiS3nNjFVMieMgmiQFm6wgJL7nevk4NrhXKLbtEH1Z2R: Jupiter Jupuary
+      - jupr81YtYssSyPt8jbnGuiWon5f6x9TcDEFxYe3Bdzi: Jupiter Lend Borrow
+      - jupeiUmn818Jg1ekPURTpr4mFo29p46vygyykFJ3wZC: Jupiter Lend Liquidity
+      - DiSLRwcSFvtwvMWSs7ubBMvYRaYNYupa76ZSuYLe6D7j: Jupiter LFG
+      - 61DFfeTKM7trxYcPQCM78bJ794ddZprZpAwAnLiwTpYH: Jupiter Order Engine
+      - PERPHjGBqRHArX4DySjwM6UJHiR3sWAatqfdBS2qQJu: Jupiter Perps
+      - voTpe3tHQ7AjQHMapgSue2HJFAh2cGsdokqN3XqmVSj: Jupiter Voter
+      - JUPUSDecMzAVgztLe6eGhwUBj1Pn3j9WAXwmtHmfbRr: JupUSD
+      - JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4
+  - name: Kamino
+    slug: kamino
+    category: lending
+    website: https://kamino.finance
+    llamaSlug: kamino-lend
+    programIds:
+      - FarmsPZpWu9i7Kky8tPN37rs2TpmMrAZrC7S7vJa91Hr: Kamino Farms
+      - KLend2g3cP87fffoy8q1mQqGKjrxjC8boSyAYavgmjD: Kamino Lend
+      - kvauTFR8qm1dhniz6pYuBZkuene3Hfrs1VQhVRgCNrr: Kamino Vault
+  - name: LayerZero
+    slug: layerzero
+    category: bridge
+    website: https://layerzero.network
+    programIds:
+      - HtEYV4xB4wvsj5fgTkcfuChYpvGYzgzwvNhgDZQNh7wW: LayerZero DVN
+      - 76y77prsiCMvXMjuoZ5VRrhG5qYBrUMYTE5WgHqgjEn6: LayerZero Endpoint
+  - name: Lido
+    slug: lido
+    category: staking
+    website: https://lido.fi
+    llamaSlug: lido
+    programIds:
+      - CrX7kMhLC3cSsXJdT7JDgqrRVWGnUpX3gfEfxxU2NVLi: Lido Solana
+  - name: LI.FI
+    slug: lifi
+    category: bridge
+    website: https://li.fi
+    programIds:
+      - 3i5JeuZuUxeKtVysUnwQNGerJP2bSMX9fTFfS4Nxe3Br: LI.FI
+  - name: Lifinity
+    slug: lifinity
+    category: dex
+    website: https://lifinity.io
+    llamaSlug: lifinity
+    programIds:
+      - EewxydAPCCVuNEyrVN68PuSYdQ7wKn27V9Gjeoi8dy3S: Lifinity
+      - 2wT8Yq49kHgDzXuPxZSaeLaH1qbmGXtEyPy64bL7aD3c: Lifinity Swap V2
+  - name: Lighthouse
+    slug: lighthouse
+    category: infra
+    website: https://lighthouse.voyage
+    programIds:
+      - L2TExMFKdjpN9kozasaurPirfHy9P8sbXoAN1qA3S95
+  - name: LiquidMesh
+    slug: liquidmesh
+    category: dex
+    programIds:
+      - HuTkmnrv4zPnArMqpbMbFhfwzTR7xfWQZHH1aQKzDKFZ: LiquidMesh Router
+  - name: Loopscale
+    slug: loopscale
+    category: lending
+    website: https://loopscale.com
+    llamaSlug: loopscale
+    programIds:
+      - 1oopBoJG58DgkUVKkEzKgyG9dvRmpgeEm1AVjoHkF78
+  - name: Lulo
+    slug: lulo
+    category: lending
+    website: https://lulo.fi
+    programIds:
+      - FL3X2pRsQ9zHENpZSKDRREtccwJuei8yg9fwDu9UN69Q: Lulo (Flexlend)
+  - name: Maestro
+    slug: maestro
+    category: dex
+    website: https://maestrobots.com
+    programIds:
+      - MaestroAAe9ge5HTc64VbBQZ6fP77pwvrhM8i1XWSAx: Maestro Bot
+  - name: Magic Eden
+    slug: magic-eden
+    category: nft
+    website: https://magiceden.io
+    programIds:
+      - MEisE1HzehtrDpAAT8PnLHjpSSkRYakotTuJRPjTpo8: Magic Eden NFT Marketplace
+      - M2mx93ekt1fmXSVkTrUL9xVFHkmME8HTUi5Cyc5aF7K
+  - name: Mango
+    slug: mango
+    category: perps
+    website: https://mango.markets
+    llamaSlug: mango-markets
+    programIds:
+      - 5fNfvyp5czQVX77yoACa3JJVEhdRaWjPuazuWgjhTqEH: Mango V2
+      - mv3ekLzLbnVPNxjSKvqBpU3ZeZXPQdEC3bp5MDEBG68: Mango V3
+      - 4MangoMjqJ2firMokCjjGgoK8d4MXcrgL7XJaL3w6fVg: Mango V4
+  - name: Maple Finance
+    slug: maple
+    category: lending
+    website: https://maple.finance
+    llamaSlug: maple
+    programIds:
+      - 5D9yi4BKrxF8h65NkVE1raCCWFKUs5ngub2ECxhvfaZe: Maple Finance Lending
   - name: MarginFi
     slug: marginfi
     category: lending
     website: https://marginfi.com
     llamaSlug: marginfi
     programIds:
-      - MFv2hWf31Z9kbCa1snEPYctwafyhdvnV7FZnsebVacA
+      - MFv2hWf31Z9kbCa1snEPYctwafyhdvnV7FZnsebVacA: Marginfi V2
+  - name: Marinade
+    slug: marinade
+    category: staking
+    website: https://marinade.finance
+    llamaSlug: marinade-finance
+    programIds:
+      - mnspJQyF1KdDEs5c6YJPocYdY1esBgVQFufM2dY9oDk: Marinade Native Staking Proxy
+      - MarBmsSgKXdrN1egZf5sqe1TMai9K1rChYNDJgjq7aD
+  - name: Mayan
+    slug: mayan
+    category: bridge
+    website: https://mayan.finance
+    programIds:
+      - BLZRi6frs4X4DNLw56V4EXai1b6QVESN1BhHBTYM9VcY: Mayan Swift Bridge
+  - name: Mercurial
+    slug: mercurial
+    category: dex
+    programIds:
+      - MERLuDFBMmsHnsBPZw2sDQZHvXFMwp8EdjudcU2HKky: Mercurial Stable Swap
+  - name: Metaplex
+    slug: metaplex
+    category: nft
+    website: https://metaplex.com
+    programIds:
+      - BGUMAp9Gq7iTEuizy4pqaxsTyUCBK68MDfK752saRPUY: Bubblegum
+      - p1exdMJcjVao65QdewkaZRUnU6VPSXhus9n2GzWfh98: Metaplex
+      - hausS13jsjafwWwGqZTUQRmWyvyxn9EQpqMwV1PBBmk: Metaplex Auction House
+      - Guard1JwRhJkVH6XZhzoYxeBVQe872VH6QggF4BWmS9g: Metaplex Candy Guard
+      - CoREENxT6tW1HoK8ypY1SxRMZTcVPm7R94rH4PZNhX7d: Metaplex Core
+      - mcmt6YrQEMKw8Mw43FmpRLmf7BqRnFMKmAcbxE3xkAW: MPL Account Compression
+      - metaqbxxUerdq28cj1RbAWkYQm3ybzjb6a8bt518x1s
+  - name: Meteora
+    slug: meteora
+    category: dex
+    website: https://meteora.ag
+    llamaSlug: meteora
+    programIds:
+      - Eo7WjKq67rjJQSZxS6z3YkapzY3eMj6Xy8X5EQVn5UaB: Meteora DAMM v1
+      - cpamdpZCGKUy5JxQXB4dcpGPiikHawvSWAd6mEn1sGG: Meteora DAMM V2
+      - dbcij3LWUppWqq96dh6gJWwBifmcGfLSB5D4DuSMaqN: Meteora Dynamic Bonding Curve
+      - dfsdo2UqvwfN8DuUVrMRNfQe11VaiNoKcMqLHVvDPzh: Meteora Dynamic Fee Sharing
+      - 24Uqj9JCLxUeoC3hGfh5W3s9FM9uCHDS2SG3LYwBpyTi: Meteora Dynamic Vault
+      - FarmuwXPWXvefWUeqFAa5w6rifLkq5X6E8bimYvrhCB1: Meteora Farming
+      - LBUZKhRxPF3XUpBCjp4YzTKgLccjZhTSDM9YuVaPwxo
+  - name: Monaco Protocol
+    slug: monaco
+    category: defi
+    programIds:
+      - monacoUXKtUi6vKsQwaLyxmXKSievfNWEcYXTgkbCih
+  - name: Moonit
+    slug: moonit
+    category: launchpad
+    programIds:
+      - MoonCVVNZFSYkqNXP6bxHLPL6QQJiMagDL3qcqUQTrG
+  - name: Multisig
+    slug: multisig
+    category: infra
+    programIds:
+      - H88LfRBiJLZ7wYkHGuwkKTaijfQxexq8JvzUndu7fyjL
+  - name: Neon EVM
+    slug: neon-evm
+    category: bridge
+    website: https://neonevm.org
+    programIds:
+      - NeonVMyRX5GbCrsAHnUwx1nYYoJAtskU1bWUo6JGNyG
+  - name: Nosana
+    slug: nosana
+    category: infra
+    website: https://nosana.io
+    programIds:
+      - nosJhNRqr2bc9g1nfGDcXXTXvYUmxD4cVwy2pMWhrYM: Nosana Jobs
+  - name: Obric
+    slug: obric
+    category: dex
+    programIds:
+      - obriQD1zbpyLz95G5n7nJe6a4DPjpFwa5XYPoNm113y: Obric V2
+  - name: OKX
+    slug: okx
+    category: infra
+    website: https://okx.com
+    programIds:
+      - sa12qbQyuQqEaDcEqEPKmZEGTdzSMaqj87nKRYbE3QE: OKX Smart Account
+      - va1t8sdGkReA6XFgAeZGXmdQoiEtMirwy4ifLv7yGdH: OKX Vault
+  - name: Ondo
+    slug: ondo
+    category: defi
+    website: https://ondo.finance
+    programIds:
+      - XzTT4XB8m7sLD2xi6snefSasaswsKCxx5Tifjondogm: Ondo Global Markets
+  - name: OpenBook v2
+    slug: openbook-v2
+    category: dex
+    website: https://openbookdex.com
+    programIds:
+      - opnb2LAfJYbRMAHHvqjCwQxanZn7ReEHp1k81EohpZb
+  - name: Orca
+    slug: orca
+    category: dex
+    website: https://orca.so
+    llamaSlug: orca
+    programIds:
+      - 82yxjeMsvaURa4MbZZ7WZZHfobirZYkH1zF8fmeGtyaQ: Orca Aquafarm
+      - DjVE6JNiYqPL2QXyCUUh8rNjHrbz9hXHNYt99MQ59qw1: Orca Swap V1
+      - 9W959DqEETiGZocYWCQPaJ6sBmUzgfxXfqGeTEdp3aQP: Orca Swap V2
+      - whirLbMiicVdio4qvUfM5KAg6Ct8VwpYzGff3uctyCc
+  - name: ORE
+    slug: ore
+    category: defi
+    website: https://ore.supply
+    programIds:
+      - oreV2ZymfyeXgNgBdqMkumTqqAprVqgBWQfoYkrtKWQ: Ore V2
+  - name: Padre
+    slug: padre
+    category: dex
+    website: https://trade.padre.gg
+    programIds:
+      - term9YPb9mzAsABaqN71A4xdbxHmpBNZavpBiQKZzN3: Terminal (Padre)
+  - name: PancakeSwap
+    slug: pancakeswap
+    category: dex
+    website: https://pancakeswap.finance
+    llamaSlug: pancakeswap
+    programIds:
+      - HpNfyc2Saw7RKkQd8nEL4khUcuPhQ7WwY1B2qjx8jxFq
+  - name: Parcl
+    slug: parcl
+    category: defi
+    website: https://parcl.co
+    llamaSlug: parcl
+    programIds:
+      - 3parcLrT7WnXAcyPfkCz49oofuuf2guUKkjuFkAhZW8Y: Parcl V3
+  - name: Phoenix
+    slug: phoenix
+    category: dex
+    website: https://ellipsislabs.xyz
+    programIds:
+      - phDEVv4w6BcfkLrLNeXr8HhhgQxnxziVGXpGPcaadMf: Beta Phoenix Perpetuals
+      - PhoeNiXZ8ByJGLkxNfZRnkUfjvmuYqLR89jjFHGqdXY: Phoenix
+  - name: Photon
+    slug: photon
+    category: dex
+    website: https://photon-sol.tinyastro.io
+    programIds:
+      - BSfD6SHZigAfDWSjzD5Q41jw8LmKwtmjskPH9XW1mrRW
+  - name: Port Finance
+    slug: port-finance
+    category: lending
+    llamaSlug: port-finance
+    programIds:
+      - Port7uDYB3wk6GJAw4KT1WpTeMtSu9bTcChBHkX2LfR
+  - name: Pudgy Penguins
+    slug: pudgy-penguins
+    category: airdrop
+    programIds:
+      - CUEB3rQGVrvCRTmyjLrPnsd6bBBsGbz1Sr49vxNLJkGR: Pengu Airdrop Claim
+  - name: pump.fun
+    slug: pump-fun
+    category: launchpad
+    website: https://pump.fun
+    llamaSlug: pump.fun
+    programIds:
+      - AgenTMiC2hvxGebTsgmsD4HHBa8WEcqGFf87iwRRxLo7: Pump Agent Payments
+      - MAyhSmzXzV1pTf7LsNkrNwkWKTo4ougAJ1PPg47MD4e: Pump Mayhem
+      - 6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P: Pump.fun
+      - pfeeUxB6jkeY1Hxd7CsFCAjcbHA9rWtchMGdZ6VojVZ: Pump.fun Fees
+      - sa1ETko3qCiK1miqxar8oMdRuRv2gEqxoTQy7ZhDadE: Pump.fun ICO
+  - name: Pumpup.ai
+    slug: pumpup-ai
+    category: launchpad
+    programIds:
+      - PdMDrKEMaX8q7CCJb7NvUCxerBCcsFUa4LjBEynTtEd
+  - name: Pyth
+    slug: pyth
+    category: oracle
+    website: https://pyth.network
+    programIds:
+      - EXxqB6XPLczReFcZyigfbdowB6WGYtnkLYC4XZ2ae9ch: Pyth Airdrop
+      - PytERJFhAKuNNuaiXkApLfWzwNwSNDACpigT3LwQfou: Pyth Express Relay
+      - pythWSnswVUd12oZpeFP8e9CVaEqJg25g1Vtc2biRsT: Pyth Price Feed
+      - pytS9TjG1qyAZypk7n8rw8gfW9sUaqqYyMhJQ4E7JCQ: Pyth Staking
+      - FsJ3A3u2vn5cTVofAjvy6y5kwABJAqYWpe4975bi2epH
+      - rec5EKMGg6MxZYaMdyBfgwp4d5rB9T1VQH5pJv5LtFJ
+  - name: Rango
+    slug: rango
+    category: bridge
+    website: https://rango.exchange
+    programIds:
+      - RangohQxaWip6i1twAAnRVLmob9j88fid7sq2DMAATW
+  - name: Raydium
+    slug: raydium
+    category: dex
+    website: https://raydium.io
+    llamaSlug: raydium
+    programIds:
+      - routeUGWgWzqBWFcrCfv8tritsqukccJPu3q5GPP3xS: Raydium AMM Route
+      - 675kPX9MHTjS2zt1qfr1NYHuzeLXfQM9H24wFSUt1Mp8: Raydium AMM V4
+      - CAMMCzo5YL8w4VFF8KVHrK22GGUsp5VTaW7grrKgrWqK: Raydium Concentrated Liquidity
+      - CPMMoo8L3F4NbTegBCKVNunggL7H1ZpdTHKxQB5qKP1C: Raydium CP Swap
+      - 9HzJyW1qZsEiSfMUf6L2jo3CcTKAyBmSyKdwQeYisHrC: Raydium IDO v3
+      - LanMV9sAd7wArD4vJFi2qDdfnVhFxYSUg6eADduJ3uj: Raydium LaunchLab
+      - 27haf8L6oxUeXrHrgEgsexjSY5hbVUWEmvv9Nyxg8vQv: Raydium Liquidity Pool V2 (Old)
+      - 6BtsN2jo6ijrwCUnMPzXcB8G4hYpASgpHaKWQmHbubV9: Raydium Lock
+      - CBuCnLe26faBpcBP2fktp4rp8abpcAnTWft6ZrP5Q4T: Raydium Staking Farm V4
+      - 9KEPoZmtHUrBbhWN1v1KWLMkkvwY6WLtAVUCPRtRjP4z: Raydium Staking Farm V5
+      - FarmqiPv5eAj3j1GMdMCMUGXqPUvmquZtMy86QH6rzhG: Raydium Staking Farm V6
+  - name: Realms
+    slug: realms
+    category: governance
+    website: https://realms.today
+    programIds:
+      - GovER5Lthms3bLBqWub97yVrMmEogzX7xNjdXpPPCVZw: Realms Governance
+  - name: RedStone
+    slug: redstone
+    category: oracle
+    website: https://redstone.finance
+    programIds:
+      - REDSTBDUecGjwXd6YGPzHSvEUBHQqVRfCcjUVgPiHsr: RedStone Oracle
+  - name: Saber
+    slug: saber
+    category: dex
+    website: https://saber.so
+    llamaSlug: saber
+    programIds:
+      - DecZY86MU5Gj7kppfUCEmd4LbXXuyZH1yHaP2NTqdiZB: Saber Decimal Wrapper
+      - FARM1U7g8p6XG18m3P25Rnb1RPVQZt2sC4ax35CyJzyc: Saber Farm
+      - LockKXdYQVMbhhckwH3BxoYJ9FYatcZjwNGEuCwY33Q: Saber Lockup
+      - SMANK4F5osjfVpKFH5LPzE6HPpbzSPu5iHPBhuor5xU: Saber Pools
+      - SSwpkEEcbUqx4vtoEByFjSkhKdCT862DNVb52nZg1UZ: Saber Stable Swap
+  - name: Sanctum
+    slug: sanctum
+    category: staking
+    website: https://sanctum.so
+    llamaSlug: sanctum
+    programIds:
+      - 5ocnV1qiCgaQR8Jb8xWnVbApfaygJ8tNoZfgPwsgx9kx: Sanctum Controller
+      - SPMBzsVUuoHA4Jm6KunbsotaahvVikZs1JyTW6iJvbn: Sanctum Multi-Validator SPL Stake Pool
+      - stkitrT1Uoy18Dk1fTrgPw8W6MVzoCfYoAFT4MLsmhq: Sanctum Router
+      - SP12tWFxD9oJsVWNavTTBZvMbA6gkAmxtVgxdqvyvhY: Sanctum Single Validator SPL Stake Pool
+      - bon4Kh3x1uQK16w9b9DKgz3Aw4AP1pZxBJk55Q6Sosb: Sanctum Staking
+      - unpXTU2Ndrc7WWNyEhQWe4udTzSibLPi25SXv2xbCHQ: Sanctum Unstake
+  - name: Saros
+    slug: saros
+    category: dex
+    website: https://saros.xyz
+    llamaSlug: saros
+    programIds:
+      - SSwapUtytfBdBn1b9NUGG6foMVPtcWgpRU32HToDUZr: Saros AMM
+      - 1qbkdrr3z4ryLA7pZykqxvxWPoeifcVKo6ZG9CfkvVE: Saros DLMM
+  - name: Scorch
+    slug: scorch
+    category: dex
+    programIds:
+      - SCoRcH8c2dpjvcJD6FiPbCSQyQgu3PcUAWj2Xxx3mqn
+  - name: Serum
+    slug: serum
+    category: dex
+    programIds:
+      - EUqojwWA2rd19FZrzeBncJsm38Jm1hEhE3zsmX3bRc2o: Serum Dex V2
+      - 9xQeWvG816bUx9EPjHmaT23yvVM2ZWbrrpZb9PusVFin: Serum Dex V3
+  - name: Serum v3
+    slug: serum-v3
+    category: dex
+    programIds:
+      - srmqPvymJeFKQ4zGQed1GFppgkRHL9kaELCbyksJtPX
+  - name: Shadow Drive
+    slug: shadow-drive
+    category: infra
+    website: https://shdwdrive.com
+    programIds:
+      - 2e1wdyNhUvE76y6yUCvah2KaviavMJYKoRun8acMRBZZ
+  - name: SharkyFi
+    slug: sharkyfi
+    category: lending
+    website: https://sharky.fi
+    llamaSlug: sharky
+    programIds:
+      - SHARKobtfF1bHhxD2eqftjHBdVSCbKo9JtgK71FhELP
+  - name: Sigma
+    slug: sigma
+    category: dex
+    programIds:
+      - EaigzjxajzSRoPPBw93GSzthzKuhAqmZqVtnJiqD5run
+  - name: Solana Name Service
+    slug: solana-name-service
+    category: infra
+    website: https://sns.id
+    programIds:
+      - namesLPneVptA9Z5rqUDD9tMTWEJwofgaYwp8cawRkX: Name Service
+      - HP3D4D1ZCmohQGFVms2SS4LCANgJyksBf5s1F77FuFjZ: SNS Records
+  - name: Solayer
+    slug: solayer
+    category: staking
+    website: https://solayer.org
+    llamaSlug: solayer
+    programIds:
+      - endoLNCKTqDn8gSVnN2hDdpgACUPWHZTwoYnnMybpAT: Solayer Endo AVS
   - name: Solend
     slug: solend
     category: lending
@@ -166,34 +776,157 @@ entities:
     llamaSlug: solend
     programIds:
       - So1endDq2YkqhipRh3WViPa8hdiSpxWy6z3Z6tMCpAo
-  - name: Jito
-    slug: jito
-    category: liquid-staking
-    website: https://jito.network
-    llamaSlug: jito-liquid-staking
+  - name: SolFi
+    slug: solfi
+    category: dex
     programIds:
-      - Jito4APyf642JPZPx3hGc6WWJ8zPKtRbRs4P815Awbb
-  - name: Sanctum
-    slug: sanctum
-    category: liquid-staking
-    website: https://sanctum.so
+      - SoLFiHG9TfgtdUXUjWAxi3LtvYuFyDLVhBWxdMZxyCe: SolFi
+      - SV2EYYJyRz2YhfXwXnhNAevDEui5Q6yrfyo13WtupPF: SolFi V2
+  - name: SpherePay
+    slug: spherepay
+    category: infra
+    website: https://spherepay.co
     programIds:
-      - 5ocnV1qiCgaQR8Jb8xWnVbApfaygJ8tNoZfgPwsgx9kx
+      - AYGdvqsQruZoaJPWsViLqUgtbfXGRnxzgxzW4zmbbckL
+  - name: Solana Program Library
+    slug: spl
+    category: infra
+    website: https://spl.solana.com
+    programIds:
+      - AddressLookupTab1e1111111111111111111111111: Address Lookup Table
+      - TokenSVp5gheXUvJ6jGWGeCsgPKgnE3YgdGKRVCMY9o: Legacy Token
+      - noopb9bkMVfRPU8AsbpTUg8AQkHtKwMYZiFUjNRtMmV: SPL Noop
+  - name: SPL Memo
+    slug: spl-memo
+    category: infra
+    website: https://spl.solana.com/memo
+    programIds:
+      - Memo1UhkJRfHyvLMcVucJwxXeuD728EqVDDwQDxFMNo: SPL Memo v1
+      - MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr: SPL Memo v2
+  - name: SPL Stake Pool
+    slug: spl-stake-pool
+    category: liquid-staking
+    website: https://spl.solana.com/stake-pool
+    programIds:
+      - SPoo1Ku8WFXoNDMHPsrGSTSG1Y47rzgn41SLUNakuHy
+  - name: SPL Token
+    slug: spl-token
+    category: token-standard
+    website: https://spl.solana.com/token
+    programIds:
+      - TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA
+  - name: Squads
+    slug: squads
+    category: infra
+    website: https://squads.so
+    programIds:
+      - SMPLVC8MxZ5Bf5EfF7PaMiTCxoBAcmkbM2vkrvMK8ho: Squads Mesh
+      - SQDS4ep65T869zMMBKyuUq6aD6EgTu8psMjkvj52pCf: Squads v4
+      - SMPLbiNbsa19gf9jz8x9uHSvSn9VLFJB38dGy46kqJ7: Squads Validator
+      - SMPLecH534NA9acpos4G6x7uf3LWbCAwZQE9e8ZekMu
+  - name: Stabble
+    slug: stabble
+    category: dex
+    website: https://stabble.org
+    llamaSlug: stabble
+    programIds:
+      - swapNyd8XiQwJ6ianp9snpu4brUqFxadzvHebnAXjJZ: Stabble Swap
+  - name: Star Atlas
+    slug: star-atlas
+    category: defi
+    website: https://staratlas.com
+    programIds:
+      - FLEET1qqzpexyaDpqb2DGsSzE2sDCizewCg9WjrA6DBW: Star Atlas Score
+  - name: Switchboard
+    slug: switchboard
+    category: oracle
+    website: https://switchboard.xyz
+    programIds:
+      - DtmE9D2CSB4L5D6A15mraeEjrGMm6auWVzgaD8hK2tZM: Switchboard Oracle
+      - SW1TCH7qEPTdLsDHRgPuMQjbQxKdH2aBStViMFnt64f: Switchboard V2
+  - name: Symmetry
+    slug: symmetry
+    category: defi
+    website: https://symmetry.fi
+    programIds:
+      - BASKT7aKd8n7ibpUbwLP3Wiyxyi3yoiXsxBk4Hpumate: Symmetry Vaults v3
   - name: Tensor
     slug: tensor
-    category: nft-marketplace
+    category: nft
     website: https://tensor.trade
     programIds:
-      - TSWAPaqyCSx2KABk68Shruf4rp7CxcNi8hAsbdwmHbN
-  - name: Magic Eden
-    slug: magic-eden
-    category: nft-marketplace
-    website: https://magiceden.io
+      - TSWAPaqyCSx2KABk68Shruf4rp7CxcNi8hAsbdwmHbN: Tensor Escrow
+      - TFEEgwDP6nn1s8mMX2tTNPPz8j2VomkphLUmyxKm17A: Tensor Fees
+      - TL1ST2iRBzuGTqLn1KXnGdSnEow62BzPnGiqyRXhWtW: Tensor Whitelist
+  - name: Tessera
+    slug: tessera
+    category: dex
     programIds:
-      - M2mx93ekt1fmXSVkTrUL9xVFHkmME8HTUi5Cyc5aF7K
-  - name: Lighthouse
-    slug: lighthouse
+      - TessVdML9pBGgG9yGks7o4HewRaXVAMuoVj4x83GLQH: Tessera V
+  - name: TipLink
+    slug: tiplink
     category: infra
-    website: https://lighthouse.voyage
+    website: https://tiplink.io
     programIds:
-      - L2TExMFKdjpN9kozasaurPirfHy9P8sbXoAN1qA3S95
+      - 8TqqugH88U3fDEWeKHqBSxZKeqoRrXkdpy3ciX5GAruK: TipLink Escrow
+  - name: Titan
+    slug: titan
+    category: dex
+    website: https://titandex.io
+    programIds:
+      - T1TANpTeScyeqVzzgNViGDNrkQ6qHz9KrSBS4aNXvGT: Titan Exchange
+  - name: Token-2022
+    slug: token-2022
+    category: token-standard
+    website: https://spl.solana.com/token-2022
+    programIds:
+      - TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb
+  - name: Tribeca
+    slug: tribeca
+    category: governance
+    website: https://tribeca.so
+    programIds:
+      - Govz1VyoyLD5BL6CSCxUJLVLsQHRwjfFj1prNsdNg5Jw: TribecaHQ Govern
+  - name: Vertigo
+    slug: vertigo
+    category: launchpad
+    programIds:
+      - vrTGoBuy5rYSxAfV3jaRJWHH6nN9WK4NRExGxsk1bCJ
+  - name: Wasabi
+    slug: wasabi
+    category: perps
+    website: https://wasabi.xyz
+    programIds:
+      - spicyTHtbmarmUxwFSHYpA8G4uP2nRNq38RReMpoZ9c
+  - name: WhaleStreet
+    slug: whalestreet
+    category: dex
+    programIds:
+      - FW6zUqn4iKRaeopwwhwsquTY6ABWLLgjxtrC3VPnaWBf
+  - name: Wormhole
+    slug: wormhole
+    category: bridge
+    website: https://wormhole.com
+    programIds:
+      - WormT3McKhFJ2RkiGpdw9GKvNCrB2aB54gb2uV9MfQC: Wormhole
+      - HDwcJBJXjL9FpJ7UBsYBtaDjsBUhuLCUYoz3zr8SWWaQ: Wormhole Core Bridge
+      - MGoV9M6YUsdhJzjzH9JMCW2tRe1LLxF1CjwqKC7DR1B: Wormhole Staking
+      - worm2ZoG2kUd4vFXhvjh93UUH596ayRfgQ2MgjNMTth
+  - name: Zebec
+    slug: zebec
+    category: infra
+    website: https://zebec.io
+    programIds:
+      - AknC341xog56SrnoK6j3mUvaD1Y7tYayx1sxUGpeYWdX
+  - name: ZeroFi
+    slug: zerofi
+    category: dex
+    programIds:
+      - ZERor4xhbUycZ6gb9ntrhqscUcZmAbQDjEAtCf4hbZY
+  - name: Zeta
+    slug: zeta
+    category: perps
+    website: https://zeta.markets
+    llamaSlug: zeta-markets
+    programIds:
+      - zDEXqXEG7gAyxb1Kg9mK5fPnUdENCGKzWrM21RMdWRq: Zeta Serum Markets

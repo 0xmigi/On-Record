@@ -23,11 +23,19 @@ export const metadata: Metadata = {
 };
 
 const CATEGORY_ORDER: Category[] = [
-  "defi",
-  "token",
+  "dex",
+  "staking",
+  "launchpad",
+  "lending",
+  "perps",
+  "bridge",
+  "oracle",
   "nft",
-  "infra",
   "governance",
+  "airdrop",
+  "token",
+  "infra",
+  "defi",
   "unknown",
 ];
 

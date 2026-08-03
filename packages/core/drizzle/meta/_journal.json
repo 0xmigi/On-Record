@@ -50,6 +50,13 @@
       "when": 1785522165356,
       "tag": "0006_saved_lists",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1785600000000,
+      "tag": "0007_program_names",
+      "breakpoints": true
     }
   ]
 }

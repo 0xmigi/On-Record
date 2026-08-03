@@ -12,11 +12,19 @@ export type Band = "clone" | "variant" | "novel";
 // Mirrors the backend Category enum (packages/enrich categorize.ts) — only add
 // values here once the classifier can actually produce them.
 export type Category =
-  | "defi"
-  | "token"
+  | "dex"
+  | "perps"
+  | "lending"
+  | "staking"
+  | "launchpad"
+  | "bridge"
+  | "oracle"
   | "nft"
-  | "infra"
   | "governance"
+  | "airdrop"
+  | "token"
+  | "infra"
+  | "defi"
   | "unknown";
 export type AuthorityClass = "none" | "squads" | "program" | "hot_wallet" | null;
 export type Framework = "anchor" | "pinocchio" | "native" | "unknown";
@@ -485,11 +493,19 @@ export const BAND_LABELS: Record<Band, string> = {
 };
 
 export const CATEGORY_LABELS: Record<Category, string> = {
-  defi: "DEFI",
-  token: "TOKEN",
+  dex: "DEX",
+  perps: "PERPS",
+  lending: "LENDING",
+  staking: "STAKING",
+  launchpad: "LAUNCHPAD",
+  bridge: "BRIDGE",
+  oracle: "ORACLE",
   nft: "NFT",
-  infra: "INFRA",
   governance: "GOV",
+  airdrop: "AIRDROP",
+  token: "TOKEN",
+  infra: "INFRA",
+  defi: "DEFI",
   unknown: "UNKNOWN",
 };
 

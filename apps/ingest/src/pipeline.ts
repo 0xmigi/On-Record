@@ -307,6 +307,7 @@ export async function identifyStage(eventId: string): Promise<void> {
   enrichment.identity = {
     entityId: entity?.id ?? entityByAuthority?.id ?? null,
     entityName: entity?.name ?? entityByAuthority?.name ?? null,
+    entityCategory: entity?.category ?? entityByAuthority?.category ?? null,
     verified: verification.verified,
     repoUrl: verification.repoUrl,
     repoCommit: verification.commit,
@@ -573,7 +574,9 @@ export async function scoreStage(eventId: string): Promise<void> {
   // is no longer scored as zero for everything that isn't Anchor-with-an-IDL.
   const instructionCount =
     fp?.idl?.instructions.length ?? enrichment.profile?.instructionCount ?? null;
-  const category: Category = categorize(fp, id);
+  // the profile carries the recovered instruction surface — the evidence
+  // categorize() actually classifies from (see categorize.ts)
+  const category: Category = categorize(fp, id, enrichment.profile);
 
   // funding trail is an RPC walk — only worth it for novel candidates
   const trail = band === "novel" ? await getFundingTrail(network, event.authorityAfter) : null;

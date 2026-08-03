@@ -31,8 +31,23 @@ export type AuthorityFacet = "frozen" | "multisig" | "hot";
 export const FILTER_FRAMEWORKS: Framework[] = ["anchor", "pinocchio", "native"];
 export const SIZE_BANDS: SizeBand[] = ["lean", "moderate", "heavy"];
 export const AUTHORITY_FACETS: AuthorityFacet[] = ["frozen", "multisig", "hot"];
-// "unknown" is the absence of a category, not a selectable facet
-export const FILTER_CATEGORIES: Category[] = ["defi", "token", "nft", "infra", "governance"];
+// "unknown" is the absence of a category, not a selectable facet. Ordered by
+// how much of the corpus each holds, so the useful filters come first.
+export const FILTER_CATEGORIES: Category[] = [
+  "dex",
+  "staking",
+  "launchpad",
+  "lending",
+  "perps",
+  "bridge",
+  "oracle",
+  "nft",
+  "governance",
+  "airdrop",
+  "token",
+  "infra",
+  "defi",
+];
 
 export const SIZE_BAND_LABEL: Record<SizeBand, string> = {
   lean: "lean",
@@ -66,11 +81,19 @@ export const AUTHORITY_HINT: Record<AuthorityFacet, string> = {
 };
 
 export const CATEGORY_FILTER_LABEL: Record<Category, string> = {
-  defi: "DeFi",
-  token: "Token",
+  dex: "DEX",
+  perps: "Perps",
+  lending: "Lending",
+  staking: "Staking",
+  launchpad: "Launchpad",
+  bridge: "Bridge",
+  oracle: "Oracle",
   nft: "NFT",
-  infra: "Infra",
   governance: "Gov",
+  airdrop: "Airdrop",
+  token: "Token",
+  infra: "Infra",
+  defi: "DeFi",
   unknown: "Unknown",
 };
 
