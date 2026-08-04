@@ -331,7 +331,7 @@ a {
 .navmenu {
   display: contents;
 }
-.navmenu > summary {
+.navmenu-btn {
   display: none;
 }
 .navmenu-panel {
@@ -3017,15 +3017,16 @@ a.copy-addr-text:hover {
     position: static;
   }
   /* dim the page while the sheet is open — the scrim lives outside the bar so
-     it paints under it, and above .page */
-  body:has(.navmenu[open]) .navmenu-scrim {
+     it paints under it, and above .page. Driven by a class NavMenu sets, not
+     :has(), which did not re-evaluate when `open` changed from script. */
+  body.nav-open .navmenu-scrim {
     display: block;
     position: fixed;
     inset: 0;
     z-index: 35;
     background: rgba(0, 0, 0, 0.32);
   }
-  .navmenu > summary {
+  .navmenu-btn {
     display: inline-flex;
     align-items: center;
     justify-content: center;
@@ -3037,10 +3038,7 @@ a.copy-addr-text:hover {
     cursor: pointer;
     list-style: none;
   }
-  .navmenu > summary::-webkit-details-marker {
-    display: none;
-  }
-  .navmenu[open] > summary {
+  .navmenu.open .navmenu-btn {
     border-color: var(--border-strong);
   }
   .navmenu-bars {
@@ -3066,16 +3064,19 @@ a.copy-addr-text:hover {
     top: 9.5px;
   }
   /* bars fold into an X while the sheet is open */
-  .navmenu[open] .navmenu-bars i:nth-child(1) {
+  .navmenu.open .navmenu-bars i:nth-child(1) {
     transform: translateY(4.75px) rotate(45deg);
   }
-  .navmenu[open] .navmenu-bars i:nth-child(2) {
+  .navmenu.open .navmenu-bars i:nth-child(2) {
     opacity: 0;
   }
-  .navmenu[open] .navmenu-bars i:nth-child(3) {
+  .navmenu.open .navmenu-bars i:nth-child(3) {
     transform: translateY(-4.75px) rotate(-45deg);
   }
 
+  .navmenu:not(.open) .navmenu-panel {
+    display: none;
+  }
   .navmenu-panel {
     position: absolute;
     top: 100%;

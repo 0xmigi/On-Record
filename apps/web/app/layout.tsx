@@ -5,6 +5,7 @@ import Link from "next/link";
 import { Analytics } from "@vercel/analytics/next";
 import { ClusterBanner } from "@/components/ClusterBanner";
 import { Mark } from "@/components/Mark";
+import { NavMenu } from "@/components/NavMenu";
 import { NetworkToggle } from "@/components/NetworkToggle";
 import { SearchBox } from "@/components/SearchBox";
 import "./globals.css";
@@ -55,25 +56,7 @@ export default function RootLayout({
             </Link>
             <SearchBox />
             <nav className="topnav" aria-label="Main">
-              {/* one copy of the links: inline on desktop, and below 720px the
-                  summary becomes a hamburger and the panel drops down. Pure
-                  <details>, so the layout stays a server component. */}
-              <details className="navmenu">
-                <summary className="navmenu-btn" aria-label="Menu">
-                  <span className="navmenu-bars" aria-hidden="true">
-                    <i />
-                    <i />
-                    <i />
-                  </span>
-                </summary>
-                <div className="navmenu-panel">
-                  <Link href="/">Radar</Link>
-                  <Link href="/funnel">Stats</Link>
-                  <Link href="/methodology">Method</Link>
-                  <Link href="/saved">Saved</Link>
-                  <p className="navmenu-motto">Strip the copy-paste. Rank what&apos;s new.</p>
-                </div>
-              </details>
+              <NavMenu />
               {/* useSearchParams needs a Suspense boundary in a layout */}
               <Suspense fallback={null}>
                 <NetworkToggle />
@@ -83,7 +66,7 @@ export default function RootLayout({
         </header>
 
         {/* dims the page while the nav sheet is open; a sibling of the bar so it
-            sits behind it, driven by :has() rather than client state */}
+            sits behind it, toggled by NavMenu via a body class */}
         <div className="navmenu-scrim" aria-hidden="true" />
 
         <Suspense fallback={null}>
