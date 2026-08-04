@@ -326,6 +326,24 @@ a {
   margin-left: auto;
 }
 
+/* nav menu — inline links on desktop, hamburger dropdown under 720px.
+   One copy of the links; CSS decides how they present. */
+.navmenu {
+  display: contents;
+}
+.navmenu > summary {
+  display: none;
+}
+.navmenu-panel {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+}
+.navmenu-motto,
+.navmenu-scrim {
+  display: none;
+}
+
 /* gear settings menu (Orb-style): NETWORK section, check on active cluster */
 .net-menu {
   position: relative;
@@ -2986,7 +3004,119 @@ a.copy-addr-text:hover {
   }
 
   .topnav {
-    gap: 14px;
+    gap: 12px;
+  }
+
+  /* a full-width sheet under the bar, not a corner dropdown */
+  .topbar {
+    position: relative;
+    z-index: 40;
+  }
+  .navmenu {
+    display: inline-flex;
+    position: static;
+  }
+  /* dim the page while the sheet is open — the scrim lives outside the bar so
+     it paints under it, and above .page */
+  body:has(.navmenu[open]) .navmenu-scrim {
+    display: block;
+    position: fixed;
+    inset: 0;
+    z-index: 35;
+    background: rgba(0, 0, 0, 0.32);
+  }
+  .navmenu > summary {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 32px;
+    height: 32px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    background: var(--card);
+    cursor: pointer;
+    list-style: none;
+  }
+  .navmenu > summary::-webkit-details-marker {
+    display: none;
+  }
+  .navmenu[open] > summary {
+    border-color: var(--border-strong);
+  }
+  .navmenu-bars {
+    position: relative;
+    width: 15px;
+    height: 11px;
+  }
+  .navmenu-bars i {
+    position: absolute;
+    left: 0;
+    width: 15px;
+    height: 1.5px;
+    background: var(--ink);
+    transition: transform 0.16s ease, opacity 0.12s ease;
+  }
+  .navmenu-bars i:nth-child(1) {
+    top: 0;
+  }
+  .navmenu-bars i:nth-child(2) {
+    top: 4.75px;
+  }
+  .navmenu-bars i:nth-child(3) {
+    top: 9.5px;
+  }
+  /* bars fold into an X while the sheet is open */
+  .navmenu[open] .navmenu-bars i:nth-child(1) {
+    transform: translateY(4.75px) rotate(45deg);
+  }
+  .navmenu[open] .navmenu-bars i:nth-child(2) {
+    opacity: 0;
+  }
+  .navmenu[open] .navmenu-bars i:nth-child(3) {
+    transform: translateY(-4.75px) rotate(-45deg);
+  }
+
+  .navmenu-panel {
+    position: absolute;
+    top: 100%;
+    left: 0;
+    right: 0;
+    z-index: 40;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 1px;
+    padding: 8px 14px 14px;
+    background: var(--card);
+    border-top: 1px solid var(--border);
+    border-bottom: 1px solid var(--border);
+    /* same shadow family as the gear dropdown, a touch stronger for the
+       full-width surface — without it the sheet reads as page content */
+    box-shadow: 0 8px 20px rgba(0, 0, 0, 0.1);
+  }
+  .navmenu-panel a {
+    padding: 13px 10px;
+    border-radius: 3px;
+    font-size: 14px;
+    color: var(--ink-soft);
+  }
+  .navmenu-panel a:hover {
+    background: var(--bg);
+    color: var(--ink);
+  }
+  .navmenu-panel a[aria-current="page"] {
+    background: var(--bg);
+    color: var(--ink);
+    font-weight: 700;
+  }
+  .navmenu-motto {
+    display: block;
+    margin: 12px 0 2px;
+    text-align: center;
+    font-family: var(--font-mono);
+    font-size: 11px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--ink-faint);
   }
 
   .stat-strip {
@@ -4674,4 +4804,155 @@ a.copy-addr-text:hover {
 .saved-backup-btn:hover {
   border-color: var(--border-strong);
   color: var(--ink);
+}
+
+/* --- methodology page ---------------------------------------------------- */
+.method-lede {
+  max-width: 62ch;
+  margin: -4px 0 18px;
+  font-size: 14px;
+  line-height: 1.6;
+  color: var(--ink-soft);
+}
+.method-sub {
+  margin: -2px 0 10px;
+  font-size: 15px;
+  line-height: 1.5;
+  color: var(--ink);
+}
+.method-h2 {
+  margin: 34px 0 8px;
+  font-family: var(--font-head);
+  font-size: 19px;
+  font-weight: 700;
+}
+.method-part {
+  border-bottom: 1px solid var(--border);
+}
+.method-part > summary {
+  display: grid;
+  grid-template-columns: minmax(120px, 0.7fr) minmax(0, 2fr) 74px;
+  gap: 14px;
+  align-items: baseline;
+  padding: 11px 0;
+  cursor: pointer;
+  list-style: none;
+}
+.method-part > summary::-webkit-details-marker {
+  display: none;
+}
+.method-part > summary:hover .method-name {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.method-part[open] > summary {
+  border-bottom: 1px solid var(--border);
+}
+.method-part[open] > summary .method-name {
+  font-weight: 500;
+}
+/* the opened content is its own block, set apart from the row that opened it */
+.method-part-body {
+  padding: 14px 18px 16px;
+  background: var(--card);
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--ink-soft);
+}
+.method-part-body p,
+.method-part-body ul {
+  max-width: 74ch;
+}
+.method-part-body p {
+  margin: 0 0 10px;
+}
+.method-part-body ul {
+  margin: 0 0 10px;
+  padding-left: 18px;
+}
+.method-part-body li {
+  margin-bottom: 2px;
+}
+.method-rows {
+  margin: 2px 0 10px;
+}
+.method-row {
+  display: grid;
+  grid-template-columns: minmax(178px, 0.8fr) minmax(0, 2fr) 74px;
+  gap: 14px;
+  align-items: baseline;
+  padding: 6px 0;
+  border-bottom: 1px solid var(--border);
+}
+.method-row:last-child {
+  border-bottom: none;
+}
+.method-name {
+  font-size: 13px;
+  color: var(--ink);
+}
+.method-held {
+  margin-left: 6px;
+  font-family: var(--font-mono);
+  font-size: 9px;
+  font-style: normal;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+}
+.method-desc {
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--ink-soft);
+}
+.method-calls {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--ink-faint);
+  overflow-wrap: anywhere;
+}
+.method-share {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--ink-soft);
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+.method-tier {
+  margin-bottom: 12px;
+}
+.method-tier-head {
+  padding-bottom: 2px;
+}
+.method-foot {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--ink-faint);
+}
+@media (max-width: 640px) {
+  /* name and weight share the top line, the description sits under both —
+     otherwise the full-width description pushes the weight onto a third row */
+  .method-part > summary,
+  .method-row {
+    grid-template-columns: 1fr auto;
+    gap: 3px 12px;
+    padding: 9px 0;
+  }
+  .method-name {
+    grid-area: 1 / 1 / 2 / 2;
+  }
+  .method-share {
+    grid-area: 1 / 2 / 2 / 3;
+  }
+  .method-desc,
+  .method-calls {
+    grid-area: 2 / 1 / 3 / -1;
+  }
+  .method-part-body {
+    padding: 12px 13px 14px;
+  }
+  .method-lede,
+  .method-sub {
+    max-width: none;
+  }
 }

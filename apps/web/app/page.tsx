@@ -282,19 +282,19 @@ export default async function RadarPage({
 
   const EMPTY = { items: [] as ApiProgram[], total: 0, nextCursor: null };
   const [novelPage, variantPage, clonePage, closedPages, upgradePage, funnel] = await Promise.all([
-    isDeploy ? fetchRadar({ type, window, band: "novel", limit: 100, network, category }) : Promise.resolve(EMPTY),
-    isDeploy ? fetchRadar({ type, window, band: "variant", limit: 100, network, category }) : Promise.resolve(EMPTY),
-    isDeploy ? fetchRadar({ type, window, band: "clone", limit: 100, network, category }) : Promise.resolve(EMPTY),
+    isDeploy ? fetchRadar({ type, window, band: "novel", limit: 100, network, category, sort: "interest" }) : Promise.resolve(EMPTY),
+    isDeploy ? fetchRadar({ type, window, band: "variant", limit: 100, network, category, sort: "interest" }) : Promise.resolve(EMPTY),
+    isDeploy ? fetchRadar({ type, window, band: "clone", limit: 100, network, category, sort: "interest" }) : Promise.resolve(EMPTY),
     // the graveyard: closed programs across all bands (rent reclaimed).
     // Devnet skips it — pre-launch churn there is expected, not a story.
     isDeploy && !isDevnet
       ? Promise.all(
           (["novel", "variant", "clone"] as const).map((band) =>
-            fetchRadar({ type, window, band, closed: "only", limit: 100, category }),
+            fetchRadar({ type, window, band, closed: "only", limit: 100, category, sort: "interest" }),
           ),
         )
       : Promise.resolve([]),
-    !isDeploy ? fetchRadar({ type, window, limit: 50, network, category }) : Promise.resolve(EMPTY),
+    !isDeploy ? fetchRadar({ type, window, limit: 50, network, category, sort: "interest" }) : Promise.resolve(EMPTY),
     // funnel is per-cluster now — devnet gets its own live-computed stats
     fetchFunnel(FUNNEL_WINDOW[window], network === "all" ? "mainnet" : network),
   ]);
@@ -313,8 +313,8 @@ export default async function RadarPage({
 
   const ts = (p: ApiProgram) => (p.deployedAt ? Date.parse(p.deployedAt) : 0);
   const recency = (a: ApiProgram, b: ApiProgram) => ts(b) - ts(a);
-  // interest ordering (the API's default sort — noveltyScore carries the
-  // interest v0.1 blend); recency breaks ties so fresh unscored rows behave
+  // The API now orders by interest in SQL, so a limited page is the top N of
+  // the window. This re-sort only keeps merged/regrouped lists in that order.
   const interest = (a: ApiProgram, b: ApiProgram) =>
     (b.noveltyScore ?? 0) - (a.noveltyScore ?? 0) || recency(a, b);
 

@@ -5,6 +5,7 @@ export * from "./logger.js";
 export * from "./queue.js";
 export * from "./helius.js";
 export * from "./profile.js";
+export * from "./primitives.js";
 export * from "./identity.js";
 export * from "./search.js";
 export * from "./lineage.js";

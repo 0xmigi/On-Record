@@ -55,9 +55,25 @@ export default function RootLayout({
             </Link>
             <SearchBox />
             <nav className="topnav" aria-label="Main">
-              <Link href="/">Radar</Link>
-              <Link href="/funnel">Stats</Link>
-              <Link href="/saved">Saved</Link>
+              {/* one copy of the links: inline on desktop, and below 720px the
+                  summary becomes a hamburger and the panel drops down. Pure
+                  <details>, so the layout stays a server component. */}
+              <details className="navmenu">
+                <summary className="navmenu-btn" aria-label="Menu">
+                  <span className="navmenu-bars" aria-hidden="true">
+                    <i />
+                    <i />
+                    <i />
+                  </span>
+                </summary>
+                <div className="navmenu-panel">
+                  <Link href="/">Radar</Link>
+                  <Link href="/funnel">Stats</Link>
+                  <Link href="/methodology">Method</Link>
+                  <Link href="/saved">Saved</Link>
+                  <p className="navmenu-motto">Strip the copy-paste. Rank what&apos;s new.</p>
+                </div>
+              </details>
               {/* useSearchParams needs a Suspense boundary in a layout */}
               <Suspense fallback={null}>
                 <NetworkToggle />
@@ -65,6 +81,10 @@ export default function RootLayout({
             </nav>
           </div>
         </header>
+
+        {/* dims the page while the nav sheet is open; a sibling of the bar so it
+            sits behind it, driven by :has() rather than client state */}
+        <div className="navmenu-scrim" aria-hidden="true" />
 
         <Suspense fallback={null}>
           <ClusterBanner />

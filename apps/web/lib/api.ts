@@ -330,11 +330,16 @@ export async function fetchRadar(
     /** filtered in SQL — a page of 50 rows is not a big enough sample to
      *  narrow client-side once categories are this granular */
     category?: Category | null;
+    /** "interest" = order by the interest score in SQL, so a limited page is
+     *  the top N of the window rather than the newest N. Only "recent"
+     *  supports the cursor, so paginating callers must stay on the default. */
+    sort?: "interest" | "recent";
   } = {}
 ): Promise<ApiCursorPage<ApiProgram>> {
   const params = new URLSearchParams();
   params.set("window", opts.window ?? "today");
   params.set("type", opts.type ?? "deploy");
+  if (opts.sort === "interest" && !opts.cursor) params.set("sort", "interest");
   if (opts.cursor) params.set("cursor", opts.cursor);
   if (opts.band) params.set("band", opts.band);
   if (opts.closed) params.set("closed", opts.closed === "only" ? "only" : "1");

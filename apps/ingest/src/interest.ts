@@ -1,5 +1,12 @@
 import { and, eq, ne, sql } from "drizzle-orm";
-import { db, schema, isSourceRelative, pathOverlap, sharedPathCount } from "@onrecord/core";
+import {
+  db,
+  schema,
+  isSourceRelative,
+  pathOverlap,
+  sharedPathCount,
+  primitiveRarity,
+} from "@onrecord/core";
 
 // ---------------------------------------------------------------------------
 // Interest score v0.1 — the surfacing methodology (VISION §5a), made concrete.
@@ -12,11 +19,17 @@ import { db, schema, isSourceRelative, pathOverlap, sharedPathCount } from "@onr
 // showing the underlying signals, never this number.
 //
 //   disclosure .30  name/repo/site/IDL/security.txt/verified, of 6
-//   novelty    .25  structural distance to nearest known code
-//   newness    .20  e^(−age in days) — fresh deploys surface, then must earn it
+//   novelty    .20  structural distance to nearest known code
+//   primitives .15  rarity of the syscalls it imports, on its peak tier
+//   newness    .10  e^(−age in days) — fresh deploys surface, then must earn it
 //   momentum   .10  log₁₀ txns in last 24h (10k caps)
 //   conviction .10  log₁₀ SOL locked by the deploy (100 SOL caps)
 //   adoption   .05  fraction of the last 48 hours with ≥1 txn (sustained ≠ spike)
+//
+// Primitives joined at .15, taken from novelty (.25→.20) and newness (.20→.10).
+// Newness gave up the most on purpose: sorting by "what landed most recently"
+// is what the radar was drifting back into, and rarity of what a program calls
+// is a far better reason to look at it than the hour it deployed.
 //
 // Usage was 45% of this (momentum .30 + adoption .15) and it is now 15%. Two
 // reasons. It buried the finds: a program worth writing about is usually found
@@ -122,13 +135,23 @@ export function computeInterest(row: SubjectRow, family: Family = { size: 1, clo
   const newness =
     deployedMs === null ? 0 : Math.exp(-Math.max(0, (now - deployedMs) / 86_400_000));
 
+  // Rarity of the syscalls it imports, scored on the peak tier — the single
+  // rarest thing it calls. Structural novelty says the code is unlike anything
+  // on record; this says the code ASKS the runtime for something almost nobody
+  // asks for. They catch different programs: a hand-rolled clone of a common
+  // design scores low here, and a familiar-looking program that quietly imports
+  // pairing crypto scores high.
+  const primitives = primitiveRarity(row.profile?.syscalls).score;
+
+  // Weights are also written out on /methodology — change both.
   const components = {
     momentum: momentum * 0.1,
     adoption: adoption * 0.05,
-    novelty: novelty * 0.25,
+    novelty: novelty * 0.2,
+    primitives: primitives * 0.15,
     disclosure: disclosure * 0.3,
     conviction: conviction * 0.1,
-    newness: newness * 0.2,
+    newness: newness * 0.1,
   };
   const base = Object.values(components).reduce((a, b) => a + b, 0);
 
