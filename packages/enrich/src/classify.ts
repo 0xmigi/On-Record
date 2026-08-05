@@ -105,9 +105,13 @@ export async function classifyFingerprint(
   if (priorCopy[0]) {
     // join the existing bucket, or create one keyed on this sha256 (with the
     // earlier deploy as canonical) when this is the second sighting.
+    // No crate veto on this path: these are byte-identical binaries, and
+    // identical bytes are identical code however the crate around them was
+    // renamed. The veto exists to doubt a *resemblance*, and there is none to
+    // doubt here.
     const bucketId = exact[0]
       ? (await joinBucket(network, programId, exact[0].id, arrival), exact[0].id)
-      : await bucketForSha(network, programId, fp.sha256, fp, arrival);
+      : await bucketForSha(network, programId, fp.sha256, fp, arrival, { enforceCrate: false });
     return {
       disposition: "copy",
       band: "clone",
@@ -189,8 +193,11 @@ export async function classifyFingerprint(
     nearestPrior.distance < cfg.CLONE_THRESHOLD &&
     !(await crateConflict(network, programId, nearestPrior.programId))
   ) {
-    disposition = "near_copy";
+    // may still come back null: the neighbour can be crateless and wave this
+    // program through into a family whose OTHER members name a crate of their
+    // own (see bucketForSha)
     bucketId = await bucketForSha(network, programId, nearestPrior.sha256, fp, arrival);
+    disposition = bucketId ? "near_copy" : "data_only";
   } else if (minDist >= cfg.NOVEL_THRESHOLD) {
     disposition = "novel";
   } else {
@@ -244,20 +251,57 @@ async function crateConflict(network: Network, a: string, b: string): Promise<bo
   return crateA !== crateB;
 }
 
-/** find (or create) the bucket whose canonical fingerprint is `sha256`,
- *  record the near-copy, return the bucket id. */
+/** The same veto, asked of the whole family rather than one neighbour.
+ *
+ *  A pairwise check alone leaks, because it can only speak when BOTH sides
+ *  leaked a crate — so a crateless program becomes a bridge. Solend leaks no
+ *  crate; trench-governance's nearest prior neighbour leaked none either, so
+ *  nothing objected, and it walked straight back into the family holding
+ *  Solend, SATI, c4-protocol, dk_mint_vault and xt-staking-v2: five crates in
+ *  one "same code" bucket, still dated to 2021. Membership is a property of the
+ *  family, so the question has to be put to the family.
+ *
+ *  Still silent when the joiner has no crate — an unnamed binary is evidence of
+ *  nothing, and it is the members that DO name themselves who get to object. */
+async function bucketCrateConflict(bucketId: string, crate: string | null): Promise<boolean> {
+  if (!crate) return false;
+  const rows = await db
+    .selectDistinct({ crate: schema.subjects.crate })
+    .from(schema.subjects)
+    .where(and(eq(schema.subjects.bucketId, bucketId), ne(schema.subjects.crate, crate)));
+  return rows.some((r) => r.crate);
+}
+
+async function crateOf(network: Network, programId: string): Promise<string | null> {
+  const rows = await db
+    .select({ crate: schema.subjects.crate })
+    .from(schema.subjects)
+    .where(and(eq(schema.subjects.network, network), eq(schema.subjects.id, programId)));
+  return rows[0]?.crate ?? null;
+}
+
+/** find (or create) the bucket whose canonical fingerprint is `sha256`, record
+ *  the near-copy, return the bucket id — or null when the family it would join
+ *  already names a different crate. */
 async function bucketForSha(
   network: Network,
   programId: string,
   sha256: string,
   fp: Fingerprint,
   arrival: boolean,
-): Promise<string> {
+  opts: { enforceCrate?: boolean } = {},
+): Promise<string | null> {
   const rows = await db
     .select()
     .from(schema.copyBuckets)
     .where(and(eq(schema.copyBuckets.network, network), eq(schema.copyBuckets.canonicalSha256, sha256)));
   if (rows[0]) {
+    if (
+      opts.enforceCrate !== false &&
+      (await bucketCrateConflict(rows[0].id, await crateOf(network, programId)))
+    ) {
+      return null;
+    }
     await joinBucket(network, programId, rows[0].id, arrival);
     return rows[0].id;
   }
