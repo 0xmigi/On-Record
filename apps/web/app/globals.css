@@ -3791,24 +3791,44 @@ a.copy-addr-text:hover {
   font-size: 10px;
   letter-spacing: 0.02em; /* tier color via tier-* */
 }
-/* rarity tier colors */
+/* rarity tier colors — Fortnite's ladder: mythic is gold, legendary is orange.
+   Darkened for the near-white ground; the dark-mode block below runs the
+   brighter, truer values. */
 .tier-mythical {
-  color: #12b5b0;
+  color: #bf9b0c;
 }
 .tier-legendary {
-  color: #e0a338;
+  color: #d9660f;
 }
 .tier-epic {
-  color: #b072f0;
+  color: #9a3fd6;
 }
 .tier-rare {
-  color: #4c8dff;
+  color: #2b7fd4;
 }
 .tier-uncommon {
   color: #3fb27f;
 }
 .tier-common {
   color: var(--ink-faint);
+}
+
+@media (prefers-color-scheme: dark) {
+  .tier-mythical {
+    color: #f7cf2b;
+  }
+  .tier-legendary {
+    color: #ff8b3d;
+  }
+  .tier-epic {
+    color: #c74bfd;
+  }
+  .tier-rare {
+    color: #4c8dff;
+  }
+  .tier-uncommon {
+    color: #5bd67f;
+  }
 }
 
 /* save (star) button + the personal saved shortlist */

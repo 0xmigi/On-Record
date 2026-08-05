@@ -12,8 +12,8 @@
 // that copy is presentation, THIS one decides ranking. Keep the tiers in step
 // until the API serves them and the web copy can be deleted.
 //
-// Shares are measured over 3,254 mainnet programs with a recovered syscall
-// vector (2026-08-03), excluding the 872 that import only `sol_invoke_signed_c`
+// Shares are measured over 3,497 mainnet programs with a recovered syscall
+// vector (2026-08-05), excluding the 873 that import only `sol_invoke_signed_c`
 // (one template mass-deployed, a fifth of the raw corpus).
 //
 // Rules are matched FIRST-WIN, ordered rarest-first, so a specific rule must
@@ -46,12 +46,14 @@ interface Rule {
 }
 
 const RULES: Rule[] = [
-  // mythical — not activated on mainnet, or activated and never once imported
-  { tier: "mythical", match: /bls12_381/ },
+  // mythical — registered in the validator, never once imported on record.
+  // No /bls12_381/ rule: BLS12-381 has no syscall of its own, it rides
+  // sol_curve_group_op and sol_curve_pairing_map. See the web copy's header.
   { tier: "mythical", match: /curve_pairing_map|curve_decompress/ },
   { tier: "mythical", match: /big_mod_exp/ },
   { tier: "mythical", match: /blake3/ },
   { tier: "mythical", match: /remaining_compute_units/ },
+  { tier: "mythical", match: /sha512/ },
 
   // legendary — under 1% of programs
   { tier: "legendary", match: /create_account_with_seed/ },

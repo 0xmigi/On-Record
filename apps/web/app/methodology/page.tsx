@@ -15,7 +15,7 @@ export const metadata: Metadata = {
 };
 
 const TIER_MEANING: Record<Tier, string> = {
-  mythical: "Nothing on mainnet imports it, or it isn't activated yet.",
+  mythical: "Registered in the validator, and nothing on record imports it.",
   legendary: "Under 1% of programs.",
   epic: "1–3% of programs.",
   rare: "3–15% of programs.",
@@ -133,7 +133,7 @@ export default function MethodologyPage() {
                       {syscalls.length ? (
                         syscalls.map((s) => s.name).join("  ")
                       ) : (
-                        <em>not activated on mainnet — SIMD-0388</em>
+                        <em>no syscall on record matches this rule</em>
                       )}
                     </span>
                     <span className="method-share">{share(pct)}</span>

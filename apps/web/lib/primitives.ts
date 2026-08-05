@@ -12,9 +12,9 @@
 //
 // CALIBRATION. Tiers were a hand-assigned balance sheet. They are now measured:
 // MEASURED holds the share of mainnet programs carrying each syscall, over
-// 3,254 programs with a recovered syscall vector (2026-08-03). Programs
+// 3,497 programs with a recovered syscall vector (2026-08-05). Programs
 // importing only `sol_invoke_signed_c` and nothing else are excluded from the
-// denominator — 872 of them are one template mass-deployed, and leaving them in
+// denominator — 873 of them are one template mass-deployed, and leaving them in
 // deflated every percentage by a fifth. MEASURED is the ONLY place a percentage
 // is written down; the dossier and /methodology both derive from it.
 //
@@ -34,8 +34,15 @@
 // whenever a rule is added, and re-measure MEASURED as the corpus grows: these
 // figures drift, and a stale table quietly stops discriminating.
 //
-// Two rules are intentionally unreachable today and exist to catch the future:
-// BLS12-381 (not activated on mainnet) and the generic `curve_` fallback.
+// The generic `curve_` fallback is intentionally unreachable today and exists
+// to catch the future.
+//
+// BLS12-381 has NO syscall of its own — checked against the Agave registry,
+// which has no `sol_bls12_381_*` name. It rides the existing `sol_curve_group_op`
+// (legendary) and `sol_curve_pairing_map` (mythical) behind the
+// `enable_bls12_381_syscall` gate, activated on mainnet at slot 425,952,004
+// (~June 2026). A rule matching /bls12_381/ therefore matched nothing and could
+// never fire, so it was removed rather than left rendering a phantom row.
 // ---------------------------------------------------------------------------
 
 export type Tier = "mythical" | "legendary" | "epic" | "rare" | "uncommon" | "common";
@@ -53,8 +60,8 @@ export const TIER_WEIGHT: Record<Tier, number> = {
 /** Corpus MEASURED was taken over. Surfaced on the methodology page. */
 export const CALIBRATION = {
   network: "mainnet",
-  programs: 3254,
-  measuredAt: "2026-08-03",
+  programs: 3497,
+  measuredAt: "2026-08-05",
   note: "Programs whose only syscall is sol_invoke_signed_c are excluded from the denominator.",
 } as const;
 
@@ -82,57 +89,66 @@ export interface SyscallRule {
  * Re-measure as the corpus grows; see CALIBRATION for what it was measured over.
  */
 export const MEASURED: Record<string, number | null> = {
-  sol_memcpy_: 96.53,
-  sol_log_: 92.99,
-  sol_memset_: 85.46,
-  sol_try_find_program_address: 80.45,
-  sol_invoke_signed_rust: 78.49,
-  sol_get_rent_sysvar: 72.89,
-  abort: 72.16,
-  sol_log_pubkey: 62.23,
-  sol_memcmp_: 58.21,
-  sol_sha256: 54.92,
-  sol_get_clock_sysvar: 54.58,
-  sol_create_program_address: 45.21,
-  sol_log_data: 34.94,
-  sol_memmove_: 29.63,
-  sol_panic_: 20.41,
-  sol_invoke_signed_c: 18.65,
-  sol_set_return_data: 13.09,
-  sol_keccak256: 9.4,
-  sol_get_sysvar: 7.31,
-  sol_get_return_data: 7.01,
-  sol_secp256k1_recover: 2.74,
+  sol_memcpy_: 96.4,
+  sol_log_: 91.54,
+  sol_memset_: 85.16,
+  sol_try_find_program_address: 80.73,
+  sol_invoke_signed_rust: 76.92,
+  sol_get_rent_sysvar: 73.01,
+  abort: 71.83,
+  sol_log_pubkey: 61.02,
+  sol_memcmp_: 58.56,
+  sol_get_clock_sysvar: 55.16,
+  sol_sha256: 53.96,
+  sol_create_program_address: 45.95,
+  sol_log_data: 35.77,
+  sol_memmove_: 29.0,
+  sol_panic_: 20.07,
+  sol_invoke_signed_c: 20.02,
+  sol_set_return_data: 12.67,
+  sol_keccak256: 9.15,
+  sol_get_sysvar: 7.26,
+  sol_get_return_data: 6.75,
+  sol_secp256k1_recover: 2.6,
   sol_log_64_: 2.0,
-  sol_curve_validate_point: 1.6,
+  sol_curve_validate_point: 1.66,
   sol_get_stack_height: 1.57,
-  sol_log_compute_units_: 1.41,
-  sol_alt_bn128_group_op: 0.92,
-  sol_poseidon: 0.55,
-  sol_alt_bn128_compression: 0.31,
-  sol_curve_group_op: 0.28,
-  sol_get_epoch_schedule_sysvar: 0.25,
-  sol_get_processed_sibling_instruction: 0.18,
-  sol_get_last_restart_slot: 0.18,
+  sol_log_compute_units_: 1.37,
+  sol_alt_bn128_group_op: 0.89,
+  sol_poseidon: 0.54,
+  sol_curve_group_op: 0.31,
+  sol_alt_bn128_compression: 0.29,
+  sol_get_epoch_schedule_sysvar: 0.23,
+  sol_get_processed_sibling_instruction: 0.2,
+  sol_get_last_restart_slot: 0.17,
   sol_alloc_free_: 0.09,
-  sol_get_epoch_stake: 0.06,
   sol_curve_multiscalar_mul: 0.06,
+  sol_get_epoch_stake: 0.06,
   sol_get_epoch_rewards_sysvar: 0.06,
-  sol_get_fees_sysvar: 0.03,
   sol_create_account_with_seed_instruction: 0.03,
-  sol_blake3: 0,
-  sol_big_mod_exp: 0,
-  sol_remaining_compute_units: 0,
+  sol_get_fees_sysvar: 0.03,
+
+  // Activated on mainnet (June 2026, with the BLS12-381 gate) and imported by
+  // nothing on record — a real zero, not an absence of opportunity.
   sol_curve_pairing_map: 0,
+
+  // `null` = registered in the validator but the feature gate has never been
+  // activated on mainnet, so no program *can* import it. Verified against the
+  // feature accounts on chain: none of these four has one. Distinct from the 0
+  // above, and /methodology renders them as "—" rather than "0".
+  sol_blake3: null,
+  sol_big_mod_exp: null,
+  sol_remaining_compute_units: null,
+  sol_sha512: null,
 };
 
 export const SYSCALL_TIERS: SyscallRule[] = [
   // --- mythical: not activated, or activated and never once imported ---------
-  { tier: "mythical", label: "BLS12-381 pairing crypto", explain: "Signature aggregation — one signature proving a whole group signed. Not yet live on mainnet (SIMD-0388).", match: /bls12_381/ },
-  { tier: "mythical", label: "Pairing map", explain: "Likely used here for pairing-based proof checks. Nothing on mainnet imports it.", match: /curve_pairing_map|curve_decompress/ },
-  { tier: "mythical", label: "Big modular exponentiation", explain: "Likely used here for RSA-style signature or VDF verification. Nothing on mainnet imports it.", match: /big_mod_exp/ },
-  { tier: "mythical", label: "BLAKE3 hashing", explain: "Likely used here for fast content hashing. Nothing on mainnet imports it.", match: /blake3/ },
-  { tier: "mythical", label: "Compute budget introspection", explain: "Lets a program read its own remaining compute and do less work instead of failing. Nothing on mainnet imports it.", match: /remaining_compute_units/ },
+  { tier: "mythical", label: "Pairing map", explain: "The BLS12-381 pairing operation (SIMD-0388), live on mainnet since June 2026 — one signature proving a whole group signed. Callable today; nothing on record imports it.", match: /curve_pairing_map|curve_decompress/ },
+  { tier: "mythical", label: "Big modular exponentiation", explain: "RSA-style signature and VDF verification. Registered in the validator, but the feature gate has never been activated on mainnet.", match: /big_mod_exp/ },
+  { tier: "mythical", label: "BLAKE3 hashing", explain: "Fast content hashing. Registered in the validator, but the feature gate has never been activated on mainnet.", match: /blake3/ },
+  { tier: "mythical", label: "Compute budget introspection", explain: "Would let a program read its own remaining compute and do less work instead of failing. Registered in the validator, but the feature gate has never been activated on mainnet.", match: /remaining_compute_units/ },
+  { tier: "mythical", label: "SHA-512", explain: "Same slice-based interface as the other hash syscalls, 64-byte output. Proposed as SIMD-0512 and activated on no cluster at all — not mainnet, not testnet, not devnet.", match: /sha512/ },
 
   // --- legendary: under 1% of programs ---------------------------------------
   { tier: "legendary", label: "Seeded account creation", explain: "Likely used here to build a create-account-with-seed instruction.", match: /create_account_with_seed/ },
