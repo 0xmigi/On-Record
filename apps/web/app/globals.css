@@ -971,6 +971,15 @@ a {
   max-width: 48ch;
 }
 
+.list-tail {
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  color: var(--ink-faint);
+  text-align: right;
+  margin-top: 10px;
+  letter-spacing: 0.02em;
+}
+
 /* ---------------- pagination ---------------- */
 
 .pager {

@@ -112,6 +112,25 @@ function SpectrumBar({
   );
 }
 
+/** What the list isn't showing. The API returns the true row count for the
+ *  slice and the page was throwing it away, so a stream that matched 5,185
+ *  upgrades ended at 50 with nothing to say it had been cut — which reads as
+ *  "that's all there is". The rows ARE the top N (the API orders by interest in
+ *  SQL, not by whatever it fetched first), and saying so is the whole point:
+ *  a ranked 50 is a useful answer, a silently truncated 50 is a misleading one.
+ *
+ *  Only rendered when rows were actually withheld, and never under active
+ *  facets — those filter client-side over the fetched page, so `total` no
+ *  longer describes what's on screen and quoting it would be its own lie. */
+function ListTail({ shown, total, noun }: { shown: number; total?: number | null; noun: string }) {
+  if (total == null || total <= shown) return null;
+  return (
+    <p className="list-tail">
+      top {groupNum(shown)} of {groupNum(total)} {noun} · ranked by interest
+    </p>
+  );
+}
+
 /** One compact row in the recycled section: the newest redeploy of a byte-clone
  *  cluster, its confidence label, and how many share the code. */
 function RecycledRow({ rep, count, windowLabel }: { rep: ApiProgram; count: number; windowLabel: string }) {
@@ -318,7 +337,12 @@ export default async function RadarPage({
   const interest = (a: ApiProgram, b: ApiProgram) =>
     (b.noveltyScore ?? 0) - (a.noveltyScore ?? 0) || recency(a, b);
 
-  const familyKeyOf = (p: ApiProgram) => p.bucketId ?? p.id;
+  // Family = shared SOURCE first, copy-bucket second. A crate that gets
+  // recompiled between deploys lands each copy in its own bucket, so bucketId
+  // alone left 15 builds of one verifier as 15 separate cards at the top of
+  // the feed. The crate survives the recompile; group on it when we have one.
+  const familyKeyOf = (p: ApiProgram) =>
+    p.crate ? `crate:${p.network}:${p.crate}` : (p.bucketId ?? p.id);
   const closedAll = closedPages.flatMap((p) => p.items);
   const closedTotal = closedPages.reduce((a, p) => a + (p.total ?? p.items.length), 0);
   const closedByFamily = new Map<string, ApiProgram[]>();
@@ -345,8 +369,10 @@ export default async function RadarPage({
    *  re-floats it into the feed. */
   const collapseBuckets = (items: ApiProgram[]): ApiProgram[] => {
     const families = new Map<string, ApiProgram>();
+    const seen = new Map<string, number>();
     for (const p of items) {
       const k = familyKeyOf(p);
+      seen.set(k, (seen.get(k) ?? 0) + 1);
       const cur = families.get(k);
       if (!cur || ts(p) < ts(cur)) families.set(k, p);
     }
@@ -354,7 +380,12 @@ export default async function RadarPage({
     for (const [k, rep] of families) {
       const deadSibs = closedByFamily.get(k) ?? [];
       const anchorIsClosed = deadSibs.some((c) => ts(c) < ts(rep));
-      if (!anchorIsClosed) out.push(rep);
+      if (anchorIsClosed) continue;
+      // the card now stands for the whole family, so its ×N has to count the
+      // family — not the rep's own copy-bucket, which is smaller once a crate
+      // has been recompiled into several buckets
+      const n = seen.get(k) ?? 1;
+      out.push(n > (rep.clusterSize ?? 1) ? { ...rep, clusterSize: n } : rep);
     }
     return out.sort(interest);
   };
@@ -469,13 +500,22 @@ export default async function RadarPage({
           </p>
         </div>
       ) : (
-        <ol className="radar-list">
-          {mainItems.map((program) => (
-            <li key={program.id}>
-              <ProgramRow program={program} leadWith={isDeploy ? "deploy" : "upgrade"} />
-            </li>
-          ))}
-        </ol>
+        <>
+          <ol className="radar-list">
+            {mainItems.map((program) => (
+              <li key={program.id}>
+                <ProgramRow program={program} leadWith={isDeploy ? "deploy" : "upgrade"} />
+              </li>
+            ))}
+          </ol>
+          {/* Deploys already declare their true totals in the tier counts above
+              (novel · variant · recycled), so the cut is visible there. The
+              upgrade stream has no such header and no collapsing, which is why
+              it read as the whole record when it was 50 of 5,185. */}
+          {!isDeploy && !facetsActive ? (
+            <ListTail shown={mainItems.length} total={upgradePage.total} noun="upgrades" />
+          ) : null}
+        </>
       )}
 
       {showRecycled ? (
