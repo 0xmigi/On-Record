@@ -1,6 +1,6 @@
 import { and, desc, eq, gte, sql } from "drizzle-orm";
 import { db, schema, logger, type Fingerprint, type Network } from "@onrecord/core";
-import { classifyFingerprint } from "@onrecord/enrich";
+import { classifyFingerprint, reconcileBucketCounts, recountBucket } from "@onrecord/enrich";
 import { refreshInterest } from "./interest.js";
 
 // ---------------------------------------------------------------------------
@@ -48,6 +48,7 @@ export async function reclassifyRecent(network: Network, hours: number): Promise
 
   let rebanded = 0;
   let renearested = 0;
+  let evicted = 0;
   for (const s of subs) {
     // Skipping on deployType used to stand in for "this arrived as an upgrade,
     // so the gate never graded it". Those are not the same set. deployType is a
@@ -77,15 +78,21 @@ export async function reclassifyRecent(network: Network, hours: number): Promise
       const cls = await classifyFingerprint(network, s.id, fp, { arrival: false });
 
       const bandChanged = cls.band !== s.band;
-      const bucketChanged = cls.bucketId != null && cls.bucketId !== s.bucketId;
+      const bucketChanged = cls.bucketId !== s.bucketId;
       const hasNearest = cls.nearestProgramId != null && cls.nearestDistance != null;
       if (!bandChanged && !bucketChanged && !hasNearest) continue;
+
+      // A null bucket is a verdict, not a missing value. `cls.bucketId != null`
+      // meant membership could only ever be gained: once the gate put a program
+      // in a family, no later re-grade could take it back out, so a correction
+      // to the classifier could never reach the rows it was written for.
+      const leftBucket = cls.bucketId == null && s.bucketId != null;
 
       await db
         .update(schema.subjects)
         .set({
           noveltyBand: cls.band,
-          ...(cls.bucketId != null ? { bucketId: cls.bucketId } : {}),
+          ...(bucketChanged ? { bucketId: cls.bucketId } : {}),
           // keep the displayed nearest relative in sync with the current corpus
           ...(hasNearest
             ? {
@@ -98,6 +105,13 @@ export async function reclassifyRecent(network: Network, hours: number): Promise
         })
         .where(eq(schema.subjects.id, s.id));
 
+      // joinBucket restates the bucket it moved INTO; a row that left one
+      // without joining another has no such trigger, so settle it here.
+      if (leftBucket && s.bucketId) {
+        await recountBucket(s.bucketId);
+        evicted++;
+      }
+
       if (bandChanged) rebanded++;
       if (hasNearest) renearested++;
       await refreshInterest(s.id); // band / nearest moved — re-rank
@@ -105,7 +119,14 @@ export async function reclassifyRecent(network: Network, hours: number): Promise
       logger.warn({ id: s.id, err: String(err) }, "reclassify: subject failed");
     }
   }
-  logger.info({ rebanded, renearested, of: subs.length }, "reclassify: complete");
+  // Sweep every bucket, not just the ones this pass touched: a count can also
+  // go stale from outside the gate (a subject deleted, a network backfill), and
+  // it is one statement. A wrong count now lives at most one cron cycle.
+  const restated = await reconcileBucketCounts(network);
+  logger.info(
+    { rebanded, renearested, evicted, restated, of: subs.length },
+    "reclassify: complete",
+  );
 }
 
 // --- CLI entry (skipped when imported by the cron) --------------------------

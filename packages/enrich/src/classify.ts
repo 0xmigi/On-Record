@@ -1,4 +1,4 @@
-import { and, eq, gte, isNull, lt, lte, ne, sql } from "drizzle-orm";
+import { and, eq, gte, inArray, isNull, lt, lte, ne, sql } from "drizzle-orm";
 import {
   lineageSizeWindow,
   db,
@@ -184,7 +184,11 @@ export async function classifyFingerprint(
   let disposition: Classification["disposition"];
   let bucketId: string | null = null;
 
-  if (nearestPrior && nearestPrior.distance < cfg.CLONE_THRESHOLD) {
+  if (
+    nearestPrior &&
+    nearestPrior.distance < cfg.CLONE_THRESHOLD &&
+    !(await crateConflict(network, programId, nearestPrior.programId))
+  ) {
     disposition = "near_copy";
     bucketId = await bucketForSha(network, programId, nearestPrior.sha256, fp, arrival);
   } else if (minDist >= cfg.NOVEL_THRESHOLD) {
@@ -204,6 +208,40 @@ export async function classifyFingerprint(
     structuralNovelty,
     watchlistHit: await matchWatchlist(network, programId, fp, opts.authority ?? null),
   };
+}
+
+/** A near-copy claim the bytecode itself refuses. TLSH compares silhouette, and
+ *  at ~600 KB an Anchor binary is mostly framework: Solend (lending, 2021),
+ *  trench-governance, xt-staking-v2 and SATI measured 20–40 apart — 87–93%
+ *  "similar" — and landed in one bucket, which then dated that family
+ *  "13 Aug 2021 → 5 Aug 2026" on every one of their dossiers. Four unrelated
+ *  protocols, one "same code" family.
+ *
+ *  The crate name recovered from panic paths is direct evidence of what was
+ *  compiled, not a measure of shape. When two binaries name different crates
+ *  they are not the same code, whatever their silhouettes say — so the crate
+ *  gets a veto over the distance.
+ *
+ *  Deliberately narrow: it only speaks when BOTH sides leaked a name (48% of
+ *  bucketed subjects carry one), a missing crate judges nothing, and exact-sha
+ *  copies return long before this — identical bytes are identical code even
+ *  when a fork renamed the crate around them. A renamed fork loses its bucket
+ *  seat and keeps its place on the nearest-relative rail, which is the honest
+ *  split: the bucket claims "same code, fresh id", and that claim is now
+ *  falsifiable.
+ *
+ *  Measured over the mainnet corpus (2026-08-05): of 402 multi-member buckets
+ *  where two members leaked a crate, 325 named more than one — the family was
+ *  wrong nearly everywhere it could be checked. */
+async function crateConflict(network: Network, a: string, b: string): Promise<boolean> {
+  const rows = await db
+    .select({ id: schema.subjects.id, crate: schema.subjects.crate })
+    .from(schema.subjects)
+    .where(and(eq(schema.subjects.network, network), inArray(schema.subjects.id, [a, b])));
+  const crateA = rows.find((r) => r.id === a)?.crate;
+  const crateB = rows.find((r) => r.id === b)?.crate;
+  if (!crateA || !crateB) return false; // nothing to judge on
+  return crateA !== crateB;
 }
 
 /** find (or create) the bucket whose canonical fingerprint is `sha256`,
@@ -231,7 +269,7 @@ async function bucketForSha(
     network,
     canonicalSha256: sha256,
     canonicalTlsh: fp.tlsh,
-    memberCount: 2, // canonical + this near-copy
+    memberCount: 0, // restated from the rows below, once both are in
   });
   // Mark the canonical's subject row as a member. Without this, a later
   // reclassify of the canonical fails the membership check below and bumps the
@@ -246,14 +284,34 @@ async function bucketForSha(
         isNull(schema.subjects.bucketId),
       ),
     );
+  // …and the near-copy that prompted the bucket. `memberCount: 2` used to be
+  // asserted up front, which was a guess: the canonical's row is only claimed
+  // when it wasn't already bucketed elsewhere, so a fresh bucket could open
+  // life claiming two members and holding one.
+  await joinBucket(network, programId, id, arrival);
   return id;
 }
 
-/** Count a program into a bucket exactly once. memberCount and the velocity
- *  series only move when the program wasn't already a member — reclassify
- *  passes re-run this path every few hours, and unconditional bumps inflated
- *  both numbers forever. Velocity additionally requires a live arrival: a
- *  reclassified old program is membership drift, not clone velocity. */
+/** Move a program into a bucket, then restate both affected counts from the
+ *  membership rows themselves.
+ *
+ *  memberCount used to be a running `+1`, guarded only against re-counting into
+ *  the SAME bucket. That guard misses the case that actually happens: the
+ *  reclassify cron re-grades every recent subject every few hours, membership
+ *  legitimately moves A → B, B increments and A is never decremented. Nothing
+ *  ever subtracts, so the counters only climb. Measured before this fix, 1,856
+ *  of 1,916 mainnet buckets over-reported — 29,083 members claimed against
+ *  4,017 real ones, one bucket claiming 11,394 while holding 776. Every one of
+ *  those numbers was on a dossier ("code family · 11 deploys" for six), and the
+ *  interest score's clone discount was reading them too.
+ *
+ *  A count derived from `subjects` can't drift: it is recomputed after each
+ *  move, so a wrong number self-heals on the next pass instead of compounding.
+ *  Membership is claimed here rather than left to the caller, because the
+ *  recount is only right if the row already reflects the move.
+ *
+ *  Velocity still requires a live arrival — a reclassified old program is
+ *  membership drift, not clone velocity. */
 async function joinBucket(
   network: Network,
   programId: string,
@@ -264,13 +322,19 @@ async function joinBucket(
     .select({ bucketId: schema.subjects.bucketId })
     .from(schema.subjects)
     .where(and(eq(schema.subjects.id, programId), eq(schema.subjects.network, network)));
-  if (current[0]?.bucketId === bucketId) return; // already counted
+  const previous = current[0]?.bucketId ?? null;
+  if (previous === bucketId) return; // already a member
+  await db
+    .update(schema.subjects)
+    .set({ bucketId })
+    .where(and(eq(schema.subjects.id, programId), eq(schema.subjects.network, network)));
+
   const now = new Date();
   const hourKey = now.toISOString().slice(0, 13); // per-hour velocity bucket
   await db
     .update(schema.copyBuckets)
     .set({
-      memberCount: sql`${schema.copyBuckets.memberCount} + 1`,
+      memberCount: membersOf(bucketId),
       lastSeenAt: now,
       ...(arrival
         ? {
@@ -279,6 +343,38 @@ async function joinBucket(
         : {}),
     })
     .where(eq(schema.copyBuckets.id, bucketId));
+
+  if (previous) await recountBucket(previous);
+}
+
+/** The bucket's real membership, as a subquery — `subjects` is the record of
+ *  who is in a bucket; copy_buckets.member_count is only its cache. */
+function membersOf(bucketId: string) {
+  return sql<number>`(select count(*)::int from ${schema.subjects} where ${schema.subjects.bucketId} = ${bucketId})`;
+}
+
+/** Restate one bucket's cached count from its members. */
+export async function recountBucket(bucketId: string): Promise<void> {
+  await db
+    .update(schema.copyBuckets)
+    .set({ memberCount: membersOf(bucketId) })
+    .where(eq(schema.copyBuckets.id, bucketId));
+}
+
+/** Restate every bucket's count in one statement — for the backfill, and as a
+ *  sweep at the end of each reclassify pass so a bad count can never outlive
+ *  one cron cycle. Returns how many rows it had to correct. */
+export async function reconcileBucketCounts(network: Network): Promise<number> {
+  const wrong = await db.execute<{ id: string }>(sql`
+    with real as (
+      select b.id, (select count(*)::int from subjects s where s.bucket_id = b.id) as n
+      from copy_buckets b where b.network = ${network}
+    )
+    update copy_buckets b set member_count = real.n
+    from real where b.id = real.id and b.member_count is distinct from real.n
+    returning b.id
+  `);
+  return wrong.length;
 }
 
 /** copies of a bucket in the trailing N hours, from the velocity jsonb */
