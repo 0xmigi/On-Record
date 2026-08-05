@@ -337,7 +337,12 @@ export default async function RadarPage({
   const interest = (a: ApiProgram, b: ApiProgram) =>
     (b.noveltyScore ?? 0) - (a.noveltyScore ?? 0) || recency(a, b);
 
-  const familyKeyOf = (p: ApiProgram) => p.bucketId ?? p.id;
+  // Family = shared SOURCE first, copy-bucket second. A crate that gets
+  // recompiled between deploys lands each copy in its own bucket, so bucketId
+  // alone left 15 builds of one verifier as 15 separate cards at the top of
+  // the feed. The crate survives the recompile; group on it when we have one.
+  const familyKeyOf = (p: ApiProgram) =>
+    p.crate ? `crate:${p.network}:${p.crate}` : (p.bucketId ?? p.id);
   const closedAll = closedPages.flatMap((p) => p.items);
   const closedTotal = closedPages.reduce((a, p) => a + (p.total ?? p.items.length), 0);
   const closedByFamily = new Map<string, ApiProgram[]>();
@@ -364,8 +369,10 @@ export default async function RadarPage({
    *  re-floats it into the feed. */
   const collapseBuckets = (items: ApiProgram[]): ApiProgram[] => {
     const families = new Map<string, ApiProgram>();
+    const seen = new Map<string, number>();
     for (const p of items) {
       const k = familyKeyOf(p);
+      seen.set(k, (seen.get(k) ?? 0) + 1);
       const cur = families.get(k);
       if (!cur || ts(p) < ts(cur)) families.set(k, p);
     }
@@ -373,7 +380,12 @@ export default async function RadarPage({
     for (const [k, rep] of families) {
       const deadSibs = closedByFamily.get(k) ?? [];
       const anchorIsClosed = deadSibs.some((c) => ts(c) < ts(rep));
-      if (!anchorIsClosed) out.push(rep);
+      if (anchorIsClosed) continue;
+      // the card now stands for the whole family, so its ×N has to count the
+      // family — not the rep's own copy-bucket, which is smaller once a crate
+      // has been recompiled into several buckets
+      const n = seen.get(k) ?? 1;
+      out.push(n > (rep.clusterSize ?? 1) ? { ...rep, clusterSize: n } : rep);
     }
     return out.sort(interest);
   };

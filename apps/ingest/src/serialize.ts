@@ -128,6 +128,10 @@ export function serializeProgram(
     earlySigners: row.earlySigners,
     verified: row.verified,
     bucketId: row.bucketId,
+    // the crate the binary leaked — programs built from the same source share
+    // it even when each redeploy lands in its own copy bucket, so the radar
+    // needs it to collapse a family into one card
+    crate: row.crate,
     clusterSize,
     framework: profile?.framework ?? null,
     capabilities: profile?.capabilities ?? [],

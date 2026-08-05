@@ -310,6 +310,9 @@ export interface ApiProgram {
   earlySigners: number | null;
   verified: boolean;
   bucketId: string | null;
+  /** crate the binary leaked — the source family, which survives the
+   *  recompiles that push each redeploy into its own copy bucket */
+  crate: string | null;
   clusterSize: number | null;
   // --- program profile (docs/GRADING.md §5): from the SBF bytecode ---
   framework: Framework | null;

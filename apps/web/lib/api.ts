@@ -56,6 +56,9 @@ export interface ApiProgram {
   earlySigners: number | null;
   verified: boolean;
   bucketId: string | null;
+  /** crate the binary leaked — the source family, which survives the
+   *  recompiles that push each redeploy into its own copy bucket */
+  crate: string | null;
   clusterSize: number | null; // members in its clone cluster, if any
   deployType: RadarType; // "deploy" = new program id, "upgrade" = existing program changed
   firstDeployAt: string | null; // ISO — the ORIGINAL deploy (deployedAt is the latest)
