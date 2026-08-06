@@ -266,6 +266,15 @@ async function bucketFamily(row: SubjectRow): Promise<Family> {
   return { size, closed: Number(agg?.closed ?? 0), basis: size > 1 ? "bucket" : "none" };
 }
 
+/** The family a program is discounted against: whichever of bucket/source is
+ *  bigger. Exported because the LLM dossier reports it as evidence (family size
+ *  plus how much of the family has closed is the rent tell that separates a
+ *  factory from a standard), not just as a penalty input. */
+export async function familyFor(row: SubjectRow): Promise<Family> {
+  const [bucket, source] = await Promise.all([bucketFamily(row), sourceFamily(row)]);
+  return source.size > bucket.size ? source : bucket;
+}
+
 /** Recompute a program's interest score (index column + facts).
  *  `persist: false` computes without writing — for previewing a scorer change. */
 export async function refreshInterest(
@@ -277,8 +286,7 @@ export async function refreshInterest(
   if (!row) return null;
   // whichever family is bigger is the honest one — a recompile hides from the
   // bucket, a rename hides from the crate, and neither should buy a clean slate
-  const [bucket, source] = await Promise.all([bucketFamily(row), sourceFamily(row)]);
-  const family = source.size > bucket.size ? source : bucket;
+  const family = await familyFor(row);
   const interest = computeInterest(row, family);
   if (opts.persist === false) return interest;
   await db

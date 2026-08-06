@@ -27,6 +27,7 @@ import {
   type NearestMeta,
 } from "../serialize.js";
 import { computeWindowFunnel, windowHoursFor } from "../funnel.js";
+import { buildDossier } from "../dossier.js";
 
 // ---------------------------------------------------------------------------
 // Public read API (SPEC §7). Self-contained JSON, stable ids, cursor paging.
@@ -386,6 +387,23 @@ export function registerPublicRoutes(app: FastifyInstance): void {
     const usage = await decodeInstructionUsage(network, req.params.id, { sample: 400 });
     return { usage };
   });
+
+  // --- the LLM dossier: one program as plain text, with provenance ---------
+  // Same id as the web dossier, so a pasted /p/<id> link maps straight to it.
+  // Written for a reader that has to defend every sentence afterwards: corpus-
+  // relative comparisons, how each fact was derived, and an explicit list of
+  // what is NOT known. See dossier.ts.
+  //
+  // `?sample=0` skips transaction parsing (metered Helius work, seconds per
+  // program) — the document then says so rather than quietly omitting usage.
+  app.get<{ Params: { id: string }; Querystring: { sample?: string } }>(
+    "/api/programs/:id/dossier.md",
+    async (req, reply) => {
+      const md = await buildDossier(req.params.id, { sample: req.query.sample !== "0" });
+      if (!md) return reply.code(404).send({ error: "unknown program" });
+      return reply.type("text/markdown; charset=utf-8").send(md);
+    },
+  );
 
   // --- the funnel / program stats (windowed) -------------------------------
   app.get<{ Querystring: { window?: string; network?: string } }>("/api/funnel", async (req) => {

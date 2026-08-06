@@ -11,6 +11,7 @@ export * from "./search.js";
 export * from "./lineage.js";
 export * from "./sourcetree.js";
 export * from "./usage.js";
+export * from "./traffic.js";
 export * from "./minhash.js";
 export {
   sha256Hex,
