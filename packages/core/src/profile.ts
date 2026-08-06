@@ -88,7 +88,7 @@ const KNOWN_PROGRAMS: Record<string, string> = {
 // --- base58 decode (for the known-program byte search) ----------------------
 const B58 = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
 const B58_MAP = new Map([...B58].map((c, i) => [c, i]));
-function base58Decode(str: string): Buffer | null {
+export function base58Decode(str: string): Buffer | null {
   let num = 0n;
   for (const ch of str) {
     const v = B58_MAP.get(ch);
