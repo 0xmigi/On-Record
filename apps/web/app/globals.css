@@ -973,38 +973,22 @@ a {
 
 /* ---------------- map (the reference graph, drawn) ---------------- */
 
-.map-legend {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  font-family: var(--font-mono);
-  font-size: 11px;
-  color: var(--ink-faint);
-  margin-bottom: 12px;
-  flex-wrap: wrap;
-}
-
-.map-legend-self {
-  color: var(--ink);
-  font-weight: 600;
-}
-
-.map-legend-arrow {
-  opacity: 0.5;
-}
-
-/* the drawing keeps its aspect ratio; on a narrow screen it scrolls in its own
-   box rather than squashing the labels into unreadability */
-.map-scroll {
-  overflow-x: auto;
-  overflow-y: hidden;
-}
-
+/* The drawing is authored at phone width (380) and scales up, so it never needs
+   its own scroll box — the page's vertical axis is the one that's free. Capped
+   so it doesn't become a billboard on a wide monitor. */
 .map-svg {
   display: block;
   width: 100%;
-  min-width: 640px;
+  max-width: 520px;
   height: auto;
+}
+
+.map-group {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  fill: var(--ink-faint);
 }
 
 .map-box {
@@ -1014,7 +998,7 @@ a {
 }
 
 .map-box-self {
-  fill: var(--accent-soft, var(--card));
+  fill: var(--card);
   stroke: var(--ink);
   stroke-width: 1.5;
 }
@@ -1024,7 +1008,6 @@ a:hover > .map-box {
 }
 
 .map-label {
-  font-family: var(--font-body, inherit);
   font-size: 12.5px;
   font-weight: 600;
   fill: var(--ink);
@@ -1062,7 +1045,7 @@ a:hover > .map-box {
 }
 
 .map-note {
-  margin-top: 12px;
+  margin-top: 14px;
 }
 
 .list-tail {
