@@ -239,6 +239,40 @@ export const fingerprintCorpus = pgTable(
 );
 
 // ---------------------------------------------------------------------------
+// program_references — the edge list: which programs a binary NAMES.
+//
+// A program id is a 32-byte constant, and a program that CPIs into another
+// almost always carries the callee's id as one. references.ts recovers them by
+// scanning the image against an index of the whole corpus; this is where the
+// result lands.
+//
+// An edge is a claim about ONE image, so it carries the sha256 it was read
+// from: an upgrade can add or drop references, and "klend named kvault" is only
+// true of the build that did. Rows are replaced wholesale per program on each
+// extraction rather than accumulated, so a dropped reference actually
+// disappears instead of haunting the graph forever.
+// ---------------------------------------------------------------------------
+export const programReferences = pgTable(
+  "program_references",
+  {
+    id: text("id").primaryKey(), // ref_<ulid>
+    network: text("network").notNull(),
+    fromProgramId: text("from_program_id").notNull(),
+    toProgramId: text("to_program_id").notNull(),
+    /** the image the edge was read from — an upgrade can change the set */
+    fromSha256: text("from_sha256"),
+    seenAt: timestamp("seen_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (t) => [
+    uniqueIndex("prog_ref_edge_idx").on(t.network, t.fromProgramId, t.toProgramId),
+    index("prog_ref_from_idx").on(t.network, t.fromProgramId),
+    // the reverse question — "who names THIS program" — is the more interesting
+    // one on a dossier, and it has no other index to ride on
+    index("prog_ref_to_idx").on(t.network, t.toProgramId),
+  ],
+);
+
+// ---------------------------------------------------------------------------
 // entities — the identity registry seeded from DeFiLlama / labels.yaml.
 // Maps program ids to named entities.
 // ---------------------------------------------------------------------------

@@ -447,6 +447,14 @@ export interface ApiProgramDetail extends ApiProgram {
     overlap: number; // 0..1 jaccard over recovered .rs paths
     deployedAt: string | null;
   }[];
+  /** the reference graph: program ids embedded in this image, and the ones
+   *  that embed it. `namedBy` is the more telling direction — who reaches for
+   *  this program says more about its place than its own import list does.
+   *  A reference is not proof of a call; see core/references.ts. */
+  references: {
+    names: { id: string; name: string | null; crate: string | null }[];
+    namedBy: { id: string; name: string | null; crate: string | null }[];
+  };
 }
 
 export interface ApiFunnel {

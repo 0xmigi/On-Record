@@ -190,6 +190,7 @@ export function serializeProgramDetail(
   clusterSize: number | null,
   nearestMeta?: Map<string, NearestMeta>,
   sourceKin: ApiProgramDetail["sourceKin"] = [],
+  references: ApiProgramDetail["references"] = { names: [], namedBy: [] },
 ): ApiProgramDetail {
   const facts = (row.facts ?? {}) as {
     securityTxt?: SecurityTxt;
@@ -215,6 +216,7 @@ export function serializeProgramDetail(
     events: events.map(serializeEvent),
     neighbors,
     sourceKin,
+    references,
     idlInstructions,
     strings,
     syscalls: row.profile?.syscalls ?? [],

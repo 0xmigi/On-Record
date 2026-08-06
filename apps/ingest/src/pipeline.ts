@@ -42,6 +42,7 @@ import {
   watchDevnetNovel,
 } from "@onrecord/enrich";
 import { refreshInterest } from "./interest.js";
+import { tryExtractReferences } from "./refs.js";
 import { linkIncubation } from "./incubation.js";
 import { recordGenesisDeploy } from "./timeline.js";
 
@@ -186,6 +187,11 @@ export async function fingerprintStage(eventId: string): Promise<void> {
   // recovered identity from the binary: name (Rust panic paths / security.txt),
   // repo, socials, website — de-opaques ~half of anonymous programs.
   enrichment.bytecodeIdentity = deriveBytecodeIdentity(bytecode);
+
+  // which programs on record this image NAMES. Free here and nowhere else: the
+  // scan needs the bytecode, and this is the one stage that already holds it —
+  // extracting later would mean re-downloading megabytes per program.
+  await tryExtractReferences(network, event.programId, bytecode, fp.sha256);
 
   await db
     .update(schema.events)

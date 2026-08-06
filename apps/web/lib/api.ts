@@ -209,6 +209,13 @@ export interface ApiProgramDetail extends ApiProgram {
     overlap: number;
     deployedAt: string | null;
   }[];
+  /** the reference graph: program ids embedded in this image, and the ones
+   *  that embed it. Optional — a program only has edges once it has been
+   *  through reference extraction. */
+  references?: {
+    names: { id: string; name: string | null; crate: string | null }[];
+    namedBy: { id: string; name: string | null; crate: string | null }[];
+  };
 }
 
 export interface ApiFunnel {

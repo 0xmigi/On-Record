@@ -57,6 +57,13 @@
       "when": 1785600000000,
       "tag": "0007_program_names",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1786035398383,
+      "tag": "0008_wooden_the_stranger",
+      "breakpoints": true
     }
   ]
 }

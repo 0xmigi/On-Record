@@ -20,6 +20,7 @@ import { BotExplainer } from "@/components/BotExplainer";
 import { SectionHeader } from "@/components/SectionHeader";
 import { SaveButton } from "@/components/SaveButton";
 import { Lineage } from "@/components/Lineage";
+import { Reach } from "@/components/Reach";
 import {
   categoryLabel,
   fetchCluster,
@@ -823,10 +824,28 @@ export default async function ProgramDossierPage({
     </>
   );
 
+  // The reference graph, in both directions. Its own tab rather than a row in
+  // Composition: composition is what the program IS, this is where it sits.
+  const reachPanel = (
+    <>
+      <SectionHeader
+        title="Reach"
+        info="Which programs this one names in its code, and which name it. Read from embedded 32-byte program ids — a reference, not a proven call."
+      />
+      <Reach references={program.references} />
+    </>
+  );
+  const reachCount =
+    (program.references?.names.length ?? 0) + (program.references?.namedBy.length ?? 0);
+
   const tabs: DossierTab[] = [
     { id: "composition", label: "Composition", panel: compositionPanel },
     { id: "trust", label: "Trust", panel: trustPanel },
     { id: "interface", label: "Interface", panel: interfacePanel, muted: !idl },
+    // muted, not hidden: an empty Reach means "nothing on record names this",
+    // which is a real answer, and hiding the tab would make the extraction look
+    // broken on the programs it simply found nothing for.
+    { id: "reach", label: "Reach", panel: reachPanel, muted: reachCount === 0 },
     { id: "activity", label: "Activity", panel: activityPanel },
   ];
 

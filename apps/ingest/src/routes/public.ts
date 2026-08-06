@@ -18,6 +18,7 @@ import {
   type ApiProgram,
   type ApiProgramDetail,
   type ApiRawEvent,
+  type Network,
   type NoveltyBand,
 } from "@onrecord/core";
 import {
@@ -28,6 +29,7 @@ import {
 } from "../serialize.js";
 import { computeWindowFunnel, windowHoursFor } from "../funnel.js";
 import { buildDossier } from "../dossier.js";
+import { edgesFor } from "../refs.js";
 
 // ---------------------------------------------------------------------------
 // Public read API (SPEC §7). Self-contained JSON, stable ids, cursor paging.
@@ -357,8 +359,13 @@ export function registerPublicRoutes(app: FastifyInstance): void {
     // call a relative. The crate name only nominates; the shared file count
     // decides (see core/sourcetree.ts).
     const sourceKin = await resolveSourceKin(row);
+    // The reference graph: program ids this image embeds, and — the more
+    // interesting direction — who embeds THIS one. Absent until the program has
+    // been through reference extraction, which is why it degrades to empty
+    // rather than erroring.
+    const references = await edgesFor(row.network as Network, row.id);
 
-    return serializeProgramDetail(row, events, neighbors, clusterSize, nearestMeta, sourceKin);
+    return serializeProgramDetail(row, events, neighbors, clusterSize, nearestMeta, sourceKin, references);
   });
 
   // --- a program's full Anchor IDL (the human-readable interface) ----------
