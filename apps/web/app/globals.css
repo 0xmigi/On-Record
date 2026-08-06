@@ -971,99 +971,98 @@ a {
   max-width: 48ch;
 }
 
-/* ---------------- reach (the reference graph) ---------------- */
+/* ---------------- map (the reference graph, drawn) ---------------- */
 
-.reach {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 28px;
-}
-
-.reach-head {
-  font-family: var(--font-head);
-  font-size: 12px;
-  font-weight: 700;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
+.map-legend {
   display: flex;
-  align-items: baseline;
-  gap: 8px;
-}
-
-.reach-n {
+  align-items: center;
+  gap: 10px;
   font-family: var(--font-mono);
   font-size: 11px;
-  font-weight: 400;
   color: var(--ink-faint);
+  margin-bottom: 12px;
+  flex-wrap: wrap;
 }
 
-.reach-sub {
-  font-size: 12.5px;
-  color: var(--ink-soft);
-  margin: 4px 0 10px;
-}
-
-.reach-list {
-  list-style: none;
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  overflow: hidden;
-}
-
-.reach-list > li + li {
-  border-top: 1px solid var(--border);
-}
-
-.reach-row {
-  display: flex;
-  align-items: baseline;
-  gap: 8px;
-  padding: 9px 12px;
-  text-decoration: none;
-  color: inherit;
-}
-
-.reach-row:hover {
-  background: var(--card);
-}
-
-.reach-name {
-  font-size: 13.5px;
+.map-legend-self {
+  color: var(--ink);
   font-weight: 600;
 }
 
-.reach-crate {
+.map-legend-arrow {
+  opacity: 0.5;
+}
+
+/* the drawing keeps its aspect ratio; on a narrow screen it scrolls in its own
+   box rather than squashing the labels into unreadability */
+.map-scroll {
+  overflow-x: auto;
+  overflow-y: hidden;
+}
+
+.map-svg {
+  display: block;
+  width: 100%;
+  min-width: 640px;
+  height: auto;
+}
+
+.map-box {
+  fill: var(--card);
+  stroke: var(--border);
+  stroke-width: 1;
+}
+
+.map-box-self {
+  fill: var(--accent-soft, var(--card));
+  stroke: var(--ink);
+  stroke-width: 1.5;
+}
+
+a:hover > .map-box {
+  stroke: var(--ink);
+}
+
+.map-label {
+  font-family: var(--font-body, inherit);
+  font-size: 12.5px;
+  font-weight: 600;
+  fill: var(--ink);
+}
+
+.map-sub {
   font-family: var(--font-mono);
-  font-size: 11px;
-  color: var(--ink-soft);
+  font-size: 10px;
+  fill: var(--ink-faint);
 }
 
-.reach-addr {
-  font-family: var(--font-mono);
-  font-size: 11px;
-  color: var(--ink-faint);
-  margin-left: auto;
+.map-edge {
+  fill: none;
+  stroke: var(--border-strong, var(--border));
+  stroke-width: 1.25;
 }
 
-.reach-empty {
-  font-size: 13px;
-  color: var(--ink-faint);
-  padding: 10px 0;
+.map-arrowhead {
+  fill: var(--border-strong, var(--border));
 }
 
-.reach-note {
-  grid-column: 1 / -1;
+.map-empty,
+.map-more,
+.map-note {
   font-size: 12.5px;
   color: var(--ink-soft);
-  max-width: 68ch;
-  margin-top: 4px;
+  max-width: 70ch;
 }
 
-@media (max-width: 720px) {
-  .reach {
-    grid-template-columns: 1fr;
-    gap: 22px;
-  }
+.map-more {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--ink-faint);
+  margin-top: 10px;
+}
+
+.map-note {
+  margin-top: 12px;
 }
 
 .list-tail {

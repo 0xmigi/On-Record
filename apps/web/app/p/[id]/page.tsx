@@ -20,7 +20,7 @@ import { BotExplainer } from "@/components/BotExplainer";
 import { SectionHeader } from "@/components/SectionHeader";
 import { SaveButton } from "@/components/SaveButton";
 import { Lineage } from "@/components/Lineage";
-import { Reach } from "@/components/Reach";
+import { ReachMap } from "@/components/Reach";
 import {
   categoryLabel,
   fetchCluster,
@@ -824,15 +824,20 @@ export default async function ProgramDossierPage({
     </>
   );
 
-  // The reference graph, in both directions. Its own tab rather than a row in
-  // Composition: composition is what the program IS, this is where it sits.
-  const reachPanel = (
+  // Where this program sits in the stack, drawn. Its own tab rather than a row
+  // in Composition — composition is what the program IS, this is its position —
+  // and named Map, not Reach: Composition already owns "Reach" for the embedded
+  // well-known ids, and two sections with one name on one page is just a bug.
+  const mapPanel = (
     <>
       <SectionHeader
-        title="Reach"
-        info="Which programs this one names in its code, and which name it. Read from embedded 32-byte program ids — a reference, not a proven call."
+        title="Map"
+        info="Which programs reach for this one, and which it reaches for. Each arrow is a program id compiled into the binary at its tail — a reference, not a proven call."
       />
-      <Reach references={program.references} />
+      <ReachMap
+        self={{ id: program.id, name: program.name, crate: program.crate ?? null }}
+        references={program.references}
+      />
     </>
   );
   const reachCount =
@@ -842,10 +847,10 @@ export default async function ProgramDossierPage({
     { id: "composition", label: "Composition", panel: compositionPanel },
     { id: "trust", label: "Trust", panel: trustPanel },
     { id: "interface", label: "Interface", panel: interfacePanel, muted: !idl },
-    // muted, not hidden: an empty Reach means "nothing on record names this",
+    // muted, not hidden: an empty map means "nothing on record names this",
     // which is a real answer, and hiding the tab would make the extraction look
     // broken on the programs it simply found nothing for.
-    { id: "reach", label: "Reach", panel: reachPanel, muted: reachCount === 0 },
+    { id: "map", label: "Map", panel: mapPanel, muted: reachCount === 0 },
     { id: "activity", label: "Activity", panel: activityPanel },
   ];
 
