@@ -90,10 +90,48 @@ export async function extractReferences(
 
 /** Both directions for one program, named. The reverse edge is the one a
  *  dossier wants most — "who reaches for this" says more about a program's
- *  place than its own import list does. */
+ *  place than its own import list does.
+ *
+ *  Each neighbour carries its OWN traffic, not traffic over the edge. Those are
+ *  different numbers and the map must never let one stand in for the other: a
+ *  vault doing 7,783 txns/day next to an arrow into klend reads as "7,783 flow
+ *  into klend", when almost none of it does. Per-edge flow needs inner
+ *  instructions from parsed transactions; this is the neighbour's total, and it
+ *  is labelled as such wherever it renders.
+ *
+ *  `txnsTruncated` matters for the same reason: the momentum sampler caps its
+ *  pages, so a busy program reports a floor. A sparkline drawn from a truncated
+ *  series flattens at the ceiling and reads as a plateau that never happened. */
+export interface EdgeNode {
+  id: string;
+  name: string | null;
+  crate: string | null;
+  /** the neighbour's own transactions in the last 24h — NOT flow over the edge */
+  txns24h: number | null;
+  txnsTruncated: boolean;
+  /** its own hourly series, thinned for a chip-sized spark */
+  activity: { t: number; c: number }[] | null;
+}
+
 export interface ProgramEdges {
-  names: { id: string; name: string | null; crate: string | null }[];
-  namedBy: { id: string; name: string | null; crate: string | null }[];
+  names: EdgeNode[];
+  namedBy: EdgeNode[];
+}
+
+/** 168 hourly points into ~40 — a 200px-wide spark can't resolve more, and
+ *  shipping the full series for a dozen neighbours would dwarf the rest of the
+ *  dossier payload. Max per bucket, not mean: a spike that got averaged away is
+ *  the one thing a reader would have wanted to see. */
+function thin(series: { t: number; c: number }[] | null | undefined, target = 40) {
+  if (!Array.isArray(series) || series.length < 2) return null;
+  if (series.length <= target) return series;
+  const size = Math.ceil(series.length / target);
+  const out: { t: number; c: number }[] = [];
+  for (let i = 0; i < series.length; i += size) {
+    const chunk = series.slice(i, i + size);
+    out.push({ t: chunk[0]!.t, c: Math.max(...chunk.map((p) => p.c)) });
+  }
+  return out;
 }
 
 export async function edgesFor(network: Network, programId: string): Promise<ProgramEdges> {
@@ -118,12 +156,32 @@ export async function edgesFor(network: Network, programId: string): Promise<Pro
           id: schema.subjects.id,
           name: schema.subjects.name,
           crate: schema.subjects.crate,
+          facts: schema.subjects.facts,
         })
         .from(schema.subjects)
         .where(and(eq(schema.subjects.network, network), inArray(schema.subjects.id, ids)))
     : [];
-  const byId = new Map(meta.map((m) => [m.id, m]));
-  const label = (id: string) => byId.get(id) ?? { id, name: null, crate: null };
+  const byId = new Map(
+    meta.map((m) => {
+      const f = (m.facts ?? {}) as {
+        momentum?: { txns24h?: number; txns24hTruncated?: boolean };
+        activity?: { t: number; c: number }[];
+      };
+      return [
+        m.id,
+        {
+          id: m.id,
+          name: m.name,
+          crate: m.crate,
+          txns24h: f.momentum?.txns24h ?? null,
+          txnsTruncated: Boolean(f.momentum?.txns24hTruncated),
+          activity: thin(f.activity),
+        } satisfies EdgeNode,
+      ];
+    }),
+  );
+  const label = (id: string): EdgeNode =>
+    byId.get(id) ?? { id, name: null, crate: null, txns24h: null, txnsTruncated: false, activity: null };
 
   return {
     names: rows.filter((r) => r.from === programId).map((r) => label(r.to)),

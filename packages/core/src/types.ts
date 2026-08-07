@@ -452,9 +452,25 @@ export interface ApiProgramDetail extends ApiProgram {
    *  this program says more about its place than its own import list does.
    *  A reference is not proof of a call; see core/references.ts. */
   references: {
-    names: { id: string; name: string | null; crate: string | null }[];
-    namedBy: { id: string; name: string | null; crate: string | null }[];
+    names: ApiEdgeNode[];
+    namedBy: ApiEdgeNode[];
   };
+}
+
+/** One end of a reference edge. `txns24h` and `activity` are the NEIGHBOUR'S
+ *  OWN traffic, never traffic over the edge — a vault doing 7,783 txns/day
+ *  beside an arrow into klend would read as 7,783 flowing into klend, and
+ *  almost none of it does. Per-edge flow needs inner instructions from parsed
+ *  transactions; every surface that renders these says whose number it is.
+ *  `txnsTruncated` = the momentum sampler hit its page cap, so the count is a
+ *  floor and the series plateaus at a ceiling it never really reached. */
+export interface ApiEdgeNode {
+  id: string;
+  name: string | null;
+  crate: string | null;
+  txns24h: number | null;
+  txnsTruncated: boolean;
+  activity: { t: number; c: number }[] | null;
 }
 
 export interface ApiFunnel {

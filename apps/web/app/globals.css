@@ -1000,22 +1000,54 @@ a {
   letter-spacing: 0.06em;
 }
 
+/* Wider tracks than the plain name-only chip needed: each one now carries a
+   name, a crate, a count and a spark, and 184px squeezed those into each other.
+   ~250 gives three columns on a roomy dossier, two mid-width, one on a phone. */
 .map-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(184px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(248px, 1fr));
   gap: 6px;
 }
 
 .map-chip {
   display: flex;
-  flex-direction: column;
-  gap: 1px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
   padding: 8px 11px;
   border: 1px solid var(--border);
   border-radius: var(--radius);
   background: var(--card);
   text-decoration: none;
   min-width: 0;
+}
+
+.map-chip-text {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0; /* let the name ellipsis instead of shoving the spark out */
+}
+
+/* The activity cluster. Muted on purpose: it is context for the chip, not the
+   headline, and it must never out-shout the name it belongs to. */
+.map-chip-act {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  flex: none;
+  color: var(--ink-faint);
+}
+
+.map-chip-txns {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--ink-soft);
+  font-variant-numeric: tabular-nums;
+}
+
+.map-self-act {
+  margin-left: auto;
 }
 
 .map-chip:hover {

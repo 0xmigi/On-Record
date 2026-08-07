@@ -1,6 +1,7 @@
 import Link from "next/link";
+import { Sparkline } from "@/components/Sparkline";
 import { truncateAddress } from "@/lib/format";
-import type { ApiProgramDetail } from "@/lib/api";
+import type { ApiEdgeNode, ApiProgramDetail } from "@/lib/api";
 
 // ---------------------------------------------------------------------------
 // Map — the reference graph: what reaches for this program, and what it reaches
@@ -25,7 +26,7 @@ import type { ApiProgramDetail } from "@/lib/api";
 // invents, and nothing here is labelled "calls".
 // ---------------------------------------------------------------------------
 
-type Edge = { id: string; name: string | null; crate: string | null };
+type Edge = ApiEdgeNode;
 
 /** Programs so widely embedded that naming them says nothing about position.
  *  The chain's standard library: 17 of the first 21 programs scanned named SPL
@@ -46,11 +47,47 @@ const INFRASTRUCTURE = new Set([
 
 const PER_TIER = 12;
 
+/** 7,783 → "7.8k". A chip has room for a magnitude, not a census, and the exact
+ *  figure is one click away on the neighbour's own dossier. */
+function compact(n: number): string {
+  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1).replace(/\.0$/, "")}m`;
+  if (n >= 1_000) return `${(n / 1_000).toFixed(1).replace(/\.0$/, "")}k`;
+  return String(n);
+}
+
 function Chip({ e, sub }: { e: Edge; sub: string }) {
+  // Deliberately the neighbour's OWN volume, and captioned that way on hover.
+  // The number sits beside an arrow, and a number beside an arrow reads as flow
+  // along it — which this is not, and cannot be until inner instructions are
+  // parsed. The one thing that must never happen here is a reader concluding
+  // "7.8k transactions go from kvault into klend" from a figure that means
+  // "kvault does 7.8k transactions of its own".
+  const traffic =
+    e.txns24h != null && e.txns24h > 0
+      ? `${compact(e.txns24h)}${e.txnsTruncated ? "+" : ""}`
+      : null;
   return (
-    <Link href={`/p/${e.id}`} className="map-chip" title={e.name ?? e.id}>
-      <span className="map-chip-name">{e.name ?? truncateAddress(e.id)}</span>
-      <span className="map-chip-sub">{sub}</span>
+    <Link
+      href={`/p/${e.id}`}
+      className="map-chip"
+      title={
+        traffic
+          ? `${e.name ?? e.id} — ${e.txns24h!.toLocaleString("en-US")}${e.txnsTruncated ? "+" : ""} of its own transactions in 24h (not traffic over this link)`
+          : (e.name ?? e.id)
+      }
+    >
+      <span className="map-chip-text">
+        <span className="map-chip-name">{e.name ?? truncateAddress(e.id)}</span>
+        <span className="map-chip-sub">{sub}</span>
+      </span>
+      {traffic ? (
+        <span className="map-chip-act">
+          {e.activity && e.activity.length > 1 ? (
+            <Sparkline points={e.activity} width={54} height={16} title="" />
+          ) : null}
+          <span className="map-chip-txns">{traffic}</span>
+        </span>
+      ) : null}
     </Link>
   );
 }
@@ -123,6 +160,20 @@ export function ReachMap({
       <div className="map-self">
         <span className="map-self-name">{self.name ?? truncateAddress(self.id)}</span>
         <span className="map-self-sub">{self.crate ?? truncateAddress(self.id)}</span>
+        {/* the centre carries its own number too — without it the neighbours'
+            volumes have nothing to be large or small against, and "is this
+            program the big one here or the small one" is most of the question */}
+        {self.txns24h != null && self.txns24h > 0 ? (
+          <span className="map-chip-act map-self-act">
+            {self.activity && self.activity.length > 1 ? (
+              <Sparkline points={self.activity} width={64} height={16} title="" />
+            ) : null}
+            <span className="map-chip-txns">
+              {compact(self.txns24h)}
+              {self.txnsTruncated ? "+" : ""}
+            </span>
+          </span>
+        ) : null}
       </div>
 
       {outbound.length ? (
@@ -142,6 +193,15 @@ export function ReachMap({
           </div>
         </section>
       ) : null}
+
+      <p className="map-note">
+        <strong>Numbers are each program&apos;s own traffic</strong> — its
+        transactions in the last 24h and its own 7-day shape, not traffic across
+        the link it sits next to. How much activity actually flows along an edge
+        needs the inner instructions of parsed transactions, which On Record
+        doesn&apos;t read yet. A <code>+</code> means the sampler hit its page cap
+        and the real figure is higher.
+      </p>
 
       <p className="map-note">
         Each link is a 32-byte program id compiled into the binary above it. That

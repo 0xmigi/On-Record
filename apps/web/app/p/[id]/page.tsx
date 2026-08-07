@@ -835,7 +835,14 @@ export default async function ProgramDossierPage({
         info="Which programs reach for this one, and which it reaches for. Each arrow is a program id compiled into the binary at its tail — a reference, not a proven call."
       />
       <ReachMap
-        self={{ id: program.id, name: program.name, crate: program.crate ?? null }}
+        self={{
+          id: program.id,
+          name: program.name,
+          crate: program.crate ?? null,
+          txns24h: program.momentum?.txns24h ?? null,
+          txnsTruncated: program.momentum?.txns24hTruncated ?? false,
+          activity: program.activity ?? null,
+        }}
         references={program.references}
       />
     </>
