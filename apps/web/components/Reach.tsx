@@ -55,7 +55,7 @@ function compact(n: number): string {
   return String(n);
 }
 
-function Chip({ e, sub }: { e: Edge; sub: string }) {
+function Chip({ e, sub, scale }: { e: Edge; sub: string; scale: number }) {
   // Deliberately the neighbour's OWN volume, and captioned that way on hover.
   // The number sits beside an arrow, and a number beside an arrow reads as flow
   // along it — which this is not, and cannot be until inner instructions are
@@ -80,14 +80,26 @@ function Chip({ e, sub }: { e: Edge; sub: string }) {
         <span className="map-chip-name">{e.name ?? truncateAddress(e.id)}</span>
         <span className="map-chip-sub">{sub}</span>
       </span>
-      {traffic ? (
-        <span className="map-chip-act">
-          {e.activity && e.activity.length > 1 ? (
-            <Sparkline points={e.activity} width={54} height={16} title="" />
-          ) : null}
-          <span className="map-chip-txns">{traffic}</span>
-        </span>
-      ) : null}
+      {/* The slot is always rendered, even with nothing in it. Omitting it for
+          unsampled programs left every card a different shape and the column
+          ragged — and a missing chart reads as "no traffic" when it means "not
+          sampled". A dash says the second thing. */}
+      <span className={`map-chip-act${traffic ? "" : " map-chip-act-none"}`}>
+        {traffic ? (
+          <>
+            {e.activity && e.activity.length > 1 ? (
+              <Sparkline points={e.activity} width={104} height={30} max={scale} baseline title="" />
+            ) : (
+              <span className="map-chip-nospark" />
+            )}
+            <span className="map-chip-txns">{traffic}</span>
+          </>
+        ) : (
+          <span className="map-chip-txns" title="not sampled — the momentum sampler hasn't reached this program">
+            —
+          </span>
+        )}
+      </span>
     </Link>
   );
 }
@@ -137,6 +149,26 @@ export function ReachMap({
   const subFor = (e: Edge) =>
     (nameCount.get(e.name ?? e.id) ?? 0) > 1 || !e.crate ? truncateAddress(e.id) : e.crate;
 
+  // ONE scale for every spark on the panel, including the program's own.
+  //
+  // Sparklines normalised individually are the same picture repeated: each one
+  // fills its box, so Kamino Meta Vault at 6 transactions a day drew exactly as
+  // tall as Kamino Lending Vault at 7,783. That is not a small cosmetic problem
+  // — it deletes the only thing a row of charts is for. Reading across programs
+  // is the entire reason these are here rather than on each program's own page,
+  // where the Traction chart already shows the same series better.
+  //
+  // Scaled to the busiest neighbour, the panel finally says something at a
+  // glance: who is big, who is idle, and whether this program sits among giants
+  // or among dust.
+  const peak = Math.max(
+    1,
+    ...[...inbound, ...outbound, self].flatMap((e) => (e.activity ?? []).map((p) => p.c)),
+  );
+  const busiest = [...inbound, ...outbound, self]
+    .filter((e) => e.txns24h)
+    .sort((a, b) => (b.txns24h ?? 0) - (a.txns24h ?? 0))[0];
+
   return (
     <div className="map">
       {inbound.length ? (
@@ -150,7 +182,7 @@ export function ReachMap({
           </h4>
           <div className="map-grid">
             {inbound.map((e) => (
-              <Chip key={`i${e.id}`} e={e} sub={subFor(e)} />
+              <Chip key={`i${e.id}`} e={e} sub={subFor(e)} scale={peak} />
             ))}
           </div>
           <div className="map-flow" aria-hidden="true" />
@@ -166,7 +198,7 @@ export function ReachMap({
         {self.txns24h != null && self.txns24h > 0 ? (
           <span className="map-chip-act map-self-act">
             {self.activity && self.activity.length > 1 ? (
-              <Sparkline points={self.activity} width={64} height={16} title="" />
+              <Sparkline points={self.activity} width={104} height={30} max={peak} baseline title="" />
             ) : null}
             <span className="map-chip-txns">
               {compact(self.txns24h)}
@@ -188,17 +220,21 @@ export function ReachMap({
           </h4>
           <div className="map-grid">
             {outbound.map((e) => (
-              <Chip key={`o${e.id}`} e={e} sub={subFor(e)} />
+              <Chip key={`o${e.id}`} e={e} sub={subFor(e)} scale={peak} />
             ))}
           </div>
         </section>
       ) : null}
 
       <p className="map-note">
-        <strong>Numbers are each program&apos;s own traffic</strong> — its
-        transactions in the last 24h and its own 7-day shape, not traffic across
-        the link it sits next to. How much activity actually flows along an edge
-        needs the inner instructions of parsed transactions, which On Record
+        <strong>Every chart shares one scale</strong>
+        {busiest?.txns24h
+          ? `, set by ${busiest.name ?? truncateAddress(busiest.id)} at ${busiest.txns24h.toLocaleString("en-US")} transactions in 24h`
+          : ""}
+        , so heights are comparable across the panel — a flat line is a quiet
+        program, not a small chart. Each is that program&apos;s <strong>own</strong>{" "}
+        7-day traffic, not traffic across the link it sits next to; flow along an
+        edge needs the inner instructions of parsed transactions, which On Record
         doesn&apos;t read yet. A <code>+</code> means the sampler hit its page cap
         and the real figure is higher.
       </p>
