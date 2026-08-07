@@ -971,81 +971,128 @@ a {
   max-width: 48ch;
 }
 
-/* ---------------- map (the reference graph, drawn) ---------------- */
+/* ---------------- map (the reference graph) ---------------- */
 
-/* The drawing is authored at phone width (380) and scales up, so it never needs
-   its own scroll box — the page's vertical axis is the one that's free. Capped
-   so it doesn't become a billboard on a wide monitor. */
-.map-svg {
-  display: block;
-  width: 100%;
-  max-width: 520px;
-  height: auto;
-}
+/* DOM, not SVG: SVG scales its own text, so a diagram authored narrow and shown
+   wide renders every label larger than the page around it. These chips sit on
+   the dossier's type scale at every width, and reflow instead of running long. */
 
-.map-group {
-  font-family: var(--font-mono);
-  font-size: 10.5px;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-  fill: var(--ink-faint);
-}
-
-.map-box {
-  fill: var(--card);
-  stroke: var(--border);
-  stroke-width: 1;
-}
-
-.map-box-self {
-  fill: var(--card);
-  stroke: var(--ink);
-  stroke-width: 1.5;
-}
-
-a:hover > .map-box {
-  stroke: var(--ink);
-}
-
-.map-label {
-  font-size: 12.5px;
-  font-weight: 600;
-  fill: var(--ink);
-}
-
-.map-sub {
+.map-tier-head {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
   font-family: var(--font-mono);
   font-size: 10px;
-  fill: var(--ink-faint);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+  margin-bottom: 10px;
 }
 
-.map-edge {
-  fill: none;
-  stroke: var(--border-strong, var(--border));
-  stroke-width: 1.25;
+.map-tier-n {
+  font-size: 12px;
+  color: var(--ink);
+  font-weight: 600;
+  letter-spacing: 0;
 }
 
-.map-arrowhead {
-  fill: var(--border-strong, var(--border));
+.map-tier-cap {
+  letter-spacing: 0.06em;
+}
+
+.map-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(184px, 1fr));
+  gap: 6px;
+}
+
+.map-chip {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  padding: 8px 11px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--card);
+  text-decoration: none;
+  min-width: 0;
+}
+
+.map-chip:hover {
+  border-color: var(--border-strong);
+}
+
+.map-chip-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.map-chip-sub {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  color: var(--ink-faint);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* The flow between tiers. A short centred rule with an arrowhead — the page
+   already reads downward, so this marks the direction rather than carrying it. */
+.map-flow {
+  height: 26px;
+  margin: 2px 0;
+  background:
+    linear-gradient(var(--border-strong), var(--border-strong)) center / 1px 100% no-repeat;
+  position: relative;
+}
+
+.map-flow::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  bottom: 0;
+  width: 5px;
+  height: 5px;
+  border-right: 1px solid var(--border-strong);
+  border-bottom: 1px solid var(--border-strong);
+  transform: translate(-50%, 1px) rotate(45deg);
+}
+
+.map-self {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  padding: 11px 14px;
+  border: 1px solid var(--ink);
+  border-radius: var(--radius);
+  background: var(--card);
+}
+
+.map-self-name {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--ink);
+}
+
+.map-self-sub {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--ink-faint);
 }
 
 .map-empty,
-.map-more,
 .map-note {
   font-size: 12.5px;
   color: var(--ink-soft);
   max-width: 70ch;
 }
 
-.map-more {
-  font-family: var(--font-mono);
-  font-size: 11px;
-  color: var(--ink-faint);
-  margin-top: 10px;
-}
-
 .map-note {
-  margin-top: 14px;
+  margin-top: 16px;
 }
 
 .list-tail {
