@@ -1,4 +1,4 @@
-import { and, eq, gte, sql } from "drizzle-orm";
+import { and, eq, gte, inArray, or, sql } from "drizzle-orm";
 import { db, schema, logger, getSignaturesForAddress, type Network } from "@onrecord/core";
 import { refreshInterest } from "./interest.js";
 
@@ -45,7 +45,33 @@ export async function sampleMomentum(network: Network = "mainnet"): Promise<void
   const maxPrograms = Number(process.env.MOMENTUM_MAX_PROGRAMS ?? 100);
   const windowStart = new Date(Date.now() - 7 * 86_400_000);
 
-  // radar-window programs, least-recently-sampled first (never-sampled first)
+  // Two populations, least-recently-sampled first (never-sampled first):
+  //
+  //   1. the radar window — anything deployed in the last 7 days, which is what
+  //      the feed ranks and therefore what needs a fresh number;
+  //   2. anything that appears on a reference map, however old.
+  //
+  // The second exists because the map compares neighbours against each other,
+  // and an unsampled neighbour is a dash. Half of scope's neighbourhood read as
+  // "—" while the programs themselves were among the busiest on the chain: the
+  // sampler had simply never had a reason to look at a 2022 deploy. On a panel
+  // whose whole job is "who here is big", a blank beside a name is the one
+  // answer that teaches nothing.
+  //
+  // Cost is unchanged — maxPrograms still caps the run, the extra rows just
+  // become eligible for the slots. They are naturally self-limiting: a program
+  // only qualifies once some binary on record names it.
+  const mapped = db
+    .select({ id: schema.programReferences.toProgramId })
+    .from(schema.programReferences)
+    .where(eq(schema.programReferences.network, network))
+    .union(
+      db
+        .select({ id: schema.programReferences.fromProgramId })
+        .from(schema.programReferences)
+        .where(eq(schema.programReferences.network, network)),
+    );
+
   const subjects = await db
     .select({ id: schema.subjects.id, facts: schema.subjects.facts })
     .from(schema.subjects)
@@ -53,7 +79,7 @@ export async function sampleMomentum(network: Network = "mainnet"): Promise<void
       and(
         eq(schema.subjects.network, network),
         eq(schema.subjects.kind, "program"),
-        gte(schema.subjects.firstSeenAt, windowStart),
+        or(gte(schema.subjects.firstSeenAt, windowStart), inArray(schema.subjects.id, mapped)),
       ),
     )
     .orderBy(sql`${schema.subjects.facts}->'momentum'->>'sampledAt' asc nulls first`)

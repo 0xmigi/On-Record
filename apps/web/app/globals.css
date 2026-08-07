@@ -1052,6 +1052,15 @@ a {
   text-align: right;
 }
 
+/* The window captions. Faint on purpose — they answer a question the reader
+   only asks once, and shouldn't compete with the figure they qualify. */
+.map-chip-win {
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+  color: var(--ink-faint);
+  letter-spacing: 0.04em;
+}
+
 /* an unsampled program still occupies the slot, so the cards stay one shape */
 .map-chip-act-none {
   color: var(--ink-faint);
@@ -1064,6 +1073,23 @@ a {
 
 .map-self-act {
   margin-left: auto;
+}
+
+/* The focused card's chart is deliberately bigger than the neighbours', which
+   is more than a phone's width can take beside a name and an address. Below
+   that, it stacks instead of clipping — the chart is the reason this card is
+   taller, so it is the last thing that should get cut. */
+@media (max-width: 520px) {
+  .map-self {
+    flex-wrap: wrap;
+    row-gap: 8px;
+  }
+
+  .map-self-act {
+    margin-left: 0;
+    width: 100%;
+    justify-content: flex-start;
+  }
 }
 
 .map-chip:hover {
@@ -1112,9 +1138,10 @@ a {
 
 .map-self {
   display: flex;
-  align-items: baseline;
+  align-items: center;
   gap: 10px;
-  padding: 11px 14px;
+  padding: 14px;
+  min-height: 76px;
   border: 1px solid var(--ink);
   border-radius: var(--radius);
   background: var(--card);

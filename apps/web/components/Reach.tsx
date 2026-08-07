@@ -87,12 +87,20 @@ function Chip({ e, sub, scale }: { e: Edge; sub: string; scale: number }) {
       <span className={`map-chip-act${traffic ? "" : " map-chip-act-none"}`}>
         {traffic ? (
           <>
+            {/* Two windows sit side by side here and they are NOT the same
+                window: the chart is 7 days, the number is the last 24h. Left
+                unlabelled they read as one measurement, and a reader would take
+                the number as the chart's total. Both get a caption. */}
+            <span className="map-chip-win">7d</span>
             {e.activity && e.activity.length > 1 ? (
               <Sparkline points={e.activity} width={104} height={30} max={scale} baseline title="" />
             ) : (
               <span className="map-chip-nospark" />
             )}
-            <span className="map-chip-txns">{traffic}</span>
+            <span className="map-chip-txns">
+              {traffic}
+              <span className="map-chip-win">/24h</span>
+            </span>
           </>
         ) : (
           <span className="map-chip-txns" title="not sampled — the momentum sampler hasn't reached this program">
@@ -197,12 +205,18 @@ export function ReachMap({
             program the big one here or the small one" is most of the question */}
         {self.txns24h != null && self.txns24h > 0 ? (
           <span className="map-chip-act map-self-act">
+            <span className="map-chip-win">7d</span>
+            {/* Taller than the neighbours', on the same scale. This is the
+                program the reader came for, and it is the one whose shape —
+                the spikes, the flat stretches, the day it stopped — is worth
+                actually resolving rather than merely comparing. */}
             {self.activity && self.activity.length > 1 ? (
-              <Sparkline points={self.activity} width={104} height={30} max={peak} baseline title="" />
+              <Sparkline points={self.activity} width={168} height={48} max={peak} baseline title="" />
             ) : null}
             <span className="map-chip-txns">
               {compact(self.txns24h)}
               {self.txnsTruncated ? "+" : ""}
+              <span className="map-chip-win">/24h</span>
             </span>
           </span>
         ) : null}
