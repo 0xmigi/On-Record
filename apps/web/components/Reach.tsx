@@ -103,8 +103,8 @@ function Chip({ e, sub, scale }: { e: Edge; sub: string; scale: number }) {
             </span>
           </>
         ) : (
-          <span className="map-chip-txns" title="not sampled — the momentum sampler hasn't reached this program">
-            —
+          <span className="map-chip-txns" title="the momentum sampler hasn't reached this program yet — this is missing data, not zero traffic">
+            not sampled
           </span>
         )}
       </span>
@@ -173,6 +173,10 @@ export function ReachMap({
     1,
     ...[...inbound, ...outbound, self].flatMap((e) => (e.activity ?? []).map((p) => p.c)),
   );
+  const selfTraffic =
+    self.txns24h != null && self.txns24h > 0
+      ? `${compact(self.txns24h)}${self.txnsTruncated ? "+" : ""}`
+      : null;
   const busiest = [...inbound, ...outbound, self]
     .filter((e) => e.txns24h)
     .sort((a, b) => (b.txns24h ?? 0) - (a.txns24h ?? 0))[0];
@@ -203,23 +207,38 @@ export function ReachMap({
         {/* the centre carries its own number too — without it the neighbours'
             volumes have nothing to be large or small against, and "is this
             program the big one here or the small one" is most of the question */}
-        {self.txns24h != null && self.txns24h > 0 ? (
-          <span className="map-chip-act map-self-act">
-            <span className="map-chip-win">7d</span>
-            {/* Taller than the neighbours', on the same scale. This is the
-                program the reader came for, and it is the one whose shape —
-                the spikes, the flat stretches, the day it stopped — is worth
-                actually resolving rather than merely comparing. */}
-            {self.activity && self.activity.length > 1 ? (
-              <Sparkline points={self.activity} width={168} height={48} max={peak} baseline title="" />
-            ) : null}
-            <span className="map-chip-txns">
-              {compact(self.txns24h)}
-              {self.txnsTruncated ? "+" : ""}
-              <span className="map-chip-win">/24h</span>
+        {/* The focused card gets the same empty state as its neighbours. It
+            didn't, and a program the sampler hadn't reached rendered a blank
+            right of its name — no chart, no dash, nothing — which reads as a
+            layout bug rather than as missing data. Every card now says
+            something, even when the something is "not sampled".
+            The chart and the number are also independent: a program sampled
+            once has a count but only one hour of series, and one point can't
+            be drawn as a line. */}
+        <span className={`map-chip-act map-self-act${selfTraffic ? "" : " map-chip-act-none"}`}>
+          {selfTraffic ? (
+            <>
+              <span className="map-chip-win">7d</span>
+              {/* Taller than the neighbours', on the same scale. This is the
+                  program the reader came for, and the one whose shape — the
+                  spikes, the flat stretches, the day it stopped — is worth
+                  resolving rather than merely comparing. */}
+              {self.activity && self.activity.length > 1 ? (
+                <Sparkline points={self.activity} width={168} height={48} max={peak} baseline title="" />
+              ) : (
+                <span className="map-self-nospark">not enough history yet</span>
+              )}
+              <span className="map-chip-txns">
+                {selfTraffic}
+                <span className="map-chip-win">/24h</span>
+              </span>
+            </>
+          ) : (
+            <span className="map-chip-txns" title="not sampled — the momentum sampler hasn't reached this program">
+              not sampled
             </span>
-          </span>
-        ) : null}
+          )}
+        </span>
       </div>
 
       {outbound.length ? (

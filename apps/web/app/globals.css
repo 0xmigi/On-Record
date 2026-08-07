@@ -1066,6 +1066,21 @@ a {
   color: var(--ink-faint);
 }
 
+.map-chip-act-none .map-chip-txns {
+  font-size: 10.5px;
+  color: var(--ink-faint);
+  min-width: 0;
+  white-space: nowrap;
+}
+
+.map-self-nospark {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--ink-faint);
+  width: 168px;
+  text-align: center;
+}
+
 .map-chip-nospark {
   display: inline-block;
   width: 104px;
