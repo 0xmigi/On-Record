@@ -23,10 +23,15 @@ inferences, and an explicit "do NOT claim" list.
 
 ## Rules that have been learned the hard way
 
-- **A program is postable when two facts about it don't fit together** — not
-  when it scores as novel. The interest score has misfired in both directions
-  (it rated a coin-flip casino highly and rated a genuinely novel
-  market-making engine as a "variant").
+- **Ash decides what is interesting — never gate his choices.** Report what a
+  program is and what stands out; don't apply a bar. Things have been worth
+  posting for unrelated reasons: something didn't add up, or he could see it
+  before it was announced, or it belongs to a project people follow, or the
+  mechanism was just worth looking at (his best-performing post ever was a
+  diagram of how a transfer works, with no anomaly in it).
+- **Don't rank by the interest score either.** It has misfired in both
+  directions — rated a coin-flip casino highly, rated a genuinely novel
+  market-making engine a "variant".
 - **Never claim usage from `txns24h`.** It has been wrong twice — once counting
   one identical transaction repeated on a timer, once counting the deployer's
   own loader close operations. Activity claims come from sampled, parsed

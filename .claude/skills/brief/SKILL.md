@@ -40,11 +40,19 @@ gap with a plausible guess.
 Meaning first, evidence under it. The order matters — a reference-book ordering
 (background, architecture, deployment) is what leaves him assembling.
 
-**1. The gap, in two sentences.** The two facts that don't sit comfortably
-together. If there is no gap, say so in one line and stop writing — the entry
-still gets saved, but it is a no.
+The ten-second kill lives in the `verdict:` frontmatter line, and that is the
+only place it belongs. **Do not open the document with a verdict, a gap, or an
+assessment of any kind.** He asked for this explicitly: the first thing he wants
+from a program he just handed over is what it primarily *is*. A gap is a
+judgement, it only means anything once he knows what he is looking at, and
+leading with it front-loads a call that has misfired in both directions before
+he has formed his own read.
 
-**2. What it is, from the floor up.** The section the whole document exists for.
+**1. What it is.** Written for someone who knows nothing about it. The section
+the whole document exists for, and the one he reads first.
+
+Header it exactly `## What it is` — no clever subtitle. If a heading needs
+decoding, the section under it will too.
 
 - Assume no finance, no cryptography, no domain background. He is not a quant
   and will not pose as one.
@@ -58,13 +66,26 @@ still gets saved, but it is a no.
 - Full sentences with clauses. Never a comma-delimited list of attributes — he
   has called that bullet points crammed into a sentence.
 
-**3. The mechanism.** The one unusual thing this program does, decoded, with the
+**2. The mechanism.** The one unusual thing this program does, decoded, with the
 exact evidence it came from — handler names, source tree, syscalls, payload
 shape, account layout.
 
-**4. Unusual compared to what.** Corpus-relative, always, straight from the
+**3. Unusual compared to what.** Corpus-relative, always, straight from the
 dossier: multiples of the framework median, percentile, syscall rarity as "N of
 M programs on record". An adjective with no comparison attached is not a claim.
+
+**4. What stands out.** Now — after he knows what the thing is and how it works
+— the reason this program is worth his attention, in a couple of sentences.
+
+That reason is whatever it honestly is: something that doesn't add up, or that
+it is visible here before it has been announced anywhere, or whose project it
+belongs to, or simply that the mechanism is interesting to look at. **Do not go
+looking for a contradiction.** Most programs don't contain one, his
+best-performing post ever had none in it, and inflating a non-anomaly into a
+finding is worse than reporting a plain one.
+
+If nothing stands out, write that in one line. A program that is exactly what it
+says it is is a real finding, not a failed one.
 
 **5. Who, and how confident.** Authority class and threshold, funding, declared
 entity, devnet incubation. Distinguish what the chain shows from what a

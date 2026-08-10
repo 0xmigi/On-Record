@@ -12,30 +12,37 @@ This is the first block of the morning routine. It is a **filter**, not an
 investigation. Budget ~150 words per program. The deep one-shot brief is a
 separate step that runs only on the program he picks.
 
-## The bar: find the gap
+## What makes one worth telling him about
 
-A program is postable when two facts about it don't sit comfortably together.
-That is the selection rule every shipped post has satisfied — not novelty, not
-rarity, not the interest score.
+**Ash decides what is interesting. This skill does not gate — it reports.** Say
+what each program is and what stands out about it, and let him pick. Do not
+withhold a program because it fails some test, and never manufacture a reason to
+make one sound better than it is.
 
-- gator — a live model publishing 2.1 MB/day every 40s, and the engine that
-  consumes it has fired 7 times out of 200.
-- chancery — a finished 70-instruction regulated-issuance machine, one hot
-  wallet, zero instructions ever called.
-- flint/sweetspot — trading real volume on mainnet for six weeks, announced
-  yesterday.
-- colosseum-client — markets itself as fully on-chain PvP, decodes to an RNG
-  coin flip.
+There is no single bar. The posts that have shipped, or that he was angry about
+nearly missing, got there for genuinely different reasons:
 
-No gap, no post. Say that plainly and move on — a fast, flat "nothing here" is
-worth as much as a yes, and dressing up deploy churn has burned an afternoon
-before.
+- **Something doesn't add up.** gator's model publishing 2.1 MB/day while the
+  engine consuming it had fired 7 times in 200. Chancery's finished
+  70-instruction machine, one hot wallet, never called. Colosseum marketing
+  fully-on-chain PvP and decoding to a coin flip.
+- **He can see it before anyone has said anything.** The TapeDrive token
+  launcher on devnet. Flint trading on mainnet for six weeks before the
+  announcement. Earliness is the product; it needs no contradiction.
+- **Whose it is.** A project or team people already follow, doing something new.
+  This has no tension in it at all and is often the strongest reason.
+- **The mechanism is worth looking at on its own.** The Helius transfer
+  diagram — his best-performing post ever — just showed how a thing works. No
+  anomaly, no verdict, no takedown.
 
-**Second term: attachment.** A gap on a program nobody is watching is a quiet
-post. A gap on something with a name, a team, a token or an audience is the one
-that travels — the Helius post did ~1K views against 357 because 5,700 people
-already followed that team. When two programs both have a gap, pick the one
-attached to something people already track.
+So: report what the program is, then say plainly what stands out and which of
+these it is, if any. "Nothing stands out — it is exactly what it says it is" is
+a legitimate and useful answer, delivered flatly and fast.
+
+**What travels further.** Attachment to something people already track beats
+mechanism novelty on reach — the Helius post did ~1K views against 357 because
+5,700 people already followed that team. Worth saying when two are close, but it
+is a note for him, not a filter.
 
 **How he found it is evidence.** If he says a program came from a livestream, a
 project he follows, or an announcement he saw, that context outranks every score

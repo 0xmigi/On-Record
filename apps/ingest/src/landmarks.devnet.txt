@@ -1,0 +1,17 @@
+# Landmark program ids — devnet.
+#
+# Same job as landmarks.mainnet.txt: the index is built from loader events, so a
+# program that hasn't deployed or upgraded since ingestion started has no row at
+# all and is unsearchable. This file names the ones worth having anyway.
+#
+# Devnet's list is short and demand-driven rather than a survey of the canonical
+# universe. Devnet is where teams iterate, so the programs worth pinning are the
+# ones actually being looked at — usually because they were deployed before the
+# poller existed and someone went looking for them and found nothing.
+#
+# Addresses only, one per line. `#` comments and blanks ignored; anything that
+# isn't plain base58 fails the run rather than being skipped.
+#
+#   ./node_modules/.bin/tsx src/seed-landmarks.ts --network=devnet
+
+E67WTa1NpFVoapXwYYQmXzru3pyhaN9Kj3wPdZEyyZsL

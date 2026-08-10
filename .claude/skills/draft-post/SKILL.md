@@ -15,6 +15,39 @@ The reference artifacts are `docs/posts/chancery.md` and
 `docs/posts/gator-oracle.md` — posted version, verified-facts table, inference
 list, do-not-claim list.
 
+## Lead with the reason it's worth posting
+
+The brief's **"What stands out"** section is the spine of the POST. Whatever
+that reason honestly is — something doesn't add up, it's visible before it was
+announced, whose project it is, or the mechanism itself — that goes at the top,
+and every other paragraph is there to make it land. If a paragraph isn't holding
+it up, cut it.
+
+(It sits late in the brief on purpose: reading order and posting order are
+different problems. The brief exists to make him understand the program; the
+post exists to make a stranger stop scrolling.)
+
+Not every post is a takedown or a puzzle. The Helius transfer diagram was his
+best-performing post and it just showed how something works.
+
+**The failure this prevents: the post drifting into a tutorial.** On the Hinkal
+post the brief opened on a real gap (a protocol lost ~$800k to a double-spend
+five weeks ago; it has just shipped a new program on another chain with exactly
+that mechanism rebuilt). The draft opened with "another privacy program was
+deployed to solana yesterday" and spent its length explaining shielded pools,
+proof splitting and relayers. It cost a full day and never landed.
+
+It could not land, because a mechanism tutorial has no end condition — every
+explanation invites another "what does this mean to a normal reader" — and it
+puts Ash in the domain-expert seat he refuses to sit in. The gap version needs
+no such education: a reader does not have to understand a zk proof to
+understand that the thing which broke last month has been rebuilt.
+
+So: **explain only the mechanism the gap requires, and only to the depth the gap
+requires.** If a concept needs three paragraphs of teaching before the reader can
+see why the gap matters, the post is aimed wrong — find the version of the gap
+that stands on facts the reader already has.
+
 ## The failure mode this skill exists to prevent
 
 The drafts he rejected did not fail on structure. They failed on posture and on

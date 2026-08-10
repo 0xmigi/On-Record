@@ -1,0 +1,4 @@
+
+# the sniper's signing key — never commit
+sniper-keypair.json
+run-*.json

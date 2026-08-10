@@ -63,7 +63,8 @@ identifiable, any prior version.
 
 ## What it does
 
-The mechanism, in plain language, built from the floor up. No jargon that isn't
+The mechanism, in plain language, written for someone who knows nothing about
+it. No jargon that isn't
 defined in the same sentence. This is the section Ash reads to become able to
 explain it to someone else.
 
