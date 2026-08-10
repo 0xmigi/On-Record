@@ -128,6 +128,69 @@ function decodeLegacyIdl(data: Buffer): string | null {
   return zlib.inflateSync(data.subarray(44, 44 + len)).toString("utf8");
 }
 
+// --- IDL dialects -------------------------------------------------------------
+// Two dialects arrive through the same accounts and nest the program surface at
+// different depths:
+//
+//   Anchor — { address, metadata, instructions, accounts, errors, types, … }
+//   Codama — { kind: "rootNode", standard: "codama",
+//              program: { instructions, accounts, definedTypes, errors, … } }
+//
+// Codama is what Anchor ≥1.0 and the Pinocchio toolchain emit, so it is the
+// growing half. Reading `idl.instructions` off a Codama root yields undefined,
+// which degrades to "0 instructions" — indistinguishable from a program that
+// published nothing at all. Normalize once, here, so the probe, the scorer, the
+// usage decoder and the dossier all read the same shape.
+// ---------------------------------------------------------------------------
+
+export interface NormalizedIdl {
+  standard: "anchor" | "codama";
+  instructions: unknown[];
+  accounts: unknown[];
+  /** Anchor calls these `types`, Codama `definedTypes`. */
+  types: unknown[];
+  errors: unknown[];
+  events: unknown[];
+}
+
+const asArray = (v: unknown): unknown[] => (Array.isArray(v) ? v : []);
+const isObj = (v: unknown): v is Record<string, unknown> =>
+  Boolean(v) && typeof v === "object" && !Array.isArray(v);
+
+/** Flatten either IDL dialect to one shape. Returns null for anything that is
+ *  not a recognizable IDL object — this JSON comes out of an account that
+ *  anyone can write, so a wrong shape must degrade, never throw. */
+export function normalizeIdl(idl: unknown): NormalizedIdl | null {
+  if (!isObj(idl)) return null;
+
+  const program = idl.program;
+  const isCodama =
+    idl.standard === "codama" ||
+    idl.kind === "rootNode" ||
+    (isObj(program) && (Array.isArray(program.instructions) || Array.isArray(program.accounts)));
+
+  if (isCodama) {
+    const p = isObj(program) ? program : {};
+    return {
+      standard: "codama",
+      instructions: asArray(p.instructions),
+      accounts: asArray(p.accounts),
+      types: asArray(p.definedTypes),
+      errors: asArray(p.errors),
+      events: asArray(p.events),
+    };
+  }
+
+  return {
+    standard: "anchor",
+    instructions: asArray(idl.instructions),
+    accounts: asArray(idl.accounts),
+    types: asArray(idl.types),
+    errors: asArray(idl.errors),
+    events: asArray(idl.events),
+  };
+}
+
 // --- The probe ----------------------------------------------------------------
 
 export type IdlSource = "pmp" | "anchor-legacy";
@@ -219,16 +282,14 @@ export async function probeProgramMetadata(
   programId: string,
 ): Promise<MetadataProbe> {
   const md = await fetchProgramMetadata(network, programId);
-  const idl = md.idl as { instructions?: unknown; accounts?: unknown } | null;
+  const idl = normalizeIdl(md.idl);
   // the IDL is untrusted JSON out of an attacker-controlled account — a shape
   // like {"instructions": {}} or [null] must degrade, not throw out of the probe
-  const names = (list: unknown): string[] =>
-    Array.isArray(list)
-      ? list
-          .map((x) => (typeof (x as { name?: unknown })?.name === "string" ? (x as { name: string }).name : ""))
-          .filter(Boolean)
-          .slice(0, 64)
-      : [];
+  const names = (list: unknown[]): string[] =>
+    list
+      .map((x) => (typeof (x as { name?: unknown })?.name === "string" ? (x as { name: string }).name : ""))
+      .filter(Boolean)
+      .slice(0, 64);
   return {
     idl: idl
       ? {

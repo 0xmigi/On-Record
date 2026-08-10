@@ -3,6 +3,7 @@ import {
   db,
   schema,
   fetchAnchorIdl,
+  normalizeIdl,
   primitiveTier,
   sampleProgramTraffic,
   sharedPathCount,
@@ -354,12 +355,13 @@ export async function buildDossier(programId: string, opts: DossierOptions = {})
       ),
     );
   }
-  if (idl) {
-    const i = idl as { instructions?: unknown[]; accounts?: unknown[]; errors?: unknown[]; types?: unknown[] };
+  const normIdl = normalizeIdl(idl);
+  if (normIdl) {
     out.push(
       fact(
         "IDL",
-        `${i.instructions?.length ?? 0} instructions · ${i.accounts?.length ?? 0} accounts · ${i.errors?.length ?? 0} errors · ${i.types?.length ?? 0} types`,
+        `${normIdl.instructions.length} instructions · ${normIdl.accounts.length} accounts · ` +
+          `${normIdl.errors.length} errors · ${normIdl.types.length} types · ${normIdl.standard} dialect`,
         "published on-chain (Anchor legacy or Program Metadata Program)",
       ),
     );

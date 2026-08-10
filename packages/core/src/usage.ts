@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import bs58 from "bs58";
 import { env } from "./config.js";
-import { fetchAnchorIdl } from "./metadata.js";
+import { fetchAnchorIdl, normalizeIdl } from "./metadata.js";
 import { getSignaturesForAddress } from "./helius.js";
 import type { Network } from "./types.js";
 
@@ -16,6 +16,70 @@ function toSnakeCase(s: string): string {
 /** Anchor's instruction discriminator = first 8 bytes of sha256("global:<name>"). */
 function anchorDiscriminator(name: string): string {
   return createHash("sha256").update(`global:${name}`).digest().subarray(0, 8).toString("hex");
+}
+
+// --- discriminator matchers ---------------------------------------------------
+// Anchor tags an instruction with 8 bytes at offset 0. Codama does not: it
+// describes the tag structurally — a `fieldDiscriminatorNode` naming an
+// argument, whose declared width, endianness and constant default give the
+// bytes, at an explicit offset. That is usually a single u8 (Pinocchio-style
+// tag dispatch), so a fixed 8-byte prefix match would never fire. Both dialects
+// reduce to the same thing: expected bytes at an offset.
+// ---------------------------------------------------------------------------
+
+interface DiscMatcher {
+  offset: number;
+  hex: string;
+  name: string;
+}
+
+const NUM_WIDTH: Record<string, number> = { u8: 1, u16: 2, u32: 4, u64: 8 };
+
+/** Anchor emits events by CPI-ing the program into ITSELF with this 8-byte tag
+ *  and the serialized event as payload. It shows up as an inner instruction on
+ *  the program, but it is not an instruction call and no IDL declares it — so
+ *  tallying it as an unknown discriminator overstates how much of the traffic
+ *  we failed to decode. Observed on the Foundation's subscriptions program:
+ *  7 of 22 sampled instructions were exactly this. */
+const ANCHOR_EVENT_CPI_DISC = "e445a52e51cb9a1d";
+
+/** Encode a Codama numeric discriminator constant to its on-the-wire bytes. */
+function encodeNumber(value: number, format: string, endian: string): string | null {
+  const width = NUM_WIDTH[format];
+  if (!width || !Number.isFinite(value) || value < 0) return null;
+  const buf = Buffer.alloc(width);
+  try {
+    if (width === 8) {
+      if (endian === "be") buf.writeBigUInt64BE(BigInt(value));
+      else buf.writeBigUInt64LE(BigInt(value));
+    } else if (endian === "be") {
+      buf.writeUIntBE(value, 0, width);
+    } else {
+      buf.writeUIntLE(value, 0, width);
+    }
+  } catch {
+    return null; // value doesn't fit the declared width
+  }
+  return buf.toString("hex");
+}
+
+/** Codama: resolve one instruction's discriminator nodes to byte matchers. */
+function codamaMatchers(ix: Record<string, unknown>, name: string): DiscMatcher[] {
+  const out: DiscMatcher[] = [];
+  const args = Array.isArray(ix.arguments) ? (ix.arguments as Record<string, unknown>[]) : [];
+  const discs = Array.isArray(ix.discriminators) ? (ix.discriminators as Record<string, unknown>[]) : [];
+  for (const d of discs) {
+    if (d?.kind !== "fieldDiscriminatorNode" || typeof d.name !== "string") continue;
+    const arg = args.find((a) => a?.name === d.name);
+    const dv = arg?.defaultValue as { kind?: string; number?: unknown } | undefined;
+    const type = arg?.type as { kind?: string; format?: unknown; endian?: unknown } | undefined;
+    if (dv?.kind !== "numberValueNode" || typeof dv.number !== "number") continue;
+    if (type?.kind !== "numberTypeNode" || typeof type.format !== "string") continue;
+    const hex = encodeNumber(dv.number, type.format, typeof type.endian === "string" ? type.endian : "le");
+    if (!hex) continue;
+    out.push({ offset: typeof d.offset === "number" ? d.offset : 0, hex, name });
+  }
+  return out;
 }
 
 // ---------------------------------------------------------------------------
@@ -71,28 +135,48 @@ export async function decodeInstructionUsage(
 ): Promise<InstructionUsage | null> {
   const sample = Math.min(opts.sample ?? 400, 1000);
 
-  const idl = (await fetchAnchorIdl(network, programId)) as
-    | { instructions?: { name?: string; discriminator?: number[] }[] }
-    | null;
-  const declared = idl?.instructions ?? [];
+  const idl = normalizeIdl(await fetchAnchorIdl(network, programId));
+  const declared = (idl?.instructions ?? []) as Record<string, unknown>[];
   if (!declared.length) return null;
-  const declaredCount = new Set(declared.map((i) => i.name).filter(Boolean)).size;
+  const declaredCount = new Set(
+    declared.map((i) => i.name).filter((n): n is string => typeof n === "string"),
+  ).size;
 
-  const discToName = new Map<string, string>();
+  const matchers: DiscMatcher[] = [];
   for (const ix of declared) {
-    if (!ix.name) continue;
-    if (Array.isArray(ix.discriminator) && ix.discriminator.length === 8) {
+    const name = typeof ix.name === "string" ? ix.name : null;
+    if (!name) continue;
+    if (idl!.standard === "codama") {
+      matchers.push(...codamaMatchers(ix, name));
+      continue;
+    }
+    const disc = ix.discriminator;
+    if (Array.isArray(disc) && disc.length === 8) {
       // Anchor ≥0.30: the IDL carries the explicit discriminator
-      discToName.set(Buffer.from(ix.discriminator).toString("hex"), ix.name);
+      matchers.push({ offset: 0, hex: Buffer.from(disc as number[]).toString("hex"), name });
     } else {
       // legacy IDL (no discriminator): compute Anchor's from the name. Cover both
       // the name as-is and its snake_case form (IDLs vary in casing).
-      for (const variant of new Set([ix.name, toSnakeCase(ix.name)])) {
-        discToName.set(anchorDiscriminator(variant), ix.name);
+      for (const variant of new Set([name, toSnakeCase(name)])) {
+        matchers.push({ offset: 0, hex: anchorDiscriminator(variant), name });
       }
     }
   }
-  if (!discToName.size) return null;
+  if (!matchers.length) return null;
+
+  // group by the window the tag occupies, so tallying reads each window once
+  // rather than walking every matcher per instruction
+  const windows = new Map<string, { offset: number; bytes: number; byHex: Map<string, string> }>();
+  for (const m of matchers) {
+    const bytes = m.hex.length / 2;
+    const key = `${m.offset}:${bytes}`;
+    let w = windows.get(key);
+    if (!w) windows.set(key, (w = { offset: m.offset, bytes, byHex: new Map() }));
+    w.byHex.set(m.hex, m.name);
+  }
+  // widest window first: a specific 8-byte discriminator must win over a 1-byte
+  // tag that happens to share its leading byte
+  const ordered = [...windows.values()].sort((a, b) => b.bytes - a.bytes);
 
   // recent signatures (newest first), successful only
   const sigs: string[] = [];
@@ -116,9 +200,15 @@ export async function decodeInstructionUsage(
   const tally = (ix: EnhancedIx): boolean => {
     if (ix.programId !== programId || !ix.data) return false;
     try {
-      const bytes = bs58.decode(ix.data);
-      if (bytes.length < 8) return false;
-      const name = discToName.get(Buffer.from(bytes.subarray(0, 8)).toString("hex"));
+      const bytes = Buffer.from(bs58.decode(ix.data));
+      // an event emission, not a call — neither counted nor held against us
+      if (bytes.subarray(0, 8).toString("hex") === ANCHOR_EVENT_CPI_DISC) return false;
+      let name: string | undefined;
+      for (const w of ordered) {
+        if (bytes.length < w.offset + w.bytes) continue;
+        name = w.byHex.get(bytes.subarray(w.offset, w.offset + w.bytes).toString("hex"));
+        if (name) break;
+      }
       if (name) counts.set(name, (counts.get(name) ?? 0) + 1);
       else unknownDisc++;
       return Boolean(name);
