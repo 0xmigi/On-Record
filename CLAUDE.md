@@ -47,6 +47,18 @@ inferences, and an explicit "do NOT claim" list.
 Full drafting-voice rules live in the user's memory note `onrecord-post-craft`.
 Read it before drafting anything.
 
+## Repo hygiene
+
+This repo is **public**, and there are usually several sessions working in it at
+once, so it always has untracked files that belong to someone else.
+
+- **Never `git add -A` / `git add .`** — stage explicit paths, always. A blanket
+  add once pushed a Rust `target/` tree, surfpool logs, a deploy keypair and an
+  unpublished draft to a public repo.
+- The writing is gitignored on purpose: `docs/posts/`, `docs/diagrams/`,
+  `docs/programs/`, `research/`. Drafts live on Ash's machine, not on GitHub.
+  Don't "fix" this by tracking them.
+
 ## Toolchain
 
 - **The LLM dossier is the way to read a program.** `GET <api>/api/programs/<id>/dossier.md`

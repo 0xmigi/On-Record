@@ -22,5 +22,13 @@ research/
 # every morning, so tracking it means a dirty tree every day
 docs/programs/
 
+# the writing itself: post drafts and their diagrams. This is Ash's work in
+# progress, not the project's source — an unpublished draft has no business in
+# a public repo, and leaving it untracked next to code is how it ends up there.
+# docs/ keeps the project documents (SPEC, VISION, ROADMAP, CONTENT-ROUTINE);
+# everything about a specific program or post stays local.
+docs/posts/
+docs/diagrams/
+
 # local experiments — build artifacts and keypairs, never publish
 experiments/
