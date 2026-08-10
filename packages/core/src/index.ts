@@ -28,4 +28,5 @@ export {
   type IdlProbe,
 } from "./fingerprint.js";
 export * from "./metadata.js";
+export * from "./otter-verify.js";
 export { db, schema, type Db } from "./db/client.js";

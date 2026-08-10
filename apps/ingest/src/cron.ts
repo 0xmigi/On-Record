@@ -6,6 +6,7 @@ import { sampleMomentum } from "./momentum.js";
 import { sweepClosed } from "./closed.js";
 import { reclassifyRecent } from "./reclassify.js";
 import { sweepRepoLinks, sweepRepoLiveness } from "./repo-link.js";
+import { sweepVerification, sweepVerifyPending } from "./verify-sweep.js";
 
 // ---------------------------------------------------------------------------
 // Scheduled work (SPEC §10): TVL refresh (6h), a live funnel snapshot (15m),
@@ -42,6 +43,18 @@ export function startCron(): void {
   // disclosure. Needs no token: it is a plain HEAD against the URL.
   every(Number(process.env.REPO_LIVENESS_INTERVAL_MS ?? 6 * 3_600_000), "repo-liveness-sweep", async () => {
     await sweepRepoLiveness("mainnet");
+  });
+  // re-ask OtterSec whether a build is verified. identify can only ask at deploy
+  // time, which is before verification is possible — so without this the flag is
+  // frozen at "no" for every program verified after its last upgrade.
+  every(Number(process.env.VERIFY_SWEEP_INTERVAL_MS ?? 6 * 3_600_000), "verify-sweep", async () => {
+    await sweepVerification("mainnet");
+  });
+  // fast path: programs that just deployed AND have an on-chain verification
+  // request. Verification lands ~17 minutes after the request on average, so
+  // these get a short decaying ladder instead of waiting for the weekly sweep.
+  every(Number(process.env.VERIFY_FAST_INTERVAL_MS ?? 10 * 60_000), "verify-fast-path", async () => {
+    await sweepVerifyPending("mainnet");
   });
 }
 
