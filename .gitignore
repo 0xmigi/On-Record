@@ -21,3 +21,6 @@ research/
 # daily output of the content routine (docs/CONTENT-ROUTINE.md) — regenerated
 # every morning, so tracking it means a dirty tree every day
 docs/programs/
+
+# local experiments — build artifacts and keypairs, never publish
+experiments/

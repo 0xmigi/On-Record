@@ -1,9 +1,0 @@
-/Users/azuolascompy/code/On-Record/experiments/pumpsnipe/target/sbpf-solana-solana/release/deps/solana_define_syscall-c08eb5f9e7c29a2b.d: /Users/azuolascompy/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/solana-define-syscall-5.2.0/src/lib.rs /Users/azuolascompy/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/solana-define-syscall-5.2.0/src/curve_constants.rs /Users/azuolascompy/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/solana-define-syscall-5.2.0/src/definitions.rs
-
-/Users/azuolascompy/code/On-Record/experiments/pumpsnipe/target/sbpf-solana-solana/release/deps/libsolana_define_syscall-c08eb5f9e7c29a2b.rlib: /Users/azuolascompy/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/solana-define-syscall-5.2.0/src/lib.rs /Users/azuolascompy/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/solana-define-syscall-5.2.0/src/curve_constants.rs /Users/azuolascompy/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/solana-define-syscall-5.2.0/src/definitions.rs
-
-/Users/azuolascompy/code/On-Record/experiments/pumpsnipe/target/sbpf-solana-solana/release/deps/libsolana_define_syscall-c08eb5f9e7c29a2b.rmeta: /Users/azuolascompy/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/solana-define-syscall-5.2.0/src/lib.rs /Users/azuolascompy/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/solana-define-syscall-5.2.0/src/curve_constants.rs /Users/azuolascompy/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/solana-define-syscall-5.2.0/src/definitions.rs
-
-/Users/azuolascompy/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/solana-define-syscall-5.2.0/src/lib.rs:
-/Users/azuolascompy/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/solana-define-syscall-5.2.0/src/curve_constants.rs:
-/Users/azuolascompy/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/solana-define-syscall-5.2.0/src/definitions.rs:

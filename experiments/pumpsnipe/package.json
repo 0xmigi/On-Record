@@ -1,7 +1,0 @@
-{
-  "dependencies": {
-    "@solana/web3.js": "^1.98.4",
-    "helius-laserstream": "^0.8.0",
-    "ws": "^8.21.3"
-  }
-}
