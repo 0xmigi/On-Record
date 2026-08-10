@@ -2217,12 +2217,21 @@ a.copy-addr-text:hover {
   color: var(--ink-faint);
 }
 
-.verified-check {
-  font-family: var(--font-mono);
-  font-size: 10px;
-  letter-spacing: 0.04em;
-  color: var(--green);
-  white-space: nowrap;
+/* Verified-build badge. Sits inline beside a program name in the radar row and
+   the dossier header — one component, one look, both places. */
+.verified-badge {
+  flex: none;
+  display: inline-block;
+  vertical-align: -0.12em;
+}
+.verified-badge-disc {
+  fill: var(--green);
+}
+.verified-badge-check {
+  stroke: var(--card);
+}
+.dossier-title .verified-badge {
+  margin-left: 0.4em;
 }
 
 .cluster-note {
@@ -3444,6 +3453,7 @@ a.copy-addr-text:hover {
   color: var(--ink);
 }
 .idl-ver,
+.idl-dialect,
 .idl-spec {
   font-family: var(--font-mono);
   font-size: 11px;

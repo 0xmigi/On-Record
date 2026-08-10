@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { CopyAddress } from "@/components/CopyAddress";
 import { ProgramAvatar } from "@/components/ProgramAvatar";
+import { VerifiedBadge } from "@/components/VerifiedBadge";
 import { SignalHex } from "@/components/SignalHex";
 import { Sparkline } from "@/components/Sparkline";
 import type { ApiProgram } from "@/lib/api";
@@ -113,6 +114,7 @@ export function ProgramRow({
           {program.name ? (
             <span className="radar-name">{program.name}</span>
           ) : null}
+          {program.verified ? <VerifiedBadge size={13} /> : null}
           {showNetwork && program.network === "devnet" ? (
             <span className="net-badge" title="Deployed on devnet, not mainnet">
               devnet
@@ -168,11 +170,6 @@ export function ProgramRow({
           {program.hasSecurityTxt ? (
             <span className="sec-badge" title="Embeds a security.txt in its binary">
               security.txt
-            </span>
-          ) : null}
-          {program.verified ? (
-            <span className="verified-check" title="Verified build — reproduces from public source; the dossier links the repo">
-              ✓ verified
             </span>
           ) : null}
           {isFork && namedMatch?.name ? (

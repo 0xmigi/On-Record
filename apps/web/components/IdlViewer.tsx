@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from "react";
 import type { AnchorIdl, IdlAccountRef, IdlField, IdlTypeDef } from "@/lib/api";
+import { adaptIdl, idlDialect } from "@/lib/codama";
 
 /** Render an Anchor IDL type node (string | {defined} | {vec} | {option} | …). */
 function fmtType(t: unknown): string {
@@ -111,10 +112,15 @@ function Section({
   );
 }
 
-export function IdlViewer({ idl }: { idl: AnchorIdl }) {
+export function IdlViewer({ idl: source }: { idl: AnchorIdl }) {
   const [raw, setRaw] = useState(false);
   const [q, setQ] = useState("");
+  // Codama nests everything under `program`; translate to the shape rendered
+  // below rather than branching every section on dialect
+  const dialect = idlDialect(source);
+  const idl = useMemo(() => adaptIdl(source), [source]);
   const meta = idl.metadata ?? { name: idl.name, version: idl.version };
+  const dialectLabel = dialect === "codama" ? "Codama IDL" : "Anchor IDL";
 
   const query = q.trim().toLowerCase();
   const match = (name?: string) => !query || (name ?? "").toLowerCase().includes(query);
@@ -132,7 +138,8 @@ export function IdlViewer({ idl }: { idl: AnchorIdl }) {
     <div className="idl-viewer">
       <div className="idl-head">
         <div className="idl-title">
-          <span className="idl-name">{meta.name ?? "Anchor IDL"}</span>
+          <span className="idl-name">{meta.name ?? dialectLabel}</span>
+          {meta.name ? <span className="idl-dialect">{dialectLabel}</span> : null}
           {meta.version ? <span className="idl-ver">v{meta.version}</span> : null}
           {meta.spec ? <span className="idl-spec">spec {meta.spec}</span> : null}
         </div>
@@ -146,7 +153,8 @@ export function IdlViewer({ idl }: { idl: AnchorIdl }) {
       ) : null}
 
       {raw ? (
-        <pre className="idl-raw">{JSON.stringify(idl, null, 2)}</pre>
+        // the document as published on chain, not the adapted one
+        <pre className="idl-raw">{JSON.stringify(source, null, 2)}</pre>
       ) : (
         <>
           <input

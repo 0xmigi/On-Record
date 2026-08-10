@@ -5,6 +5,7 @@ import { notFound, redirect } from "next/navigation";
 import { BackToRadar } from "@/components/BackToRadar";
 import { CopyAddress } from "@/components/CopyAddress";
 import { ProgramAvatar } from "@/components/ProgramAvatar";
+import { VerifiedBadge } from "@/components/VerifiedBadge";
 import { IdlViewer } from "@/components/IdlViewer";
 import { UsageBars } from "@/components/UsageBars";
 import { DossierTabs, type DossierTab } from "@/components/DossierTabs";
@@ -924,6 +925,7 @@ export default async function ProgramDossierPage({
               {program.name ?? (
                 <span className="dossier-title-unknown">Unidentified program</span>
               )}
+              {program.verified ? <VerifiedBadge size={19} /> : null}
             </h1>
           </div>
 
