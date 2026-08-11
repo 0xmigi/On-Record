@@ -29,4 +29,5 @@ export {
 } from "./fingerprint.js";
 export * from "./metadata.js";
 export * from "./otter-verify.js";
+export * from "./samples.js";
 export { db, schema, type Db } from "./db/client.js";

@@ -5,7 +5,9 @@ import {
   fetchAnchorIdl,
   normalizeIdl,
   primitiveTier,
-  sampleProgramTraffic,
+  readTraffic,
+  sampleTrafficNow,
+  noteRequested,
   sharedPathCount,
   pathOverlap,
   isSourceRelative,
@@ -47,6 +49,16 @@ const fmtBytes = (n: number | null): string =>
   n === null ? "unknown" : n >= KB ? `${Math.round(n / KB).toLocaleString()} KB (${n.toLocaleString()} B)` : `${n} B`;
 const pct = (n: number): string => `${Math.round(n * 100)}%`;
 const iso = (d: Date | null): string => d?.toISOString().replace(".000Z", "Z") ?? "unknown";
+
+/** " (3.2 h ago)" — how old a stored measurement is, so its age is impossible
+ *  to miss. A sample read without its age is the failure mode this guards. */
+function ageSuffix(d: Date | null): string {
+  if (!d) return "";
+  const hours = (Date.now() - d.getTime()) / 3_600_000;
+  if (hours < 1) return ` (${Math.max(1, Math.round(hours * 60))} min ago)`;
+  if (hours < 48) return ` (${hours.toFixed(1)} h ago)`;
+  return ` (${Math.round(hours / 24)} days ago)`;
+}
 
 /** `- **label** — value  ·  _how it was derived_` */
 function fact(label: string, value: string | number | null | undefined, method: string): string {
@@ -163,8 +175,12 @@ async function sourceKin(row: SubjectRow): Promise<{ id: string; name: string | 
 // --- the document ------------------------------------------------------------
 
 export interface DossierOptions {
-  /** parse recent transactions (metered RPC). Off → the traffic section says so. */
-  sample?: boolean;
+  /** where the traffic section comes from.
+   *    "stored"  the last sample the sweep took, rendered with its timestamp (default)
+   *    "live"    re-measure now and write through — metered, seconds per program
+   *    "off"     omit it, and say so rather than quietly leaving it out
+   *  `true`/`false` are accepted as the old boolean spelling of stored/off. */
+  sample?: "stored" | "live" | "off" | boolean;
 }
 
 export async function buildDossier(programId: string, opts: DossierOptions = {}): Promise<string | null> {
@@ -221,11 +237,26 @@ export async function buildDossier(programId: string, opts: DossierOptions = {})
     fetchAnchorIdl(network, row.id).catch(() => null),
   ]);
 
+  // Traffic is read, not re-measured — see sample-sweep.ts for why. `sampledAt`
+  // is carried alongside so the section can date its own numbers; a traffic
+  // figure with no measurement time is a claim that cannot be defended.
+  const mode: "stored" | "live" | "off" =
+    opts.sample === false || opts.sample === "off"
+      ? "off"
+      : opts.sample === "live"
+        ? "live"
+        : "stored";
+
   let traffic: TrafficSample | null = null;
+  let trafficAt: Date | null = null;
   let trafficError: string | null = null;
-  if (opts.sample !== false) {
+  if (mode !== "off") {
     try {
-      traffic = await sampleProgramTraffic(network, row.id);
+      const stored = mode === "live" ? await sampleTrafficNow(network, row.id) : await readTraffic(row.id);
+      traffic = stored.value;
+      trafficAt = stored.sampledAt;
+      // asking for this program moves it up the sweep's queue next time
+      if (mode === "stored") await noteRequested(row.id, network).catch(() => {});
     } catch (err) {
       trafficError = String(err);
     }
@@ -480,15 +511,35 @@ export async function buildDossier(programId: string, opts: DossierOptions = {})
   out.push("");
   if (trafficError) {
     out.push(fact("Sample", "FAILED", `sampling errored: ${trafficError} — make no usage claim`));
+  } else if (mode === "off") {
+    out.push(fact("Sample", "not run (sampling disabled)", "drop ?sample=0 to read the stored sample"));
+  } else if (!traffic && trafficAt === null) {
+    // never measured is NOT "no traffic" — do not let one read as the other
+    out.push(
+      fact(
+        "Sample",
+        "not sampled yet",
+        "nobody has measured this program's traffic — say nothing about its usage. " +
+          "?sample=live measures it now",
+      ),
+    );
   } else if (!traffic) {
     out.push(
       fact(
         "Sample",
-        opts.sample === false ? "not run (sampling disabled)" : "no signatures found",
-        opts.sample === false ? "pass ?sample=1 to run it" : "the program id has no transaction history",
+        `no signatures found (measured ${iso(trafficAt)})`,
+        "the program id has no transaction history",
       ),
     );
   } else {
+    out.push(
+      fact(
+        "Measured at",
+        `${iso(trafficAt)}${ageSuffix(trafficAt)}`,
+        "everything in this section was true then, not necessarily now — " +
+          "?sample=live re-measures before you publish a claim",
+      ),
+    );
     out.push(
       fact(
         "Invocation share",

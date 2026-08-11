@@ -1,14 +1,29 @@
 import type { InstructionUsage } from "@/lib/api";
 
+/** "4h ago" — deliberately coarse. The point is to stop the counts reading as
+ *  live, not to be precise about staleness. */
+function sampleAge(iso: string): string {
+  const hours = (Date.now() - Date.parse(iso)) / 3_600_000;
+  if (!Number.isFinite(hours) || hours < 0) return "recently";
+  if (hours < 1) return "just now";
+  if (hours < 24) return `${Math.round(hours)}h ago`;
+  return `${Math.round(hours / 24)}d ago`;
+}
+
 /** The program's real "shape": which instructions actually get called, decoded
  *  from recent transactions by discriminator. Deterministic — names are the
  *  developer's, sizes are on-chain counts. `compact` shows just the top few. */
 export function UsageBars({
   usage,
+  sampledAt = null,
   compact = false,
   top = 3,
 }: {
   usage: InstructionUsage;
+  /** when the sample was taken (ISO). Shown so the reader knows how old these
+   *  counts are — samples are stored and refreshed on a sweep, not measured on
+   *  page load, so "now" is never the right assumption. */
+  sampledAt?: string | null;
   compact?: boolean;
   top?: number;
 }) {
@@ -25,6 +40,7 @@ export function UsageBars({
         <span className="usage-sub">
           last {w.txnsWithProgram.toLocaleString("en-US")} txns
           {w.hoursSpan != null ? ` · ${w.hoursSpan >= 1 ? `~${w.hoursSpan}h` : "<1h"}` : ""}
+          {sampledAt ? ` · measured ${sampleAge(sampledAt)}` : ""}
         </span>
       </div>
       <div className="usage-bars">

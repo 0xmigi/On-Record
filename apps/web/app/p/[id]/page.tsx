@@ -200,7 +200,9 @@ export default async function ProgramDossierPage({
   // that shipped one later stayed false forever and the tab confidently claimed
   // no IDL existed (horse-fun had 22 instructions published). The IDL endpoint
   // does a live on-chain lookup, so the flag buys nothing but staleness.
-  const [idl, usage] = await Promise.all([fetchIdl(id), fetchUsage(id)]);
+  const [idl, storedUsage] = await Promise.all([fetchIdl(id), fetchUsage(id)]);
+  const usage = storedUsage.usage;
+  const usageSampledAt = storedUsage.sampledAt;
 
   // the code family: other deploys of (nearly) this bytecode
   const cluster = program.bucketId ? await fetchCluster(program.bucketId) : null;
@@ -673,7 +675,7 @@ export default async function ProgramDossierPage({
     <>
       {usage && usage.instructions.length ? (
         <div style={{ marginBottom: 18 }}>
-          <UsageBars usage={usage} compact />
+          <UsageBars usage={usage} sampledAt={usageSampledAt} compact />
         </div>
       ) : null}
       <SectionHeader title="Traction" info="Does it actually get used? Accrues over time." />
@@ -784,7 +786,7 @@ export default async function ProgramDossierPage({
       />
       {usage && usage.instructions.length ? (
         <div style={{ marginBottom: 18 }}>
-          <UsageBars usage={usage} />
+          <UsageBars usage={usage} sampledAt={usageSampledAt} />
         </div>
       ) : null}
       <IdlViewer idl={idl} />

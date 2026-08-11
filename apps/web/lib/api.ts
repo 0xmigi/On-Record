@@ -477,11 +477,20 @@ export interface InstructionUsage {
   unknownDisc: number;
 }
 
-export async function fetchUsage(id: string): Promise<InstructionUsage | null> {
-  const res = await getJson<{ usage: InstructionUsage | null }>(
+/** Usage as last measured, with the measurement time. `sampledAt: null` means
+ *  nobody has sampled this program yet — which the UI must not render as "no
+ *  usage". The API no longer decodes on demand (it used to, at ~400 Helius
+ *  credits per page view); a background sweep takes the sample. */
+export interface StoredUsage {
+  usage: InstructionUsage | null;
+  sampledAt: string | null;
+}
+
+export async function fetchUsage(id: string): Promise<StoredUsage> {
+  const res = await getJson<{ usage: InstructionUsage | null; sampledAt: string | null }>(
     `/api/programs/${encodeURIComponent(id)}/usage`
   );
-  return res?.usage ?? null;
+  return { usage: res?.usage ?? null, sampledAt: res?.sampledAt ?? null };
 }
 
 export async function fetchFunnel(

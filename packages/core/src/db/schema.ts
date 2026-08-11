@@ -318,3 +318,51 @@ export const savedLists = pgTable("saved_lists", {
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
 });
+
+// ---------------------------------------------------------------------------
+// activity_samples — the two metered reads, written down.
+//
+// Instruction usage (usage.ts) and traffic shape (traffic.ts) are the only
+// facts this codebase used to re-derive on every read. Both cost Helius credits
+// per call, and both were computed on a REQUEST path: every load of /p/<id> ran
+// a live 400-transaction parse, and every dossier fetch sampled 200 more. The
+// cost therefore scaled with strangers looking at the site rather than with
+// programs being deployed — an unauthenticated GET worth ~400 credits, which is
+// a drain as much as an expense.
+//
+// So: samples are taken by a background sweep and read from here. Request paths
+// never sample. They record demand (`requestedAt`) and the sweep decides what to
+// spend on, which caps the bill at the sweep's own budget no matter how much
+// traffic arrives.
+//
+// Absent, zero and unknown stay distinct, as everywhere else here:
+//   no row / null *SampledAt  →  never looked
+//   *SampledAt set, payload null  →  looked, and there is genuinely nothing
+//                                    (no IDL to decode against; no signatures)
+// Anything rendering these MUST show `sampledAt`. A traffic figure with no
+// measurement time is a claim that cannot be defended.
+// ---------------------------------------------------------------------------
+export const activitySamples = pgTable(
+  "activity_samples",
+  {
+    /** the program id — one row per subject, holding only the latest sample */
+    subjectId: text("subject_id").primaryKey(),
+    network: text("network").notNull(),
+    /** InstructionUsage | null — null means decoded against an IDL and found nothing */
+    usage: jsonb("usage").$type<Record<string, unknown> | null>(),
+    usageSampledAt: timestamp("usage_sampled_at", { withTimezone: true }),
+    /** TrafficSample | null — null means the program id has no transaction history */
+    traffic: jsonb("traffic").$type<Record<string, unknown> | null>(),
+    trafficSampledAt: timestamp("traffic_sampled_at", { withTimezone: true }),
+    /** last time a human asked for this program. Drives what the sweep refreshes:
+     *  credits go to programs somebody actually looked at, not the whole corpus. */
+    requestedAt: timestamp("requested_at", { withTimezone: true }),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (t) => [
+    // the sweep's pick order: wanted but never sampled first, then stalest.
+    index("activity_samples_usage_stale_idx").on(t.network, t.usageSampledAt),
+    index("activity_samples_traffic_stale_idx").on(t.network, t.trafficSampledAt),
+    index("activity_samples_requested_idx").on(t.network, t.requestedAt),
+  ],
+);

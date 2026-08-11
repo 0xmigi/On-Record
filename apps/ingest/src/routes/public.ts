@@ -6,7 +6,8 @@ import {
   env,
   tlshDistance,
   fetchAnchorIdl,
-  decodeInstructionUsage,
+  readUsage,
+  noteRequested,
   looksLikeProgramId,
   escapeLike,
   lineageSizeWindow,
@@ -384,6 +385,15 @@ export function registerPublicRoutes(app: FastifyInstance): void {
   });
 
   // --- instruction usage: the program's real "shape" (decoded from recent txns)
+  //
+  // Reads the stored sample; it does NOT decode on demand. This used to run a
+  // live 400-transaction parse per request — an unauthenticated ~400-credit GET,
+  // so the Helius bill scaled with site traffic and ~2,500 requests could empty
+  // a plan. Now the request records interest and the sample sweep spends the
+  // credits within its own cap (sample-sweep.ts).
+  //
+  // `sampledAt: null` means nobody has measured it yet, which the UI must show
+  // as "not sampled yet" rather than as "no usage" — those are different facts.
   app.get<{ Params: { id: string } }>("/api/programs/:id/usage", async (req, reply) => {
     const rows = await db
       .select({ network: schema.subjects.network })
@@ -391,8 +401,10 @@ export function registerPublicRoutes(app: FastifyInstance): void {
       .where(eq(schema.subjects.id, req.params.id));
     if (!rows[0]) return reply.code(404).send({ error: "unknown program" });
     const network = rows[0].network as "mainnet" | "devnet";
-    const usage = await decodeInstructionUsage(network, req.params.id, { sample: 400 });
-    return { usage };
+    const stored = await readUsage(req.params.id);
+    // tell the sweep this program is worth keeping fresh
+    await noteRequested(req.params.id, network).catch(() => {});
+    return { usage: stored.value, sampledAt: stored.sampledAt?.toISOString() ?? null };
   });
 
   // --- the LLM dossier: one program as plain text, with provenance ---------
@@ -401,12 +413,16 @@ export function registerPublicRoutes(app: FastifyInstance): void {
   // relative comparisons, how each fact was derived, and an explicit list of
   // what is NOT known. See dossier.ts.
   //
-  // `?sample=0` skips transaction parsing (metered Helius work, seconds per
-  // program) — the document then says so rather than quietly omitting usage.
+  // Traffic comes from the stored sample and is stamped with when it was taken.
+  //   ?sample=0     omit the traffic section entirely
+  //   ?sample=live  re-measure now and write through. Metered, seconds per
+  //                 program — for when a claim is about to be published and
+  //                 "as of 9 hours ago" is not good enough.
   app.get<{ Params: { id: string }; Querystring: { sample?: string } }>(
     "/api/programs/:id/dossier.md",
     async (req, reply) => {
-      const md = await buildDossier(req.params.id, { sample: req.query.sample !== "0" });
+      const mode = req.query.sample === "0" ? "off" : req.query.sample === "live" ? "live" : "stored";
+      const md = await buildDossier(req.params.id, { sample: mode });
       if (!md) return reply.code(404).send({ error: "unknown program" });
       return reply.type("text/markdown; charset=utf-8").send(md);
     },

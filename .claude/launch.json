@@ -25,6 +25,15 @@
         "PATH=$HOME/.nvm/versions/node/v24.18.0/bin:$PATH API_URL=http://localhost:3011 exec ./apps/web/node_modules/.bin/next dev apps/web -p 3010"
       ],
       "port": 3010
+    },
+    {
+      "name": "web-samples",
+      "runtimeExecutable": "sh",
+      "runtimeArgs": [
+        "-c",
+        "PATH=$HOME/.nvm/versions/node/v24.18.0/bin:$PATH API_URL=http://localhost:3999 exec ./apps/web/node_modules/.bin/next dev apps/web -p 3013"
+      ],
+      "port": 3013
     }
   ]
 }

@@ -7,6 +7,7 @@ import { sweepClosed } from "./closed.js";
 import { reclassifyRecent } from "./reclassify.js";
 import { sweepRepoLinks, sweepRepoLiveness } from "./repo-link.js";
 import { sweepVerification, sweepVerifyPending } from "./verify-sweep.js";
+import { sweepActivitySamples } from "./sample-sweep.js";
 
 // ---------------------------------------------------------------------------
 // Scheduled work (SPEC §10): TVL refresh (6h), a live funnel snapshot (15m),
@@ -55,6 +56,12 @@ export function startCron(): void {
   // these get a short decaying ladder instead of waiting for the weekly sweep.
   every(Number(process.env.VERIFY_FAST_INTERVAL_MS ?? 10 * 60_000), "verify-fast-path", async () => {
     await sweepVerifyPending("mainnet");
+  });
+  // usage + traffic samples for programs somebody actually opened. This is the
+  // only path that spends credits on them: the web page and the dossier read
+  // stored samples, so request volume cannot move the bill. See sample-sweep.ts.
+  every(Number(process.env.SAMPLE_SWEEP_INTERVAL_MS ?? 5 * 60_000), "sample-sweep", async () => {
+    await sweepActivitySamples("mainnet");
   });
 }
 
