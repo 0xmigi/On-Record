@@ -162,25 +162,35 @@ export async function probeCounterpart(
  *  the other cluster" must not be written down as "it is not there".
  *
  *  When a devnet-labelled subject turns out to be live on mainnet, this also
- *  promotes it (see promoteToMainnet). Pass `{ promote: false }` to probe only. */
+ *  promotes it (see promoteToMainnet). Pass `{ promote: false }` to probe only.
+ *
+ *  `network` is the caller's idea of where this program lives; the SUBJECT ROW
+ *  is what actually decides. They diverge in two real cases — a devnet upgrade
+ *  event arriving for a program that has since been promoted to mainnet, and a
+ *  backfill loop holding the network it read before promotion ran — and using
+ *  the caller's value would write a mainnet-pointing counterpart onto a mainnet
+ *  row, i.e. "also on mainnet" on a mainnet page. Whatever else this module
+ *  gets wrong, the counterpart must be the OTHER cluster. */
 export async function recordCounterpart(
   network: Network,
   programId: string,
   opts: { promote?: boolean } = {},
 ): Promise<ApiCounterpart | null> {
-  let probe: ApiCounterpart;
-  try {
-    probe = await probeCounterpart(network, programId);
-  } catch (err) {
-    log.warn({ programId, network, err: String(err) }, "counterpart probe failed — leaving unknown");
-    return null;
-  }
-
   const rows = await db
     .select({ facts: schema.subjects.facts, network: schema.subjects.network })
     .from(schema.subjects)
     .where(eq(schema.subjects.id, programId));
   const subject = rows[0];
+  const home = (subject?.network as Network | undefined) ?? network;
+
+  let probe: ApiCounterpart;
+  try {
+    probe = await probeCounterpart(home, programId);
+  } catch (err) {
+    log.warn({ programId, home, err: String(err) }, "counterpart probe failed — leaving unknown");
+    return null;
+  }
+
   if (!subject) return probe;
 
   await db
@@ -203,12 +213,7 @@ export async function recordCounterpart(
   // the wrong radar. `alive === false` (closed there) does not qualify: a
   // reclaimed mainnet deployment is history too, and the devnet one is what is
   // actually running.
-  if (
-    opts.promote !== false &&
-    subject.network === "devnet" &&
-    probe.present &&
-    probe.alive !== false
-  ) {
+  if (opts.promote !== false && home === "devnet" && probe.present && probe.alive !== false) {
     await promoteToMainnet(programId);
   }
   return probe;
