@@ -65,9 +65,36 @@ export function startCron(): void {
   });
 }
 
+/** Run `fn` every `ms`, never concurrently with itself.
+ *
+ *  The overlap guard is not a nicety. Every RPC retries up to 5 times with
+ *  exponential backoff, so under sustained 429s a single call takes seconds
+ *  instead of milliseconds and a 150-program sweep runs past its own interval.
+ *  Without this flag the next tick started anyway, so slow ticks stacked, the
+ *  stack multiplied concurrent RPC load, and that produced more 429s — a loop
+ *  that sustains itself after the original cause is gone. It did exactly that
+ *  when credits ran out on 2026-08-12: sweeps piled up, ate the rate limit, and
+ *  the poller sat unable to fetch getSlot for six hours with credits available.
+ *
+ *  The poller has had this guard since it was written (poller.ts); the cron
+ *  jobs never got it. Skipping a tick is always safe here — every job picks its
+ *  own work from the database when it next runs. */
 function every(ms: number, name: string, fn: () => Promise<unknown>): void {
-  const run = () =>
-    fn().catch((err) => logger.error({ cron: name, err: String(err) }, "cron job failed"));
+  let running = false;
+  const run = async () => {
+    if (running) {
+      logger.warn({ cron: name }, "cron job still running, skipping this interval");
+      return;
+    }
+    running = true;
+    try {
+      await fn();
+    } catch (err) {
+      logger.error({ cron: name, err: String(err) }, "cron job failed");
+    } finally {
+      running = false;
+    }
+  };
   setTimeout(run, 15_000); // first pass shortly after boot
   setInterval(run, ms);
 }
