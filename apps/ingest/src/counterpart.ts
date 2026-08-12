@@ -1,4 +1,4 @@
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import bs58 from "bs58";
 import {
   db,
@@ -241,30 +241,38 @@ export async function promoteToMainnet(programId: string): Promise<boolean> {
     }
     const dh = await getDeployHistory("mainnet", pd);
 
-    const eventId = newId("evt");
-    const inserted = await db
-      .insert(schema.events)
-      .values({
-        id: eventId,
-        network: "mainnet",
-        type: "deploy",
-        // Deterministic, and namespaced so it is never mistaken for a real
-        // signature: this event is a record-keeping artefact, not a sighting.
-        signature: `counterpart-promote:${pd}`,
-        instructionIndex: 0,
-        slot: dh.firstDeploySlot ?? dh.lastDeploySlot ?? 0,
-        blockTime: dh.firstDeployAt ?? new Date(),
-        programId,
-        programDataAddress: pd,
-        authorityBefore: null,
-        authorityAfter: parsed.upgradeAuthority ?? null,
-      })
-      .onConflictDoNothing({ target: [schema.events.signature, schema.events.instructionIndex] })
-      .returning({ id: schema.events.id });
+    // Ingest the program's REAL mainnet history — one row per deploy/upgrade,
+    // each with the transaction that proves it. The earlier version of this
+    // wrote a single synthetic row standing in for the whole life of the
+    // program, which put "upgraded ×25" in the header above a table showing one
+    // deploy, and rendered a fabricated signature in the Receipt column.
+    const { ingestDeployHistory } = await import("./timeline.js");
+    const history = await ingestDeployHistory(
+      "mainnet",
+      programId,
+      pd,
+      parsed.upgradeAuthority ?? null,
+    );
+    if (!history.total) {
+      log.warn({ programId }, "promote: no mainnet deploy history — leaving on devnet");
+      return false;
+    }
 
-    const evId = inserted[0]?.id;
+    // Profile from the NEWEST mainnet event, so the subject upsert carries
+    // mainnet's current size, hash, authority and upgrade count.
+    const newest = await db
+      .select({ id: schema.events.id })
+      .from(schema.events)
+      .where(
+        and(
+          eq(schema.events.network, "mainnet"),
+          eq(schema.events.programId, programId),
+          eq(schema.events.signature, dh.lastSignature ?? ""),
+        ),
+      );
+    const evId = newest[0]?.id;
     if (!evId) {
-      log.info({ programId }, "promote: mainnet event already on record");
+      log.warn({ programId }, "promote: newest mainnet event not found after ingest");
       return false;
     }
 
@@ -275,6 +283,10 @@ export async function promoteToMainnet(programId: string): Promise<boolean> {
     await identifyStage(evId);
     await classifyStage(evId);
     await scoreStage(evId);
+    log.info(
+      { programId, events: history.total, inserted: history.inserted },
+      "promote: ingested real mainnet history",
+    );
 
     // The devnet life becomes history. linkIncubation matches on the program id
     // itself, which is exactly the relationship we just proved by probing.

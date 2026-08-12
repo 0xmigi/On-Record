@@ -313,6 +313,31 @@ a {
   opacity: 0.85;
 }
 
+/* THE RECORD, split per cluster. A program id can hold a deployment on each
+   cluster with a separate life; the heading is what stops a devnet upgrade
+   reading as a mainnet one. */
+.cluster-record + .cluster-record {
+  margin-top: 22px;
+}
+
+.cluster-record-head {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  margin: 0 0 6px;
+}
+
+.cluster-record-net {
+  text-transform: uppercase;
+  font-weight: 600;
+}
+
+/* devnet carries the same accent the cluster banner uses, so "this row is not
+   mainnet" reads the same everywhere on the site */
+.cluster-record-net-devnet {
+  color: var(--accent);
+}
+
 .search-all {
   justify-content: flex-start;
   color: var(--ink-muted);

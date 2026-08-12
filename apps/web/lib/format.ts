@@ -39,7 +39,12 @@ export function timeLeft(iso: string | null | undefined): string {
  *  can cite a transaction. Mirrors SYNTHETIC_SIG_PREFIXES in
  *  apps/ingest/src/timeline.ts (the web talks to the API over HTTP only, so it
  *  deliberately doesn't depend on @onrecord/core). */
-const SYNTHETIC_SIG_PREFIXES = ["backfill:", "poll:", "incubation-backfill:"];
+const SYNTHETIC_SIG_PREFIXES = [
+  "backfill:",
+  "poll:",
+  "incubation-backfill:",
+  "counterpart-promote:",
+];
 
 /** True when a "signature" is one of our capture ids rather than a real on-chain
  *  signature. Those must never be rendered as a verifiable receipt — linking one

@@ -397,10 +397,20 @@ export interface DeployHistory {
  *  IS the program's deploy history. Oldest signature = the original deploy; a count
  *  above 1 means the program has been upgraded. Cheap and exact, unlike walking the
  *  program id's (usage-flooded) history. */
-export async function getDeployHistory(
+/** Every signature that has touched a ProgramData account, newest first.
+ *
+ *  ProgramData is only written by deploy/upgrade/set-authority instructions, so
+ *  this list IS the program's deploy history — one entry per code change, with
+ *  a real, citable transaction behind each.
+ *
+ *  getDeployHistory has always walked exactly this list and then kept only the
+ *  first, the last and the count. Exposing it is what lets the record show a
+ *  program's real history on a cluster we never polled live, instead of a
+ *  single synthetic row standing in for twenty-five upgrades. */
+export async function listDeployHistory(
   network: Network,
   programDataAddress: string,
-): Promise<DeployHistory> {
+): Promise<{ signatures: SignatureInfo[]; truncated: boolean }> {
   const PAGES = 5;
   const all: SignatureInfo[] = [];
   let before: string | undefined;
@@ -414,6 +424,14 @@ export async function getDeployHistory(
     // a full final page means there is more history we didn't walk
     if (page === PAGES - 1) truncated = true;
   }
+  return { signatures: all, truncated };
+}
+
+export async function getDeployHistory(
+  network: Network,
+  programDataAddress: string,
+): Promise<DeployHistory> {
+  const { signatures: all, truncated } = await listDeployHistory(network, programDataAddress);
   if (!all.length) {
     return {
       firstDeployAt: null,

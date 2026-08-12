@@ -105,6 +105,95 @@ function Ext({ href, text }: { href: string; text: string }) {
   );
 }
 
+/** One cluster's slice of the record: a heading that says which cluster and how
+ *  that deployment stands, then its events.
+ *
+ *  A program id can hold a deployment on each cluster, and they have separate
+ *  lives — different builds, different upgrade counts, often a hot key on devnet
+ *  and a multisig on mainnet. Listing both in one table meant the only way to
+ *  tell a devnet row from a mainnet one was to know that devnet runs tens of
+ *  millions of slots ahead. */
+function ClusterRecord({
+  cluster,
+  events,
+  program,
+  isPrimary,
+}: {
+  cluster: string;
+  events: ApiProgramDetail["events"];
+  program: ApiProgramDetail;
+  isPrimary: boolean;
+}) {
+  const cp = program.counterpart;
+  const upgrades = events.filter((e) => e.type === "upgrade").length;
+  const last = events[0]?.blockTime ?? null;
+
+  // The summary only states what this cluster's own evidence supports. On the
+  // primary that is the profiled row; on the other side it is the probe, and
+  // when there is no probe it says so rather than implying "live".
+  const bits: string[] = [];
+  if (isPrimary) {
+    bits.push(program.closed ? "closed" : "live");
+    if (program.authorityClass === "none") bits.push("immutable");
+    else if (program.multisig?.threshold)
+      bits.push(`squads ${program.multisig.threshold}/${program.multisig.members ?? "?"}`);
+    else if (program.authorityClass) bits.push(program.authorityClass.replace("_", " "));
+  } else if (cp?.network === cluster) {
+    bits.push(cp.present ? (cp.alive === false ? "closed there" : "live") : "not deployed");
+    if (cp.authorityClass) bits.push(cp.authorityClass.replace("_", " "));
+  } else {
+    bits.push("not probed");
+  }
+  if (upgrades > 0) bits.push(`${upgrades} upgrade${upgrades === 1 ? "" : "s"} on record`);
+  if (last) bits.push(`last ${relativeTime(last)}`);
+
+  return (
+    <div className="cluster-record">
+      <p className="cluster-record-head">
+        <span className={`cluster-record-net cluster-record-net-${cluster}`}>on {cluster}</span>
+        <span className="cell-dim"> · {bits.join(" · ")}</span>
+      </p>
+      <div className="table-scroll">
+        <table className="record-table">
+          <thead>
+            <tr>
+              <th scope="col">Event</th>
+              <th scope="col">When</th>
+              <th scope="col">Detail</th>
+              <th scope="col">Receipt</th>
+            </tr>
+          </thead>
+          <tbody>
+            {events.map((ev) => (
+              <tr key={ev.id}>
+                <td>
+                  <span className={`evt-tag evt-${ev.type}`}>{EVENT_LABELS[ev.type]}</span>
+                </td>
+                <td className="cell-dim">{ev.blockTime ? relativeTime(ev.blockTime) : "—"}</td>
+                <td>slot {ev.slot.toLocaleString("en-US")}</td>
+                <td>
+                  {isSyntheticSignature(ev.signature) ? (
+                    // observed by polling account state — there is no
+                    // transaction to cite, and a fake link is worse than none
+                    <span
+                      className="cell-dim"
+                      title="Observed from ProgramData account state — no transaction signature to cite"
+                    >
+                      —
+                    </span>
+                  ) : (
+                    <Ext href={orbTx(ev.signature)} text={truncateAddress(ev.signature)} />
+                  )}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
 /** A bare external link that shows an icon instead of a label — the tooltip
  *  carries the meaning. Keeps the header sub-row clean when there are several. */
 function IconLink({ href, label, children }: { href: string; label: string; children: ReactNode }) {
@@ -212,9 +301,19 @@ export default async function ProgramDossierPage({
   // The record is an event log: what happened to THIS program id, with a
   // receipt for each. Sibling deploys are other programs existing, not events
   // here — they belong in Lineage, which owns "related programs".
-  const timeline = [...program.events].sort(
-    (a, b) => (b.blockTime ? Date.parse(b.blockTime) : 0) - (a.blockTime ? Date.parse(a.blockTime) : 0),
-  );
+  //
+  // Split by cluster, never mixed. One program id can carry a deployment on
+  // each cluster, and a single chronological list gave no way to tell a devnet
+  // upgrade from a mainnet one — the slot number was the only clue, which asks
+  // the reader to know that devnet runs ~80M slots ahead. Primary cluster
+  // first, because that is the deployment the rest of the page describes.
+  const byRecency = (a: { blockTime: string | null }, b: { blockTime: string | null }) =>
+    (b.blockTime ? Date.parse(b.blockTime) : 0) - (a.blockTime ? Date.parse(a.blockTime) : 0);
+  const eventsOn = (net: string) =>
+    program.events.filter((e) => e.network === net).sort(byRecency);
+  const primaryEvents = eventsOn(program.network);
+  const otherCluster = program.network === "mainnet" ? "devnet" : "mainnet";
+  const otherEvents = eventsOn(otherCluster);
 
   const mutability =
     program.authorityClass === "none"
@@ -706,51 +805,26 @@ export default async function ProgramDossierPage({
           )}
         </Row>
       </div>
-      {timeline.length > 0 ? (
+      {primaryEvents.length > 0 || otherEvents.length > 0 ? (
         <>
           <SectionHeader
             title="The record"
-            info="Every loader event on this program id — deploy, upgrade, authority change, close — with the transaction that proves it. Related programs live under Lineage."
+            info="Every loader event on this program id — deploy, upgrade, authority change, close — with the transaction that proves it. The same program id can be deployed to both clusters, so each cluster's history is listed separately. Related programs live under Lineage."
           />
-          <div className="table-scroll">
-            <table className="record-table">
-              <thead>
-                <tr>
-                  <th scope="col">Event</th>
-                  <th scope="col">When</th>
-                  <th scope="col">Detail</th>
-                  <th scope="col">Receipt</th>
-                </tr>
-              </thead>
-              <tbody>
-                {timeline.map((ev) => (
-                  <tr key={ev.id}>
-                    <td>
-                      <span className={`evt-tag evt-${ev.type}`}>{EVENT_LABELS[ev.type]}</span>
-                    </td>
-                    <td className="cell-dim">
-                      {ev.blockTime ? relativeTime(ev.blockTime) : "—"}
-                    </td>
-                    <td>slot {ev.slot.toLocaleString("en-US")}</td>
-                    <td>
-                      {isSyntheticSignature(ev.signature) ? (
-                        // observed by polling account state — there is no
-                        // transaction to cite, and a fake link is worse than none
-                        <span
-                          className="cell-dim"
-                          title="Observed from ProgramData account state — no transaction signature to cite"
-                        >
-                          —
-                        </span>
-                      ) : (
-                        <Ext href={orbTx(ev.signature)} text={truncateAddress(ev.signature)} />
-                      )}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+          <ClusterRecord
+            cluster={program.network}
+            events={primaryEvents}
+            program={program}
+            isPrimary
+          />
+          {otherEvents.length > 0 ? (
+            <ClusterRecord
+              cluster={otherCluster}
+              events={otherEvents}
+              program={program}
+              isPrimary={false}
+            />
+          ) : null}
         </>
       ) : null}
     </>
