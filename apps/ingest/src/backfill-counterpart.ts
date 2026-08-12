@@ -1,4 +1,4 @@
-import { and, eq, isNull, sql } from "drizzle-orm";
+import { and, eq, isNull, or, sql } from "drizzle-orm";
 import { db, schema, logger, rpc, type Network } from "@onrecord/core";
 import { otherNetwork, recordCounterpart } from "./counterpart.js";
 
@@ -86,6 +86,12 @@ async function markAbsent(ids: string[], other: Network): Promise<void> {
 async function run(): Promise<void> {
   for (const home of ["devnet", "mainnet"] as Network[]) {
     const other = otherNetwork(home);
+    // A counterpart pointing at the subject's OWN cluster is self-evidently
+    // broken — "also on mainnet" on a mainnet row — and it is what an older
+    // build produced by trusting the caller's network instead of the row's.
+    // Selecting those alongside the never-probed rows means the corruption
+    // heals on the next run rather than waiting for someone to spot it.
+    const selfPointing = sql`${schema.subjects.facts} #>> '{counterpart,network}' = ${schema.subjects.network}`;
     const rows = await db
       .select({ id: schema.subjects.id })
       .from(schema.subjects)
@@ -95,7 +101,7 @@ async function run(): Promise<void> {
           : and(
               eq(schema.subjects.kind, "program"),
               eq(schema.subjects.network, home),
-              isNull(sql`${schema.subjects.facts} -> 'counterpart'`),
+              or(isNull(sql`${schema.subjects.facts} -> 'counterpart'`), selfPointing)!,
             ),
       )
       .limit(limit ?? 100_000);
