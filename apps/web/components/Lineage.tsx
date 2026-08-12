@@ -1,6 +1,6 @@
 import Link from "next/link";
 import type { ApiCluster, ApiProgramDetail } from "@/lib/api";
-import { dayStamp, shortUrl, truncateAddress } from "@/lib/format";
+import { dayStamp, formatBytes, shortUrl, truncateAddress } from "@/lib/format";
 import { Chevron } from "@/components/Chevron";
 
 /**
@@ -304,8 +304,10 @@ export function Lineage({
   const selfAt = program.firstDeployAt ?? program.deployedAt;
   const selfIndex = shown.filter((r) => ts(r.deployedAt) <= ts(selfAt)).length;
 
-  // nothing to show — one dim line, no empty card
-  if (!all.length && !program.incubation && !family) {
+  // nothing to show — one dim line, no empty card. A live counterpart on the
+  // other cluster still counts as something: it is the same program, not a
+  // relative, and it is the fact a reader of a devnet page most needs.
+  if (!all.length && !program.incubation && !family && !program.counterpart?.present) {
     const pct = program.nearest ? Math.round(program.nearest.similarity * 100) : null;
     return (
       <div className="lineage-panel lineage-none">
@@ -388,7 +390,72 @@ export function Lineage({
         <ol className="lin-list">{rows}</ol>
         {family ? <FamilyLine family={family} /> : null}
         {program.incubation ? <DevnetLine inc={program.incubation} /> : null}
+        {program.counterpart?.present ? (
+          <CounterpartLine
+            cp={program.counterpart}
+            programId={program.id}
+            home={program.network}
+            homeSize={program.sizeBytes}
+          />
+        ) : null}
       </div>
     </details>
+  );
+}
+
+/** The same program id, running on the other cluster right now.
+ *
+ *  Not lineage in the bytecode sense — it is the same address, which is a
+ *  stronger statement than any similarity score. It sits here because this is
+ *  the panel that answers "where else does this exist", and because a devnet
+ *  page that stays silent about a live mainnet deployment is the specific bug
+ *  this shipped to fix. */
+function CounterpartLine({
+  cp,
+  programId,
+  home,
+  homeSize,
+}: {
+  cp: NonNullable<ApiProgramDetail["counterpart"]>;
+  programId: string;
+  home: string;
+  homeSize: number | null;
+}) {
+  // Size is read off ProgramData on each cluster, so a mismatch means the two
+  // clusters are running different builds — the thing a reader must know
+  // before carrying any figure from this page across.
+  const differentBuild = cp.sizeBytes != null && homeSize != null && cp.sizeBytes !== homeSize;
+  // On a mainnet page this is ongoing staging, not lineage: the team shipped
+  // and kept a devnet deployment alive. `incubation` above covers what happened
+  // BEFORE launch; this is what is still happening.
+  const label = cp.network === "devnet" ? "still on devnet" : "also on mainnet";
+  return (
+    <p className="lin-meta">
+      <span className="lin-meta-label">{label}</span>
+      <span
+        title={`Same program id, probed directly on ${cp.network} ${dayStamp(cp.checkedAt)}. Everything else on this page describes ${home}.`}
+      >
+        {cp.alive === false ? "present but closed there" : "live"}
+        {cp.deployedAt ? (
+          <span className="cell-dim"> · last deployed {dayStamp(cp.deployedAt)}</span>
+        ) : null}
+        {differentBuild ? (
+          <span className="cell-dim"> · different build ({formatBytes(cp.sizeBytes)})</span>
+        ) : null}
+        {cp.authorityClass ? (
+          <span className="cell-dim"> · authority {cp.authorityClass}</span>
+        ) : null}
+      </span>
+      <span className="cell-dim"> · </span>
+      <a
+        className="receipt-link"
+        href={`https://explorer.solana.com/address/${programId}${cp.network === "devnet" ? "?cluster=devnet" : ""}`}
+        target="_blank"
+        rel="noopener noreferrer"
+      >
+        same address on {cp.network}
+        <span aria-hidden="true"> ↗</span>
+      </a>
+    </p>
   );
 }

@@ -354,6 +354,10 @@ export interface ApiProgram {
   /** devnet→mainnet lineage: this program was seen incubating on devnet before
    *  its mainnet debut (fingerprint/authority match against the watchlist) */
   incubation: ApiIncubation | null;
+  /** the same program address on the OTHER cluster, probed directly.
+   *  null = never probed (unknown), which is NOT the same as probed-and-absent
+   *  (`present: false`). See ApiCounterpart. */
+  counterpart: ApiCounterpart | null;
   /** Squads governance decoded from the deploy tx ("2-of-3") */
   multisig: ApiMultisig | null;
   // --- momentum: sampled on-chain activity (methodology v0) ---
@@ -394,6 +398,43 @@ export interface ApiIncubation {
   // how the mainnet program was tied to devnet: bytecode (sha256/tlsh),
   // upgrade authority, or the same program address on both clusters
   matchedOn: "sha256" | "tlsh" | "authority" | "program_id";
+}
+
+/** The same program address on the OTHER cluster, probed directly rather than
+ *  inferred. Stored on subjects.facts by counterpart.ts.
+ *
+ *  Why this exists: subjects.id is the program address alone, so a program
+ *  deployed to both clusters is ONE row and `network` is whichever cluster
+ *  wrote last. That made a `DEVNET` badge read as "this is a devnet program"
+ *  when it only ever meant "the last loader event we saw was on devnet" — 106
+ *  of 6,573 devnet rows (1.6%) are live on mainnet right now, and said nothing
+ *  about it. `incubation` cannot cover this: it is computed on a mainnet event,
+ *  so a program we have only ever seen on devnet never triggers it.
+ *
+ *  `present: false` is a real answer (probed, not there). A null counterpart is
+ *  the unknown. Absent, zero and unknown stay distinct. */
+export interface ApiCounterpart {
+  /** the cluster this describes — always the opposite of the subject's own */
+  network: Network;
+  /** does an executable program account exist at this address there */
+  present: boolean;
+  /** ProgramData is a live image, not a husk left by a close. Null when the
+   *  program is absent, or immutable (loader v1/v2 has no ProgramData). */
+  alive: boolean | null;
+  /** ProgramData length there — differs from ours whenever the two clusters
+   *  are running different builds, which is the point of showing it */
+  sizeBytes: number | null;
+  /** last deploy slot on that cluster, from the ProgramData header */
+  deployedSlot: number | null;
+  /** ISO time of that slot, when it could be resolved */
+  deployedAt: string | null;
+  /** upgrade authority THERE. The one that matters: devnet routinely runs a
+   *  hot key while mainnet sits behind a multisig, and reporting the devnet
+   *  authority as if it governed the money is the worst error available. */
+  authority: string | null;
+  authorityClass: AuthorityClass | null;
+  /** ISO — when this probe ran. Presence is a fact with a timestamp. */
+  checkedAt: string;
 }
 
 /** Nearest bytecode relative, resolved for display (SPEC §7). */

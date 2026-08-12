@@ -304,6 +304,15 @@ a {
   flex: none;
 }
 
+/* "devnet + mainnet" — the same program id running on both clusters. Muted
+   rather than accent-red: it is a completeness fact, not an alarm, and the
+   red badge already means "you are not looking at mainnet". */
+.net-badge-both {
+  color: var(--fg-muted, var(--fg));
+  border-color: var(--rule, currentColor);
+  opacity: 0.85;
+}
+
 .search-all {
   justify-content: flex-start;
   color: var(--ink-muted);

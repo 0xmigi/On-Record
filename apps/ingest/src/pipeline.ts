@@ -44,6 +44,7 @@ import {
 import { refreshInterest } from "./interest.js";
 import { tryExtractReferences } from "./refs.js";
 import { linkIncubation } from "./incubation.js";
+import { recordCounterpart } from "./counterpart.js";
 import { recordGenesisDeploy } from "./timeline.js";
 
 type EventRow = typeof schema.events.$inferSelect;
@@ -550,6 +551,13 @@ export async function classifyStage(eventId: string): Promise<void> {
       { probeChain: event.type === "deploy" },
     );
   }
+
+  // Cross-cluster presence. Incubation above answers "was this on devnet
+  // first?", which only ever fires on a mainnet event. A devnet row asks the
+  // opposite question — "is this live on mainnet right now?" — and nothing
+  // answered it, so 106 devnet rows were shown as devnet-only while running on
+  // mainnet. One probe, both directions, never fatal to the stage.
+  await recordCounterpart(network, event.programId);
 
   await enqueue("score", { eventId });
   log.info({ eventId, ms: Date.now() - start, band: enrichment.classification?.band, outcome: "ok" }, "done");

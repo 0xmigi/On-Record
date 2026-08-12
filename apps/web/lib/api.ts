@@ -112,6 +112,21 @@ export interface ApiProgram {
     lastDevnetAt?: string | null; // ISO — last devnet deploy/upgrade
     matchedOn: "sha256" | "tlsh" | "authority" | "program_id";
   } | null;
+  // The same program id on the OTHER cluster, probed directly. null = never
+  // probed (unknown), which is NOT `present: false` (probed, nothing there).
+  // On a mainnet subject this is ongoing devnet staging; on a devnet subject a
+  // live mainnet counterpart means the row should have been promoted.
+  counterpart: {
+    network: "mainnet" | "devnet";
+    present: boolean;
+    alive: boolean | null; // false = present but closed there
+    sizeBytes: number | null; // differs when the clusters run different builds
+    deployedSlot: number | null;
+    deployedAt: string | null; // ISO
+    authority: string | null;
+    authorityClass: "none" | "squads" | "program" | "hot_wallet" | null;
+    checkedAt: string; // ISO — presence is a fact with a timestamp
+  } | null;
   // Squads governance decoded from the deploy tx
   multisig: {
     address: string;

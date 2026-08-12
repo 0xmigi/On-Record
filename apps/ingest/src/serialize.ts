@@ -102,6 +102,7 @@ export function serializeProgram(
     repoUrlRoot?: string;
     codeMatch?: ApiProgram["codeMatch"];
     incubation?: ApiProgram["incubation"];
+    counterpart?: ApiProgram["counterpart"];
     multisig?: ApiProgram["multisig"];
     activity?: { t: number; c: number }[];
     momentum?: { txns24h: number; growth: number | null; txns24hTruncated?: boolean };
@@ -169,6 +170,8 @@ export function serializeProgram(
     nearest: nearestOf(facts, row.sizeBytes, nearestMeta),
     codeMatch: facts.codeMatch ?? null,
     incubation: facts.incubation ?? null,
+    // never probed stays null; probed-and-absent is a stored `present: false`
+    counterpart: facts.counterpart ?? null,
     multisig: facts.multisig ?? null,
     // radar rows carry a 48h sparkline; the detail serializer widens to 7d
     activity: facts.activity?.slice(-48) ?? null,

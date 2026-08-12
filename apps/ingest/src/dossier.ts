@@ -11,6 +11,7 @@ import {
   sharedPathCount,
   pathOverlap,
   isSourceRelative,
+  type ApiCounterpart,
   type EventEnrichment,
   type Network,
   type SecurityTxt,
@@ -205,6 +206,7 @@ export async function buildDossier(programId: string, opts: DossierOptions = {})
       devnetProgramId?: string;
       matchedOn?: string;
     };
+    counterpart?: ApiCounterpart;
     multisig?: { threshold?: number; members?: number; version?: string; address?: string };
     momentum?: { txns24h: number };
     closedAt?: string;
@@ -349,6 +351,46 @@ export async function buildDossier(programId: string, opts: DossierOptions = {})
         "someone tested before shipping — a real signal, and matched on bytecode similarity not on the id",
       ),
     );
+  }
+  // Cross-cluster presence. The header of this document names ONE cluster
+  // because subjects.id is the address alone — so a program running on both
+  // reads as whichever cluster we saw last. Anything written above (size,
+  // authority, upgrade count) describes THIS cluster only, and the counterpart
+  // line is what stops that being read as the whole picture.
+  if (facts.counterpart) {
+    const cp = facts.counterpart;
+    if (!cp.present) {
+      out.push(
+        fact(
+          `Also on ${cp.network}`,
+          "no — probed, nothing at this address",
+          `direct getAccountInfo on ${cp.network} at ${cp.checkedAt.slice(0, 10)}`,
+        ),
+      );
+    } else {
+      const parts = [cp.alive === false ? "present but CLOSED there" : "yes — live"];
+      if (cp.sizeBytes != null) parts.push(`${fmtBytes(cp.sizeBytes)} there`);
+      if (cp.deployedAt) parts.push(`last deployed ${cp.deployedAt.slice(0, 10)}`);
+      if (cp.authorityClass) parts.push(`authority ${cp.authorityClass}`);
+      out.push(
+        fact(
+          `Also on ${cp.network}`,
+          parts.join(" · "),
+          `same program id, probed directly on ${cp.network} at ${cp.checkedAt.slice(0, 10)} — ` +
+            `every OTHER line in this section describes ${row.network} only`,
+        ),
+      );
+      if (cp.authorityClass && cp.authorityClass !== row.authorityClass) {
+        out.push(
+          fact(
+            "Authority differs by cluster",
+            `${row.network}: ${row.authorityClass ?? "unknown"} · ${cp.network}: ${cp.authorityClass}`,
+            "a devnet hot key and a mainnet multisig on one program id are not the same fact — " +
+              "never report the devnet class as if it governed the money",
+          ),
+        );
+      }
+    }
   }
   out.push(fact("SHA-256", row.sha256, "bytecode hash"));
 
@@ -667,6 +709,14 @@ export async function buildDossier(programId: string, opts: DossierOptions = {})
     );
   if (facts.securityTxt)
     gaps.push("Everything in security.txt is self-declared by whoever deployed the binary. It names an entity; it does not prove one.");
+  if (!facts.counterpart)
+    gaps.push(
+      `The other cluster was never probed for this address, so whether the same program id also runs on ${row.network === "mainnet" ? "devnet" : "mainnet"} is unknown — not "no". Everything above describes ${row.network} only.`,
+    );
+  else if (facts.counterpart.present)
+    gaps.push(
+      `This program id is live on ${facts.counterpart.network} too, and the two clusters can be running different builds. Size, authority, upgrade count and traffic above are ${row.network} figures — do not carry them across.`,
+    );
   if (row.noveltyBand === "clone")
     gaps.push("Banded as a clone: near-identical code exists on record. Check the sibling before calling anything here new.");
   gaps.push("Purpose is never recoverable from bytecode. Anything about intent is inference and must be labelled as such.");

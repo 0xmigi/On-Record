@@ -6,6 +6,7 @@ import { BackToRadar } from "@/components/BackToRadar";
 import { CopyAddress } from "@/components/CopyAddress";
 import { ProgramAvatar } from "@/components/ProgramAvatar";
 import { VerifiedBadge } from "@/components/VerifiedBadge";
+import { ClusterBadge } from "@/components/ClusterBadge";
 import { IdlViewer } from "@/components/IdlViewer";
 import { UsageBars } from "@/components/UsageBars";
 import { DossierTabs, type DossierTab } from "@/components/DossierTabs";
@@ -969,6 +970,7 @@ export default async function ProgramDossierPage({
               <div className="dossier-deployed" title={`${verb} ${cluster} · ${relativeTime(first)}`}>
                 <CalendarIcon />
                 <span className="dossier-deployed-date">{dayStamp(first)}</span>
+                <ClusterBadge program={program} />
               </div>
             );
           })()}

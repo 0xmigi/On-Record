@@ -2,6 +2,7 @@ import Link from "next/link";
 import { CopyAddress } from "@/components/CopyAddress";
 import { ProgramAvatar } from "@/components/ProgramAvatar";
 import { VerifiedBadge } from "@/components/VerifiedBadge";
+import { ClusterBadge } from "@/components/ClusterBadge";
 import { SignalHex } from "@/components/SignalHex";
 import { Sparkline } from "@/components/Sparkline";
 import type { ApiProgram } from "@/lib/api";
@@ -98,6 +99,17 @@ export function ProgramRow({
     program.upgradeCount > 0
       ? `×${program.upgradeCount}${program.upgradeCountTruncated ? "+" : ""}`
       : null;
+  // The card and the dossier must date the program the same way. `deployedAt`
+  // is when the poller FIRST SAW it, `firstDeployAt` is the original on-chain
+  // deploy from ProgramData history — and the dossier header has always used
+  // the latter. On a program we caught mid-life the two are far apart (GLAM
+  // Protocol: "deployed 12d ago" on the card, "25 Aug 2025" on its page), and
+  // the card was the one making the program look new.
+  const deployedAt = program.firstDeployAt ?? program.deployedAt;
+  const deployedTitle =
+    program.firstDeployAt && program.firstDeployAt !== program.deployedAt
+      ? `First deployed on chain ${program.firstDeployAt.slice(0, 10)} (ProgramData history). First seen by the radar ${program.deployedAt?.slice(0, 10) ?? "unknown"}.`
+      : "When this program first went on record";
 
   return (
     <article className="radar-row">
@@ -115,11 +127,7 @@ export function ProgramRow({
             <span className="radar-name">{program.name}</span>
           ) : null}
           {program.verified ? <VerifiedBadge size={13} /> : null}
-          {showNetwork && program.network === "devnet" ? (
-            <span className="net-badge" title="Deployed on devnet, not mainnet">
-              devnet
-            </span>
-          ) : null}
+          {showNetwork ? <ClusterBadge program={program} /> : null}
           <CopyAddress
             value={program.id}
             display={truncateAddress(program.id)}
@@ -152,10 +160,10 @@ export function ProgramRow({
             On the upgrades stream the code change leads instead (that's what
             the list is sorted by) and the deploy date trails it. */}
         <div className="radar-ident radar-indent">
-          <span className="radar-when">
+          <span className="radar-when" title={deployedTitle}>
             {leadsWithUpgrade
               ? `upgraded ${relativeTime(program.lastEventAt)}`
-              : `deployed ${relativeTime(program.deployedAt)}`}
+              : `deployed ${relativeTime(deployedAt)}`}
           </span>
           {upgradeTimes ? (
             <span className="cluster-note" title="Times this program has been re-deployed">
@@ -163,8 +171,8 @@ export function ProgramRow({
             </span>
           ) : null}
           {leadsWithUpgrade ? (
-            <span className="cluster-note" title="When this program first went on record">
-              deployed {relativeTime(program.deployedAt)}
+            <span className="cluster-note" title={deployedTitle}>
+              deployed {relativeTime(deployedAt)}
             </span>
           ) : null}
           {program.hasSecurityTxt ? (
