@@ -7,7 +7,6 @@ import {
   tlshDistance,
   fetchAnchorIdl,
   readUsage,
-  noteRequested,
   buildVersionDiffs,
   looksLikeProgramId,
   escapeLike,
@@ -403,8 +402,6 @@ export function registerPublicRoutes(app: FastifyInstance): void {
     if (!rows[0]) return reply.code(404).send({ error: "unknown program" });
     const network = rows[0].network as "mainnet" | "devnet";
     const stored = await readUsage(req.params.id);
-    // tell the sweep this program is worth keeping fresh
-    await noteRequested(req.params.id, network).catch(() => {});
     return { usage: stored.value, sampledAt: stored.sampledAt?.toISOString() ?? null };
   });
 

@@ -7,7 +7,6 @@ import {
   primitiveTier,
   readTraffic,
   sampleTrafficNow,
-  noteRequested,
   sharedPathCount,
   pathOverlap,
   isSourceRelative,
@@ -257,8 +256,6 @@ export async function buildDossier(programId: string, opts: DossierOptions = {})
       const stored = mode === "live" ? await sampleTrafficNow(network, row.id) : await readTraffic(row.id);
       traffic = stored.value;
       trafficAt = stored.sampledAt;
-      // asking for this program moves it up the sweep's queue next time
-      if (mode === "stored") await noteRequested(row.id, network).catch(() => {});
     } catch (err) {
       trafficError = String(err);
     }
