@@ -40,6 +40,13 @@ const EVENT_LABELS: Record<ApiRawEvent["type"], string> = {
   close: "CLOSE",
 };
 
+/** The one caveat that made the diff untrustworthy, in the two sentences it
+ *  actually needs. It used to be printed as a paragraph under the table, where
+ *  it was the longest text on the page and read as an apology on programs whose
+ *  diffs were fine. It belongs on the marker that raised it. */
+const CAPPED_TIP =
+  "We store a capped, alphabetical list of instruction names per version, so names fall off the end as others are added. On this version the additions are real and the removals are withheld.";
+
 const MAX_CHIPS = 12;
 const MAX_PATHS = 8;
 
@@ -108,8 +115,9 @@ function Detail({ t, said }: { t: TrailEntry; said: Statement[] }) {
           <Chips names={t.instructions?.added ?? []} tone="add" />
           <Chips names={t.instructions?.removed ?? []} tone="rem" />
           {t.instructions?.removedHidden ? (
-            <span className="trail-more">
-              {t.instructions.removedHidden} apparent removal{t.instructions.removedHidden > 1 ? "s" : ""} withheld — see below
+            <span className="trail-more tip" data-tip={CAPPED_TIP} tabIndex={0} role="note">
+              {t.instructions.removedHidden} apparent removal
+              {t.instructions.removedHidden > 1 ? "s" : ""} withheld
             </span>
           ) : null}
         </div>
@@ -158,7 +166,13 @@ function Detail({ t, said }: { t: TrailEntry; said: Statement[] }) {
       {/* one line, not a banner — the full reasoning is in the title and in
           the footnote under the table, so it doesn't shout on every row */}
       {(t.flags ?? []).map((f) => (
-        <p key={f.label} className={`trail-note trail-note-${f.type}`} title={f.detail}>
+        <p
+          key={f.label}
+          className={`trail-note trail-note-${f.type} tip`}
+          data-tip={f.detail}
+          tabIndex={0}
+          role="note"
+        >
           <span className="trail-note-mark">{f.type === "unreliable" ? "!" : "~"}</span>
           {f.label}
         </p>
@@ -191,9 +205,6 @@ export function RecordTable({
       return next;
     });
 
-  const capped = events.some((e) =>
-    (trail[String(e.slot)]?.flags ?? []).some((f) => f.type === "unreliable"),
-  );
   // No versions at all for this program? Drop the column rather than printing
   // "not captured" down the whole table. That covers a program we genuinely
   // hold nothing for AND the window where the web deploys ahead of the API —
@@ -256,7 +267,13 @@ export function RecordTable({
                           <span className="trail-plus">+{said.length - 1} more</span>
                         ) : null}
                         {(t.flags ?? []).some((f) => f.type === "unreliable") ? (
-                          <span className="trail-warn" title="Part of this diff is not trustworthy">
+                          <span
+                            className="trail-warn tip"
+                            data-tip={CAPPED_TIP}
+                            tabIndex={0}
+                            role="note"
+                            aria-label={CAPPED_TIP}
+                          >
                             !
                           </span>
                         ) : null}
@@ -293,15 +310,6 @@ export function RecordTable({
           })}
         </tbody>
       </table>
-      {/* said once, under the table, instead of shouted on every affected row */}
-      {capped ? (
-        <p className="trail-footnote">
-          <span className="trail-note-mark">!</span>
-          This program has more instructions than we store per version, and the stored list is
-          alphabetical — so names drop off the end as others are added. On the rows marked{" "}
-          <span className="trail-note-mark">!</span>, additions are real but removals are withheld.
-        </p>
-      ) : null}
     </div>
   );
 }

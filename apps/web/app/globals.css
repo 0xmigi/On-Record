@@ -588,8 +588,15 @@ a {
   color: var(--ink-faint);
   cursor: help;
 }
-/* styled tooltip — reliable on hover/focus, replaces the dead native title */
-.info-dot::after {
+/* styled tooltip — reliable on hover/focus, replaces the dead native title.
+ * `.tip` is the same affordance without the circle, for markers that already
+ * have their own shape (the record table's `!`, its inline notes). */
+.tip {
+  position: relative;
+  cursor: help;
+}
+.info-dot::after,
+.tip::after {
   content: attr(data-tip);
   position: absolute;
   top: calc(100% + 8px);
@@ -618,8 +625,17 @@ a {
   display: none;
 }
 .info-dot:hover::after,
-.info-dot:focus-visible::after {
+.info-dot:focus-visible::after,
+.tip:hover::after,
+.tip:focus-visible::after {
   display: block;
+}
+/* a note sitting low in an expanded row would hang its tooltip off the bottom
+ * of the panel — put those above the text instead */
+.trail-note.tip::after,
+.trail-more.tip::after {
+  top: auto;
+  bottom: calc(100% + 8px);
 }
 
 .page-lede {
@@ -5458,18 +5474,6 @@ a.copy-addr-text:hover {
   color: var(--accent);
 }
 .trail-note-suppressed .trail-note-mark {
-  color: var(--ink-faint);
-}
-
-.trail-footnote {
-  display: flex;
-  gap: 8px;
-  max-width: 70ch;
-  margin-top: 12px;
-  padding: 0 2px;
-  font-family: var(--font-sans);
-  font-size: 12px;
-  line-height: 1.5;
   color: var(--ink-faint);
 }
 
