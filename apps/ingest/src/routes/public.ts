@@ -8,6 +8,7 @@ import {
   fetchAnchorIdl,
   readUsage,
   noteRequested,
+  buildVersionDiffs,
   looksLikeProgramId,
   escapeLike,
   lineageSizeWindow,
@@ -405,6 +406,19 @@ export function registerPublicRoutes(app: FastifyInstance): void {
     // tell the sweep this program is worth keeping fresh
     await noteRequested(req.params.id, network).catch(() => {});
     return { usage: stored.value, sampledAt: stored.sampledAt?.toISOString() ?? null };
+  });
+
+  // --- what changed between versions -------------------------------------
+  // Pure DB read over the per-version descriptions already in events.enrichment.
+  // No RPC, no bytecode, so it costs nothing per request and needs no sweep.
+  app.get<{ Params: { id: string } }>("/api/programs/:id/versions", async (req, reply) => {
+    const rows = await db
+      .select({ id: schema.subjects.id })
+      .from(schema.subjects)
+      .where(eq(schema.subjects.id, req.params.id));
+    if (!rows[0]) return reply.code(404).send({ error: "unknown program" });
+    const versions = await buildVersionDiffs(req.params.id);
+    return { versions };
   });
 
   // --- the LLM dossier: one program as plain text, with provenance ---------

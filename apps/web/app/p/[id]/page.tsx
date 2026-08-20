@@ -10,6 +10,7 @@ import { ClusterBadge } from "@/components/ClusterBadge";
 import { IdlViewer } from "@/components/IdlViewer";
 import { UsageBars } from "@/components/UsageBars";
 import { DossierTabs, type DossierTab } from "@/components/DossierTabs";
+import { RecordTable, type Trail } from "@/components/RecordTable";
 import { SignalHex } from "@/components/SignalHex";
 import { Sparkline } from "@/components/Sparkline";
 import { deriveSignals } from "@/lib/signals";
@@ -29,6 +30,8 @@ import {
   fetchIdl,
   fetchProgram,
   fetchUsage,
+  fetchVersions,
+  versionsBySlot,
   orbAddress,
   orbTx,
   type ApiProgramDetail,
@@ -118,11 +121,13 @@ function ClusterRecord({
   events,
   program,
   isPrimary,
+  trail,
 }: {
   cluster: string;
   events: ApiProgramDetail["events"];
   program: ApiProgramDetail;
   isPrimary: boolean;
+  trail: Trail;
 }) {
   const cp = program.counterpart;
   const upgrades = events.filter((e) => e.type === "upgrade").length;
@@ -153,43 +158,7 @@ function ClusterRecord({
         <span className={`cluster-record-net cluster-record-net-${cluster}`}>on {cluster}</span>
         <span className="cell-dim"> · {bits.join(" · ")}</span>
       </p>
-      <div className="table-scroll">
-        <table className="record-table">
-          <thead>
-            <tr>
-              <th scope="col">Event</th>
-              <th scope="col">When</th>
-              <th scope="col">Detail</th>
-              <th scope="col">Receipt</th>
-            </tr>
-          </thead>
-          <tbody>
-            {events.map((ev) => (
-              <tr key={ev.id}>
-                <td>
-                  <span className={`evt-tag evt-${ev.type}`}>{EVENT_LABELS[ev.type]}</span>
-                </td>
-                <td className="cell-dim">{ev.blockTime ? relativeTime(ev.blockTime) : "—"}</td>
-                <td>slot {ev.slot.toLocaleString("en-US")}</td>
-                <td>
-                  {isSyntheticSignature(ev.signature) ? (
-                    // observed by polling account state — there is no
-                    // transaction to cite, and a fake link is worse than none
-                    <span
-                      className="cell-dim"
-                      title="Observed from ProgramData account state — no transaction signature to cite"
-                    >
-                      —
-                    </span>
-                  ) : (
-                    <Ext href={orbTx(ev.signature)} text={truncateAddress(ev.signature)} />
-                  )}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+      <RecordTable events={events} trail={trail} />
     </div>
   );
 }
@@ -290,7 +259,12 @@ export default async function ProgramDossierPage({
   // that shipped one later stayed false forever and the tab confidently claimed
   // no IDL existed (horse-fun had 22 instructions published). The IDL endpoint
   // does a live on-chain lookup, so the flag buys nothing but staleness.
-  const [idl, storedUsage] = await Promise.all([fetchIdl(id), fetchUsage(id)]);
+  const [idl, storedUsage, versions] = await Promise.all([
+    fetchIdl(id),
+    fetchUsage(id),
+    fetchVersions(id),
+  ]);
+  const trail = versionsBySlot(versions);
   const usage = storedUsage.usage;
   const usageSampledAt = storedUsage.sampledAt;
 
@@ -816,6 +790,7 @@ export default async function ProgramDossierPage({
             events={primaryEvents}
             program={program}
             isPrimary
+            trail={trail}
           />
           {otherEvents.length > 0 ? (
             <ClusterRecord
@@ -823,6 +798,7 @@ export default async function ProgramDossierPage({
               events={otherEvents}
               program={program}
               isPrimary={false}
+              trail={trail}
             />
           ) : null}
         </>

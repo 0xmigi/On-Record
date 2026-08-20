@@ -508,6 +508,40 @@ export async function fetchUsage(id: string): Promise<StoredUsage> {
   return { usage: res?.usage ?? null, sampledAt: res?.sampledAt ?? null };
 }
 
+/** one entry per distinct version of a program, oldest first */
+export interface ApiVersionDiff {
+  kind: "genesis" | "change" | "rebuild" | "suppressed";
+  sha256: string;
+  slot: string;
+  signature: string | null;
+  blockTime: string | null;
+  sizeBytes: number;
+  sizeDelta?: number;
+  counts?: { instructions: number; sourcePaths: number };
+  instructions?: { added: string[]; removed: string[]; removedHidden?: number };
+  accounts?: { added: string[]; removed: string[] };
+  sourcePaths?: { added: string[]; removed: string[] };
+  integrations?: { added: string[]; removed: string[] };
+  capabilities?: { added: string[]; removed: string[] };
+  flags?: { type: "suppressed" | "unreliable"; label: string; detail: string }[];
+}
+
+/** version diffs keyed by the slot of the event that produced them */
+export type VersionTrail = Record<string, ApiVersionDiff>;
+
+export function versionsBySlot(versions: ApiVersionDiff[]): VersionTrail {
+  const out: VersionTrail = {};
+  for (const v of versions) out[v.slot] = v;
+  return out;
+}
+
+export async function fetchVersions(id: string): Promise<ApiVersionDiff[]> {
+  const res = await getJson<{ versions: ApiVersionDiff[] }>(
+    `/api/programs/${encodeURIComponent(id)}/versions`
+  );
+  return res?.versions ?? [];
+}
+
 export async function fetchFunnel(
   window?: string,
   network?: Network

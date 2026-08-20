@@ -5244,3 +5244,347 @@ a.copy-addr-text:hover {
     max-width: none;
   }
 }
+
+/* ============================================================
+   THE RECORD — what changed between upgrades.
+
+   Rows in the record table expand to the delta for that version.
+   Additions read green, removals red, and anything the pipeline
+   can't stand behind gets a flag instead of a claim. Same tokens
+   as the rest of the site; no shadows, no new colours.
+   ============================================================ */
+
+/* Capped, or a long summary widens the table and pushes Receipt off-screen.
+   Qualified with .record-table because `.record-table td { white-space: nowrap }`
+   is more specific than a lone class and silently wins otherwise — which is
+   exactly how the sentences ended up forcing a horizontal scroll. */
+.record-table td.trail-cell {
+  white-space: normal;
+  min-width: 24ch;
+  max-width: 46ch;
+}
+.record-table td.trail-detail-cell {
+  white-space: normal;
+}
+
+.trail-toggle {
+  display: flex;
+  align-items: flex-start;
+  gap: 7px;
+  width: 100%;
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  color: var(--ink);
+  text-align: left;
+  cursor: pointer;
+}
+.trail-toggle:hover {
+  color: var(--accent);
+}
+.trail-toggle:hover .chev {
+  color: var(--accent);
+}
+.trail-toggle:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+  border-radius: 2px;
+}
+/* Aligned to the first line, not the block: `align-self: center` parked the
+   chevron in the vertical middle of a two-line summary, floating away from the
+   text it belongs to. The margin optically centres it on line one. */
+.trail-toggle .chev {
+  width: 13px;
+  height: 13px;
+  transform: rotate(-90deg);
+  align-self: flex-start;
+  margin-top: 3px;
+}
+.trail-toggle .chev-open {
+  transform: rotate(0deg);
+}
+.trail-toggle.trail-rebuild,
+.trail-toggle.trail-suppressed {
+  color: var(--ink-faint);
+}
+
+.trail-sum {
+  min-width: 0;
+}
+
+/* Inline, not right-aligned: the cell is shrink-to-fit, so there is no free
+   space for margin-left:auto to push into and the delta silently vanished. */
+.trail-delta {
+  padding-left: 3px;
+  color: var(--ink-faint);
+  font-size: 11px;
+  white-space: nowrap;
+}
+.trail-delta::before {
+  content: "· ";
+}
+.trail-delta.up {
+  color: var(--green);
+}
+.trail-delta.down {
+  color: var(--red);
+}
+
+.trail-warn {
+  display: inline-block;
+  flex: none;
+  margin-left: 6px;
+  vertical-align: -2px;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  border: 1px solid var(--accent);
+  color: var(--accent);
+  font-size: 10px;
+  line-height: 12px;
+  text-align: center;
+  align-self: center;
+}
+
+.trail-row-open td {
+  border-bottom-color: transparent;
+}
+.record-table .trail-detail-row td {
+  white-space: normal;
+  padding: 0 16px 16px;
+  background: var(--panel-sunk, transparent);
+}
+
+/* The cell spans every column, and a table cell grows to fit its content — so
+   an unconstrained paragraph here widens the whole table and scrolls the
+   record sideways. Cap it at a readable measure and let the text wrap. */
+.trail-detail {
+  display: flex;
+  flex-direction: column;
+  gap: 11px;
+  max-width: 660px;
+  padding: 13px 15px;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+}
+
+.trail-grp {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+.trail-lbl {
+  font-family: var(--font-sans);
+  font-size: 9.5px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+}
+
+.trail-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+.trail-chip {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  padding: 2px 6px;
+  border-radius: 3px;
+  border: 1px solid transparent;
+  white-space: nowrap;
+}
+.trail-chip-add {
+  color: var(--green);
+  border-color: color-mix(in srgb, var(--green) 26%, transparent);
+  background: color-mix(in srgb, var(--green) 8%, transparent);
+}
+.trail-chip-rem {
+  color: var(--red);
+  border-color: color-mix(in srgb, var(--red) 26%, transparent);
+  background: color-mix(in srgb, var(--red) 8%, transparent);
+}
+.trail-more {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--ink-faint);
+}
+
+.trail-paths {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.trail-path {
+  display: flex;
+  gap: 7px;
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  color: var(--ink-soft);
+}
+.trail-sign {
+  flex: none;
+  width: 8px;
+  font-weight: 600;
+}
+.trail-path-add .trail-sign {
+  color: var(--green);
+}
+.trail-path-rem .trail-sign {
+  color: var(--red);
+}
+.trail-path-rem span:last-child {
+  text-decoration: line-through;
+  text-decoration-color: color-mix(in srgb, var(--red) 55%, transparent);
+}
+
+/* A note, not a banner. The full reasoning lives in the title attribute and
+   in one footnote under the table, so a caveat that applies to five rows is
+   stated once at full length and abbreviated on each row. */
+.trail-note {
+  display: flex;
+  gap: 7px;
+  font-family: var(--font-sans);
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--ink-soft);
+  cursor: help;
+}
+.trail-note-mark {
+  flex: none;
+  font-family: var(--font-mono);
+  font-weight: 700;
+  color: var(--accent);
+}
+.trail-note-suppressed .trail-note-mark {
+  color: var(--ink-faint);
+}
+
+.trail-footnote {
+  display: flex;
+  gap: 8px;
+  max-width: 70ch;
+  margin-top: 12px;
+  padding: 0 2px;
+  font-family: var(--font-sans);
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--ink-faint);
+}
+
+/* the sentence the version earned, and its supporting cast */
+.trail-said-add {
+  color: var(--ink);
+}
+.trail-said-remove {
+  color: var(--ink);
+}
+.trail-said-list {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  margin: 0;
+  padding-left: 16px;
+  font-family: var(--font-sans);
+  font-size: 13px;
+}
+.trail-plus {
+  margin-left: 7px;
+  font-size: 11px;
+  color: var(--ink-faint);
+}
+.trail-size {
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  color: var(--ink-faint);
+}
+.trail-size.up {
+  color: var(--green);
+}
+.trail-size.down {
+  color: var(--red);
+}
+
+/* ── mobile: the record stops being a table ──────────────────
+   Five columns cannot survive a phone. Below 760px each event becomes a
+   stacked card: the summary leads, the metadata drops to a single dim line
+   underneath, and the header row goes away entirely. */
+@media (max-width: 760px) {
+  .trail-table,
+  .trail-table tbody,
+  .trail-table tr,
+  .trail-table td {
+    display: block;
+    width: 100%;
+  }
+  .trail-table thead {
+    display: none;
+  }
+  .trail-table tr {
+    padding: 13px 15px;
+    border-bottom: 1px solid var(--border);
+  }
+  .trail-table tr:last-child {
+    border-bottom: 0;
+  }
+  .trail-table td {
+    padding: 0;
+    border: 0;
+    white-space: normal;
+  }
+  /* wrap, so the summary can claim a full row and the metadata share one */
+  .trail-table tr:not(.trail-detail-row) {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+  }
+  /* summary first — it is the reason the row exists */
+  .record-table td.trail-cell {
+    order: -1;
+    flex: 0 0 100%;
+    max-width: none;
+    margin-bottom: 6px;
+    font-size: 13px;
+  }
+  /* event tag, age, slot and receipt collapse into one quiet line */
+  .trail-table td:nth-child(1),
+  .trail-table td:nth-child(2),
+  .trail-table td:nth-child(3),
+  .trail-table td:nth-child(5) {
+    flex: 0 0 auto;
+    width: auto;
+    font-size: 11px;
+    color: var(--ink-faint);
+  }
+  .trail-table .trail-detail-row {
+    flex: 0 0 100%;
+  }
+  .trail-table td:nth-child(2)::before,
+  .trail-table td:nth-child(3)::before,
+  .trail-table td:nth-child(5)::before {
+    content: "·";
+    padding: 0 6px;
+    color: var(--border-strong);
+  }
+  .trail-table .trail-detail-row {
+    padding: 0 15px 14px;
+  }
+  .trail-detail {
+    max-width: none;
+  }
+  /* Every row here is an UPGRADE — the tag is noise repeated 30 times. Keep it
+     only for the events that are actually worth distinguishing (deploy,
+     authority change, close), and drop the leading separator with it. */
+  .trail-row-upgrade td:nth-child(1) {
+    display: none;
+  }
+  .trail-row-upgrade td:nth-child(2)::before {
+    content: none;
+  }
+  /* an em-dash meaning "no transaction to cite" is desktop-table bookkeeping;
+     on a card it is just a dangling separator */
+  .trail-table td.trail-no-receipt {
+    display: none;
+  }
+}
