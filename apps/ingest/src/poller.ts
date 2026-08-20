@@ -50,6 +50,11 @@ export interface PollResult {
  *  throws in the probe) — without a cap it would wedge the cursor forever. */
 const MAX_STAGE_ATTEMPTS = 5;
 
+/** Slack given to the server-side `changedSinceSlot` filter — ~35 minutes at
+ *  2.5 slots/sec. Costs a few extra rows per tick and buys the incremental
+ *  filter being wrong without anything going missing. */
+const CHANGED_SINCE_MARGIN_SLOTS = 5_000;
+
 /** Stages that end an event's pipeline. Mirrors the queue path: fingerprint
  *  failures and spam skips don't enqueue a next hop, so they're terminal here
  *  too (the old inline loop blindly ran identify/classify after them). */
@@ -99,8 +104,20 @@ export async function pollDeploys(opts: PollOptions): Promise<PollResult> {
   // fresh cohort — devnet's full header/ref sets OOM the 256MB container.
   // No slice here: already-ingested headers above the cursor cost one conflict
   // check each, and the cursor needs to see the whole span to advance past them.
-  const fresh = (await enumerateProgramData(network, { minSlot: sinceSlot + 1 }))
-    .sort((a, b) => a.deployedSlot - b.deployedSlot); // oldest→newest so the cursor walks forward
+  //
+  // `changedSinceSlot` asks the server to skip accounts untouched since then,
+  // which is what keeps a two-minute tick to a handful of rows. It is an
+  // optimisation, never the filter: `minSlot` against the header's own deploy
+  // slot is what decides what is fresh. The margin below is why — if the write
+  // slot an index reports ever lags the deploy slot we read, a program dropped
+  // by the server filter would be a deploy that never lands, and a silent hole
+  // in the record is the one failure mode here that nobody would notice.
+  const fresh = (
+    await enumerateProgramData(network, {
+      minSlot: sinceSlot + 1,
+      changedSinceSlot: Math.max(0, sinceSlot + 1 - CHANGED_SINCE_MARGIN_SLOTS),
+    })
+  ).sort((a, b) => a.deployedSlot - b.deployedSlot); // oldest→newest so the cursor walks forward
 
   if (!fresh.length) {
     logger.info({ network, sinceSlot, currentSlot }, "poll: no new programs");

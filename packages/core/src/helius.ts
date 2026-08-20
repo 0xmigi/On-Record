@@ -178,13 +178,24 @@ export interface ProgramAccountRef {
 
 type RawProgramAccount = { pubkey: string; account: { data: [string, string] } };
 
-/** Loader account enumeration, strategy per network (measured 2026-07-13):
- *  - mainnet: monolithic V1 call. The result is small (~19k ProgramData) and
- *    V2 would scan-page across the loader's ENTIRE owned set — millions of
- *    leftover deploy buffers — taking minutes to return almost nothing.
- *  - devnet: paginated V2 (1 credit / page). ~400k ProgramData accounts;
- *    the V1 one-shot response would be enormous, while the owned set is
- *    nearly all matches so V2 finishes in ~41 pages.
+/** Loader account enumeration — paginated V2 on both networks.
+ *
+ *  Mainnet used the monolithic V1 call until 2026-08-20, when Helius began
+ *  refusing it outright: "Request deprioritized due to number of accounts
+ *  requested." Every poll tick failed, which stops the radar seeing deploys at
+ *  all, so there is no V1 path left here. (Small V1 calls against ordinary
+ *  programs still work — the refusal is about the size of the owned set, and
+ *  the loader's is the biggest on the chain.)
+ *
+ *  V2 scan-pages: `limit` bounds how many owned accounts the server WALKS, not
+ *  how many it returns, so a page can come back empty and still have more after
+ *  it. Terminate on a null paginationKey and nothing else — measured against
+ *  the mainnet loader, page 1 of 4 returned zero matches (2026-08-20).
+ *
+ *  `changedSinceSlot` is the reason this stays cheap: it drops rows the server
+ *  would otherwise serialize for us, so an incremental caller pays for the walk
+ *  (~4 pages on mainnet) instead of ~19k header rows every tick.
+ *
  *  Rows STREAM through `onAccount` — callers keep only their compact parse.
  *  Accumulating 400k raw base64 rows OOM'd the Railway container (256MB heap)
  *  on 2026-07-13; don't reintroduce an accumulator here. */
@@ -192,18 +203,12 @@ async function programAccountsPaged(
   network: Network,
   config: Record<string, unknown>,
   onAccount: (row: RawProgramAccount) => void,
+  opts: { changedSinceSlot?: number } = {},
 ): Promise<void> {
-  if (network === "mainnet") {
-    const result = await rpc<RawProgramAccount[]>(network, "getProgramAccounts", [
-      LOADER_PROGRAM_ID,
-      config,
-    ]);
-    for (const row of result) onAccount(row);
-    return;
-  }
   let paginationKey: string | null = null;
   do {
     const page: Record<string, unknown> = { ...config, limit: 10_000 };
+    if (opts.changedSinceSlot != null) page.changedSinceSlot = opts.changedSinceSlot;
     if (paginationKey) page.paginationKey = paginationKey;
     const result: { accounts?: RawProgramAccount[]; paginationKey?: string | null } = await rpc(
       network,
@@ -255,7 +260,7 @@ export async function enumerateProgramAccounts(
  *  and every caller slot-filters anyway. */
 export async function enumerateProgramData(
   network: Network,
-  opts: { minSlot?: number } = {},
+  opts: { minSlot?: number; changedSinceSlot?: number } = {},
 ): Promise<ProgramDataHeader[]> {
   const programDataTag = base58Encode(Buffer.from([3, 0, 0, 0]));
   const out: ProgramDataHeader[] = [];
@@ -275,6 +280,7 @@ export async function enumerateProgramData(
       if (opts.minSlot != null && parsed.deployedSlot < opts.minSlot) return;
       out.push({ programDataAddress: row.pubkey, ...parsed });
     },
+    { changedSinceSlot: opts.changedSinceSlot },
   );
   return out;
 }
