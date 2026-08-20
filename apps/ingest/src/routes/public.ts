@@ -35,6 +35,7 @@ import { computeWindowFunnel, windowHoursFor } from "../funnel.js";
 import { buildDossier } from "../dossier.js";
 import { edgesFor } from "../refs.js";
 import { composeReply } from "../reply.js";
+import { cardFacts, cardHtml } from "../card.js";
 
 /** How old a usage sample may be before an opener pays to refresh it. A week:
  *  instruction mix moves slowly, and every surface renders the measurement time
@@ -504,6 +505,17 @@ export function registerPublicRoutes(app: FastifyInstance): void {
       return { ...draft, chars: draft.text.length };
     },
   );
+
+  // --- the share card: the same facts, drawn ------------------------------
+  // HTML rather than an image: rendering is a headless screenshot, which the
+  // API container has no business doing on a request path. This endpoint is
+  // the capture surface — a renderer (local, or the bot's own worker) points
+  // Chrome at it and posts the PNG. See card.ts.
+  app.get<{ Params: { id: string } }>("/api/programs/:id/card.html", async (req, reply) => {
+    const facts = await cardFacts(req.params.id);
+    if (!facts) return reply.code(404).send({ error: "unknown program" });
+    return reply.type("text/html; charset=utf-8").send(cardHtml(facts));
+  });
 
   // --- what changed between versions -------------------------------------
   // Pure DB read over the per-version descriptions already in events.enrichment.
