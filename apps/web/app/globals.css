@@ -5362,6 +5362,12 @@ a.copy-addr-text:hover {
   text-align: center;
   align-self: center;
 }
+/* `~` is not a warning — a naming-convention change is us explaining our own
+ * data, so it must not carry the accent that means "don't trust this". */
+.trail-warn-suppressed {
+  border-color: var(--ink-faint);
+  color: var(--ink-faint);
+}
 
 .trail-row-open td {
   border-bottom-color: transparent;

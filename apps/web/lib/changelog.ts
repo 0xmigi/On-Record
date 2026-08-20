@@ -81,23 +81,63 @@ function plural(word: string): string {
   // participles and adjectives aren't countable: `liquidate_isolated`
   if (/ed$/.test(word)) return word;
   if (PARTICLES.has(word) || ADJECTIVES.has(word)) return word;
-  // acronyms (adl, twap) read worse pluralised
-  if (word.length <= 3 && !/[aeiou]{1,}/.test(word.slice(1))) return word;
+  // acronyms and tickers read worse pluralised (adl, usdc — "migrate to usdcs"
+  // was the giveaway). A vowel only in first position is the tell.
+  if (word.length <= 4 && !/[aeiou]/.test(word.slice(1))) return word;
   if (/(x|z|ch|sh)$/.test(word)) return `${word}es`;
   if (/[^aeiou]y$/.test(word)) return `${word.slice(0, -1)}ies`;
   return `${word}s`;
 }
 
-/** `place_trigger_order` → "place trigger orders" */
-export function phrase(instruction: string): string {
-  const t = tokens(instruction);
-  if (!t.length) return instruction;
+/** A handler name that has been versioned in place. `fill_borrow_order_v2` is
+ *  the same capability as `fill_borrow_order` to anyone reading the sentence,
+ *  and "v2" in prose reads as a typo — the version belongs in the detail panel,
+ *  not the summary. */
+const VERSION_TOKEN = /^v\d+$/;
+
+/** `place_trigger_order_v2` → { verb: "place", object: "trigger orders" } */
+function split(instruction: string): { verb: string; object: string } {
+  const t = tokens(instruction).filter((x) => !VERSION_TOKEN.test(x));
+  if (!t.length) return { verb: instruction, object: "" };
   const verb = VERBS[t[0]] ?? t[0];
   const rest = t.slice(1);
-  if (!rest.length) return verb;
+  if (!rest.length) return { verb, object: "" };
   // pluralise the object so it reads as a capability, not one call
-  const obj = [...rest.slice(0, -1), plural(rest[rest.length - 1])].join(" ");
-  return `${verb} ${obj}`;
+  return { verb, object: [...rest.slice(0, -1), plural(rest[rest.length - 1])].join(" ") };
+}
+
+/** `place_trigger_order` → "place trigger orders" */
+export function phrase(instruction: string): string {
+  const { verb, object } = split(instruction);
+  return object ? `${verb} ${object}` : verb;
+}
+
+/** How many verbs one object is worth before the slash chain stops helping. */
+const MAX_VERBS = 3;
+
+/**
+ * Handlers that act on the same object are ONE capability to a reader.
+ *
+ * `fill_borrow_order_v2` + `set_borrow_order_v2` was two thirds of the row's
+ * sentence and said one thing twice; it is now "fill/set borrow orders". Only
+ * names with an object group — `initialize` and `close` share the empty object
+ * and are obviously not the same capability.
+ */
+export function groupPhrases(names: string[]): string[] {
+  const groups: { object: string; verbs: string[] }[] = [];
+  for (const n of names) {
+    const { verb, object } = split(n);
+    const hit = object ? groups.find((g) => g.object === object) : undefined;
+    if (hit) {
+      if (!hit.verbs.includes(verb)) hit.verbs.push(verb);
+    } else {
+      groups.push({ object, verbs: [verb] });
+    }
+  }
+  return groups.map((g) => {
+    const verbs = g.verbs.slice(0, MAX_VERBS).join("/");
+    return g.object ? `${verbs} ${g.object}` : verbs;
+  });
 }
 
 // ── capabilities → plain english ────────────────────────────────────
@@ -115,9 +155,31 @@ export type Delta = {
   sourcePaths?: { added: string[]; removed: string[] };
   integrations?: { added: string[]; removed: string[] };
   capabilities?: { added: string[]; removed: string[] };
+  /** not described in words, but it decides whether "no change to the
+   *  interface" is a true thing to say */
+  accounts?: { added: string[]; removed: string[] };
 };
 
 export type Statement = { text: string; tone: "add" | "remove" | "neutral" };
+
+/** Files every Rust/Anchor program has, whose names describe the language's
+ *  structure rather than the author's work. Naming one of these reports
+ *  boilerplate as news. */
+const BOILERPLATE_FILES = new Set([
+  "types", "type", "lib", "mod", "state", "states", "error", "errors",
+  "util", "utils", "constants", "consts", "instruction", "instructions",
+  "processor", "entrypoint", "macros", "traits", "helpers", "context",
+  "contexts", "accounts", "events", "seeds",
+  // SDK and encoding files that land in `src/` with no directory to judge
+  // them by, so the vendor-directory check above lets them through: they are
+  // the toolchain's names, not the author's ("New code for bs58 and logger").
+  "bs58", "borsh", "serde", "pubkey", "account_info", "program_error",
+  "sysvar", "clock", "rent", "logger", "log", "msg", "keccak", "secp256k1",
+]);
+
+function changedAny(d?: { added: string[]; removed: string[] }): boolean {
+  return !!(d?.added.length || d?.removed.length);
+}
 
 /** joins with commas and a trailing "and", capping the list */
 function list(items: string[], max: number): string {
@@ -148,21 +210,36 @@ export function describe(d: Delta, opts: { max?: number } = {}): Statement[] {
 
   // 2. what it can do now / can no longer do
   if (d.instructions?.added.length)
-    out.push({ text: `Can now ${list(d.instructions.added.map(phrase), 3)}`, tone: "add" });
+    out.push({ text: `Can now ${list(groupPhrases(d.instructions.added), 2)}`, tone: "add" });
   if (d.instructions?.removed.length)
-    out.push({ text: `Dropped the ability to ${list(d.instructions.removed.map(phrase), 3)}`, tone: "remove" });
+    out.push({
+      text: `Dropped the ability to ${list(groupPhrases(d.instructions.removed), 2)}`,
+      tone: "remove",
+    });
 
   // 3. capabilities — only the gain reads as news
   for (const c of d.capabilities?.added ?? []) {
     if (CAPS[c]) out.push({ text: capitalise(CAPS[c]), tone: "add" });
   }
 
-  // 4. author's own new source files, only when nothing better was found
+  // 4. author's own new source files, only when nothing better was found —
+  //    and only the ones that name something. Every Rust program has a
+  //    types.rs; "New code for types" was the least informative sentence the
+  //    page could print, and it printed it often.
   if (!out.length) {
-    const added = (d.sourcePaths?.added ?? []).filter(isProgramPath);
-    if (added.length) {
-      const names = added.map((p) => p.split("/").pop()!.replace(/\.rs$/, "").replace(/_/g, " "));
-      out.push({ text: `New code for ${list(names, 3)}`, tone: "add" });
+    const mine = (d.sourcePaths?.added ?? []).filter(isProgramPath);
+    const named = mine
+      .map((p) => p.split("/").pop()!.replace(/\.rs$/, ""))
+      .filter((n) => !BOILERPLATE_FILES.has(n.toLowerCase()));
+    if (named.length) {
+      out.push({ text: `New code for ${list(named.map((n) => n.replace(/_/g, " ")), 2)}`, tone: "add" });
+    } else if (mine.length && !d.instructions?.removedHidden && !changedAny(d.accounts)) {
+      // files were added, but all of them are boilerplate: nothing touched an
+      // instruction, an integration, a capability or an account, and nothing
+      // was withheld. That silence is a fact — say it instead of naming
+      // types.rs to fill the row. (A version with no author files at all never
+      // reaches here; the table's own counting fallback covers it.)
+      out.push({ text: "Rebuilt — no change to the interface", tone: "neutral" });
     }
   }
 

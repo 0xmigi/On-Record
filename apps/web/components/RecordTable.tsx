@@ -40,13 +40,6 @@ const EVENT_LABELS: Record<ApiRawEvent["type"], string> = {
   close: "CLOSE",
 };
 
-/** The one caveat that made the diff untrustworthy, in the two sentences it
- *  actually needs. It used to be printed as a paragraph under the table, where
- *  it was the longest text on the page and read as an apology on programs whose
- *  diffs were fine. It belongs on the marker that raised it. */
-const CAPPED_TIP =
-  "We store a capped, alphabetical list of instruction names per version, so names fall off the end as others are added. On this version the additions are real and the removals are withheld.";
-
 const MAX_CHIPS = 12;
 const MAX_PATHS = 8;
 
@@ -67,7 +60,7 @@ function countSummary(t: TrailEntry): string {
   const f = (t.sourcePaths?.added ?? []).filter(isProgramPath).length;
   if (n) return `${n} instruction${n > 1 ? "s" : ""} changed`;
   if (f) return `${f} source file${f > 1 ? "s" : ""} changed`;
-  return "rebuilt — no visible change";
+  return "rebuilt — no change to the interface";
 }
 
 function Chips({ names, tone }: { names: string[]; tone: "add" | "rem" }) {
@@ -96,6 +89,9 @@ function Detail({ t, said }: { t: TrailEntry; said: Statement[] }) {
   ];
   const shownPaths = paths.slice(0, MAX_PATHS);
   const hasIx = (t.instructions?.added.length ?? 0) + (t.instructions?.removed.length ?? 0) > 0;
+  // the withheld count and the row's `!` describe the same cap — say it in the
+  // same words, which the API writes per program (it carries the real number)
+  const cappedTip = t.flags?.find((f) => f.type === "unreliable")?.detail;
 
   return (
     <div className="trail-detail">
@@ -115,7 +111,7 @@ function Detail({ t, said }: { t: TrailEntry; said: Statement[] }) {
           <Chips names={t.instructions?.added ?? []} tone="add" />
           <Chips names={t.instructions?.removed ?? []} tone="rem" />
           {t.instructions?.removedHidden ? (
-            <span className="trail-more tip" data-tip={CAPPED_TIP} tabIndex={0} role="note">
+            <span className="trail-more tip" data-tip={cappedTip} tabIndex={0} role="note">
               {t.instructions.removedHidden} apparent removal
               {t.instructions.removedHidden > 1 ? "s" : ""} withheld
             </span>
@@ -266,17 +262,23 @@ export function RecordTable({
                         {said.length > 1 ? (
                           <span className="trail-plus">+{said.length - 1} more</span>
                         ) : null}
-                        {(t.flags ?? []).some((f) => f.type === "unreliable") ? (
+                        {/* one marker per flag, and the two mean different
+                            things: `!` is "part of this diff is missing", `~`
+                            is "part of it is cosmetic". A single glyph for both
+                            left the reader unable to tell whether the sentence
+                            they just read was affected. */}
+                        {(t.flags ?? []).map((f) => (
                           <span
-                            className="trail-warn tip"
-                            data-tip={CAPPED_TIP}
+                            key={f.label}
+                            className={`trail-warn trail-warn-${f.type} tip`}
+                            data-tip={f.detail}
                             tabIndex={0}
                             role="note"
-                            aria-label={CAPPED_TIP}
+                            aria-label={f.detail}
                           >
-                            !
+                            {f.type === "unreliable" ? "!" : "~"}
                           </span>
-                        ) : null}
+                        ))}
                       </span>
                     </button>
                   ) : (
