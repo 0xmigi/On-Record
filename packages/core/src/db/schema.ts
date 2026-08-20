@@ -366,3 +366,42 @@ export const activitySamples = pgTable(
     index("activity_samples_requested_idx").on(t.network, t.requestedAt),
   ],
 );
+
+// ---------------------------------------------------------------------------
+// Bot replies — every mention the query bot has seen, and what it said back.
+//
+// One row per mention, including the ones it decided not to answer, because
+// this table IS the cursor: the next sweep asks X for mentions newer than the
+// highest id here. A mention that produced no reply must therefore still be
+// recorded, or it would be re-read forever.
+//
+// It is also the audit trail. The bot posts in Ash's name, so "what did it say,
+// to whom, from which program row, and when" has to survive the post itself —
+// X can be edited or deleted; this cannot.
+// ---------------------------------------------------------------------------
+export const botReplies = pgTable(
+  "bot_replies",
+  {
+    id: text("id").primaryKey(),
+    platform: text("platform").notNull().default("x"),
+    /** the post that asked — unique, so one question gets at most one answer */
+    mentionId: text("mention_id").notNull(),
+    authorHandle: text("author_handle"),
+    mentionText: text("mention_text"),
+    /** null when the mention named no program we hold */
+    programId: text("program_id"),
+    network: text("network"),
+    /** what the composer produced, verbatim */
+    text: text("text"),
+    /** 'pending' (composed, awaiting a human) | 'posted' | 'skipped' | 'failed' */
+    status: text("status").notNull().default("pending"),
+    postedId: text("posted_id"),
+    error: text("error"),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+    postedAt: timestamp("posted_at", { withTimezone: true }),
+  },
+  (t) => [
+    uniqueIndex("bot_replies_mention_idx").on(t.platform, t.mentionId),
+    index("bot_replies_status_idx").on(t.status, t.createdAt),
+  ],
+);

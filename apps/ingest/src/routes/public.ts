@@ -34,6 +34,7 @@ import {
 import { computeWindowFunnel, windowHoursFor } from "../funnel.js";
 import { buildDossier } from "../dossier.js";
 import { edgesFor } from "../refs.js";
+import { composeReply } from "../reply.js";
 
 /** How old a usage sample may be before an opener pays to refresh it. A week:
  *  instruction mix moves slowly, and every surface renders the measurement time
@@ -488,6 +489,21 @@ export function registerPublicRoutes(app: FastifyInstance): void {
       return { usage: stored.value, sampledAt: stored.sampledAt?.toISOString() ?? null, measured: false };
     }
   });
+
+  // --- the reply: one program in a post's worth of characters -------------
+  // What the query bot posts back when somebody asks it about a program, and
+  // the endpoint Ash can eyeball before any of it goes near X. Free — stored
+  // rows only. `?limit=` to see how it reads at a different character budget.
+  app.get<{ Params: { id: string }; Querystring: { limit?: string } }>(
+    "/api/programs/:id/reply",
+    async (req, reply) => {
+      const draft = await composeReply(req.params.id, {
+        limit: req.query.limit ? Number(req.query.limit) : undefined,
+      });
+      if (!draft) return reply.code(404).send({ error: "unknown program" });
+      return { ...draft, chars: draft.text.length };
+    },
+  );
 
   // --- what changed between versions -------------------------------------
   // Pure DB read over the per-version descriptions already in events.enrichment.

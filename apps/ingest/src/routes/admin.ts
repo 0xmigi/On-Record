@@ -15,6 +15,7 @@ import {
 import { addManualWatch } from "@onrecord/enrich";
 import { runVerifiedBackfill } from "../backfill-verified.js";
 import { linkOne, sweepRepoLinks } from "../repo-link.js";
+import { approveReply, pendingReplies } from "../x-bot.js";
 
 // ---------------------------------------------------------------------------
 // Operator levers (SPEC §5). The radar runs itself; these are the controls:
@@ -162,6 +163,43 @@ export async function registerAdminRoutes(app: FastifyInstance): Promise<void> {
           previouslyCheckedAt: facts.repoLinkCheckedAt ?? null,
         },
       };
+    });
+
+    // --- the query bot's review queue -----------------------------------
+    // In draft mode (the default) nothing the bot composes reaches X until a
+    // person reads it here and approves it. The queue shows the mention it is
+    // answering, so an approval is a judgement about a specific exchange and
+    // not a blanket "yes, post things".
+    admin.get("/admin/bot/replies", async () => {
+      const rows = await pendingReplies(50);
+      return rows.map((r) => ({
+        id: r.id,
+        mentionId: r.mentionId,
+        author: r.authorHandle,
+        asked: r.mentionText,
+        programId: r.programId,
+        text: r.text,
+        chars: r.text?.length ?? 0,
+        createdAt: r.createdAt.toISOString(),
+      }));
+    });
+
+    admin.post<{ Params: { id: string } }>("/admin/bot/replies/:id/post", async (req, reply) => {
+      try {
+        const { postedId } = await approveReply(req.params.id);
+        logger.info({ row: req.params.id, postedId }, "bot reply approved and posted");
+        return { ok: true, postedId };
+      } catch (err) {
+        return reply.code(400).send({ error: String(err) });
+      }
+    });
+
+    admin.post<{ Params: { id: string } }>("/admin/bot/replies/:id/skip", async (req) => {
+      await db
+        .update(schema.botReplies)
+        .set({ status: "skipped" })
+        .where(eq(schema.botReplies.id, req.params.id));
+      return { ok: true };
     });
 
     // --- the record of the record ---------------------------------------------

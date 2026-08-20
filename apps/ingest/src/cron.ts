@@ -7,6 +7,7 @@ import { sweepClosed } from "./closed.js";
 import { reclassifyRecent } from "./reclassify.js";
 import { sweepRepoLinks, sweepRepoLiveness } from "./repo-link.js";
 import { sweepVerification, sweepVerifyPending } from "./verify-sweep.js";
+import { sweepMentions } from "./x-bot.js";
 
 // ---------------------------------------------------------------------------
 // Scheduled work (SPEC §10): TVL refresh (6h), a live funnel snapshot (15m),
@@ -50,6 +51,14 @@ export function startCron(): void {
   every(Number(process.env.VERIFY_SWEEP_INTERVAL_MS ?? 6 * 3_600_000), "verify-sweep", async () => {
     await sweepVerification("mainnet");
   });
+  // the query bot: answer mentions on X with what the record holds. Off unless
+  // X_BOT_MODE says otherwise, and `draft` (compose, wait for approval) rather
+  // than `live` until Ash has read a few of them. Costs a database query per
+  // mention — no chain reads, so strangers cannot move the Helius bill.
+  every(Number(process.env.X_BOT_INTERVAL_MS ?? 5 * 60_000), "x-bot", async () => {
+    await sweepMentions();
+  });
+
   // fast path: programs that just deployed AND have an on-chain verification
   // request. Verification lands ~17 minutes after the request on average, so
   // these get a short decaying ladder instead of waiting for the weekly sweep.
