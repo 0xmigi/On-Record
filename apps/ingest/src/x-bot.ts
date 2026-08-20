@@ -1,5 +1,5 @@
 import crypto from "node:crypto";
-import { and, desc, eq, sql } from "drizzle-orm";
+import { and, desc, eq, gte, sql } from "drizzle-orm";
 import { db, schema, logger, newId } from "@onrecord/core";
 import { composeReply, programIdsIn } from "./reply.js";
 
@@ -12,13 +12,16 @@ import { composeReply, programIdsIn } from "./reply.js";
 //
 //   IT NEVER POSTS ANYTHING A MODEL WROTE. The reply comes out of a template
 //   over stored columns (reply.ts). A program's own metadata is attacker-chosen
-//   text, and this account posts as Ash — an LLM in that path is a stranger
-//   with write access to his timeline.
+//   text, and @onrecorddot speaks for the record Ash publishes under — an LLM
+//   in that path is a stranger with posting rights to it.
 //
-//   IT COSTS NOTHING TO ASK. Replies read the database, never the chain, so a
-//   thousand mentions cost a thousand cheap queries rather than a thousand
-//   parsed transactions. (See sample-sweep's removal for what happens when
-//   strangers can move the Helius bill.)
+//   IT COSTS NOTHING TO ASK, AND IT IS CAPPED WHEN IT ANSWERS. Composing reads
+//   the database, never the chain, so Helius cannot be moved by strangers. X
+//   itself is now pay-per-use ($0.015 a post, $0.20 when the post carries a
+//   link — and every reply carries the dossier link), so the answering side has
+//   a hard daily ceiling. A mention cannot cost more than the cap, whoever is
+//   sending them. The sample sweep is the lesson: an unbounded job pointed at
+//   strangers is a bill with no upper limit.
 //
 //   IT DOES NOT POST UNTIL TOLD TO. Three modes: `off`, `draft` (compose,
 //   store, wait for a human to approve), `live` (post immediately). Draft is
@@ -46,6 +49,13 @@ const cfg = () => ({
   accessSecret: process.env.X_ACCESS_SECRET ?? "",
   /** how many mentions one sweep will answer, whatever arrives */
   maxPerSweep: Number(process.env.X_BOT_MAX_PER_SWEEP ?? 10),
+  /** a question older than this gets read and recorded, never answered */
+  maxAgeHours: Number(process.env.X_BOT_MAX_AGE_HOURS ?? 24),
+  /** replies to one account per rolling day — the brake on a bot-to-bot loop */
+  maxPerAuthorDay: Number(process.env.X_BOT_MAX_PER_AUTHOR_DAY ?? 3),
+  /** posts per rolling day, all authors — the brake on the X bill. At $0.20 a
+   *  linked post the default ceiling is $5/day however busy the mentions get. */
+  maxPostsPerDay: Number(process.env.X_BOT_MAX_POSTS_PER_DAY ?? 25),
 });
 
 // --- X API ---------------------------------------------------------------
@@ -55,6 +65,7 @@ interface Mention {
   text: string;
   authorId?: string;
   authorHandle?: string;
+  createdAt?: string;
 }
 
 /** Newest mentions first, everything after `sinceId`. */
@@ -70,7 +81,7 @@ async function fetchMentions(sinceId: string | null): Promise<Mention[]> {
   const res = await fetch(url, { headers: { authorization: `Bearer ${c.bearer}` } });
   if (!res.ok) throw new Error(`x mentions: HTTP ${res.status} ${await res.text()}`);
   const body = (await res.json()) as {
-    data?: { id: string; text: string; author_id?: string }[];
+    data?: { id: string; text: string; author_id?: string; created_at?: string }[];
     includes?: { users?: { id: string; username: string }[] };
   };
   const handles = new Map((body.includes?.users ?? []).map((u) => [u.id, u.username]));
@@ -79,6 +90,7 @@ async function fetchMentions(sinceId: string | null): Promise<Mention[]> {
     text: t.text,
     authorId: t.author_id,
     authorHandle: t.author_id ? handles.get(t.author_id) : undefined,
+    createdAt: t.created_at,
   }));
 }
 
@@ -183,11 +195,40 @@ export async function sweepMentions(): Promise<{ seen: number; drafted: number; 
   let drafted = 0;
   let posted = 0;
 
+  // COLD START. With an empty table there is no cursor, so X hands back the
+  // last 25 mentions — which in `live` mode is 25 replies to conversations that
+  // finished days ago, all at once, the first minute the keys are added. The
+  // first sweep therefore reads the backlog, writes it down, and answers none
+  // of it. From the second sweep on there is a cursor and only new questions
+  // arrive.
+  const coldStart = (await lastMentionId()) === null;
+  if (coldStart && mentions.length) {
+    for (const m of mentions) {
+      await record(m, { status: "skipped", programId: null, text: null, network: null });
+    }
+    logger.info({ seen: mentions.length }, "x bot: cold start — backlog recorded, not answered");
+    return { seen: mentions.length, drafted: 0, posted: 0 };
+  }
+
   for (const m of mentions.slice(0, c.maxPerSweep)) {
     // never answer ourselves — a reply to our own reply is a loop with a
     // character limit
     if (m.authorId && m.authorId === c.userId) {
       await record(m, { status: "skipped", programId: null, text: null, network: null });
+      continue;
+    }
+    // a stale question is not worth an unprompted reply days later
+    const ageHours = m.createdAt ? (Date.now() - Date.parse(m.createdAt)) / 3_600_000 : 0;
+    if (ageHours > c.maxAgeHours) {
+      await record(m, { status: "skipped", programId: null, text: null, network: null });
+      continue;
+    }
+    // and one account cannot pull more than a few answers a day out of it.
+    // Two automated accounts that each answer every mention will talk to each
+    // other until someone notices; this is the thing that stops that.
+    if (m.authorHandle && (await repliesToAuthorToday(m.authorHandle)) >= c.maxPerAuthorDay) {
+      await record(m, { status: "skipped", programId: null, text: null, network: null });
+      logger.info({ author: m.authorHandle }, "x bot: author at daily reply cap");
       continue;
     }
     let outcome;
@@ -202,6 +243,12 @@ export async function sweepMentions(): Promise<{ seen: number; drafted: number; 
     drafted++;
 
     if (c.mode === "live" && outcome.text) {
+      if (await atDailyPostCap(c.maxPostsPerDay)) {
+        // the draft stays pending, so a capped day is a queue to read rather
+        // than an answer nobody got
+        logger.warn({ cap: c.maxPostsPerDay }, "x bot: daily post cap reached, holding drafts");
+        continue;
+      }
       try {
         const id = await postReply(outcome.text, m.id);
         await db
@@ -221,6 +268,35 @@ export async function sweepMentions(): Promise<{ seen: number; drafted: number; 
 
   if (mentions.length) logger.info({ seen: mentions.length, drafted, posted, mode: c.mode }, "x bot: sweep");
   return { seen: mentions.length, drafted, posted };
+}
+
+/** Posts made in the last 24h, across everyone — the spend ceiling. */
+async function atDailyPostCap(cap: number): Promise<boolean> {
+  const [row] = await db
+    .select({ n: sql<number>`count(*)` })
+    .from(schema.botReplies)
+    .where(
+      and(
+        eq(schema.botReplies.status, "posted"),
+        gte(schema.botReplies.postedAt, new Date(Date.now() - 86_400_000)),
+      ),
+    );
+  return Number(row?.n ?? 0) >= cap;
+}
+
+/** How many answers this account has already had out of the bot today. */
+async function repliesToAuthorToday(handle: string): Promise<number> {
+  const [row] = await db
+    .select({ n: sql<number>`count(*)` })
+    .from(schema.botReplies)
+    .where(
+      and(
+        eq(schema.botReplies.authorHandle, handle),
+        eq(schema.botReplies.status, "posted"),
+        gte(schema.botReplies.createdAt, new Date(Date.now() - 86_400_000)),
+      ),
+    );
+  return Number(row?.n ?? 0);
 }
 
 async function record(
