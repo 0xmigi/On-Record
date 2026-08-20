@@ -8,7 +8,7 @@ import { ProgramAvatar } from "@/components/ProgramAvatar";
 import { VerifiedBadge } from "@/components/VerifiedBadge";
 import { ClusterBadge } from "@/components/ClusterBadge";
 import { IdlViewer } from "@/components/IdlViewer";
-import { UsageBars } from "@/components/UsageBars";
+import { UsageSection } from "@/components/UsageSection";
 import { DossierTabs, type DossierTab } from "@/components/DossierTabs";
 import { RecordTable, type Trail } from "@/components/RecordTable";
 import { SignalHex } from "@/components/SignalHex";
@@ -747,11 +747,12 @@ export default async function ProgramDossierPage({
 
   const activityPanel = (
     <>
-      {usage && usage.instructions.length ? (
-        <div style={{ marginBottom: 18 }}>
-          <UsageBars usage={usage} sampledAt={usageSampledAt} compact />
-        </div>
-      ) : null}
+      <UsageSection
+        programId={program.id}
+        initialUsage={usage}
+        initialSampledAt={usageSampledAt}
+        compact
+      />
       <SectionHeader title="Traction" info="Does it actually get used? Accrues over time." />
       <div className="facts-panel">
         {program.momentum ? (
@@ -835,11 +836,7 @@ export default async function ProgramDossierPage({
         title="Interface — the on-chain IDL"
         info="The program's published IDL: every instruction, its accounts, and its types. This is what lets a client decode the program without its source."
       />
-      {usage && usage.instructions.length ? (
-        <div style={{ marginBottom: 18 }}>
-          <UsageBars usage={usage} sampledAt={usageSampledAt} />
-        </div>
-      ) : null}
+      <UsageSection programId={program.id} initialUsage={usage} initialSampledAt={usageSampledAt} />
       <IdlViewer idl={idl} />
       {idlExplainer}
     </>

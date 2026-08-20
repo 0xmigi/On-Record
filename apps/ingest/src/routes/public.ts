@@ -7,6 +7,7 @@ import {
   tlshDistance,
   fetchAnchorIdl,
   readUsage,
+  sampleUsageNow,
   buildVersionDiffs,
   looksLikeProgramId,
   escapeLike,
@@ -14,6 +15,8 @@ import {
   sharedPathCount,
   pathOverlap,
   isSourceRelative,
+  type InstructionUsage,
+  type StoredSample,
   type ApiCluster,
   type ApiCursorPage,
   type ApiProgram,
@@ -31,6 +34,29 @@ import {
 import { computeWindowFunnel, windowHoursFor } from "../funnel.js";
 import { buildDossier } from "../dossier.js";
 import { edgesFor } from "../refs.js";
+
+/** How old a usage sample may be before an opener pays to refresh it. A week:
+ *  instruction mix moves slowly, and every surface renders the measurement time
+ *  next to the counts, so an old sample is honest rather than wrong. */
+const FILL_STALE_MS = Number(process.env.USAGE_FILL_STALE_MS ?? 7 * 24 * 3_600_000);
+/** transactions decoded per measurement (~2 Helius Enhanced calls) */
+const FILL_PARSE = Number(process.env.USAGE_FILL_PARSE ?? 200);
+/** rolling ceiling on measurements per hour, across every program */
+const FILL_MAX_PER_HOUR = Number(process.env.USAGE_FILL_MAX_PER_HOUR ?? 40);
+
+/** one measurement per program at a time — concurrent openers share it */
+const usageInFlight = new Map<string, Promise<StoredSample<InstructionUsage>>>();
+/** start times of the measurements taken in the last hour */
+let fillsThisHour: number[] = [];
+
+/** Claim one slot from the hourly budget, or report that there is none. */
+function spendBudget(): boolean {
+  const cutoff = Date.now() - 3_600_000;
+  fillsThisHour = fillsThisHour.filter((t) => t > cutoff);
+  if (fillsThisHour.length >= FILL_MAX_PER_HOUR) return false;
+  fillsThisHour.push(Date.now());
+  return true;
+}
 
 // ---------------------------------------------------------------------------
 // Public read API (SPEC §7). Self-contained JSON, stable ids, cursor paging.
@@ -389,8 +415,12 @@ export function registerPublicRoutes(app: FastifyInstance): void {
   // Reads the stored sample; it does NOT decode on demand. This used to run a
   // live 400-transaction parse per request — an unauthenticated ~400-credit GET,
   // so the Helius bill scaled with site traffic and ~2,500 requests could empty
-  // a plan. Now the request records interest and the sample sweep spends the
-  // credits within its own cap (sample-sweep.ts).
+  // a plan, and a five-minute sweep that re-measured every program anybody had
+  // ever loaded was worse — it ran at its cap around the clock on an idle site.
+  //
+  // GET is free and never measures: it answers from `activity_samples`. The
+  // measurement happens on POST, and only when a person actually opens the page
+  // (see the fill route below).
   //
   // `sampledAt: null` means nobody has measured it yet, which the UI must show
   // as "not sampled yet" rather than as "no usage" — those are different facts.
@@ -400,9 +430,63 @@ export function registerPublicRoutes(app: FastifyInstance): void {
       .from(schema.subjects)
       .where(eq(schema.subjects.id, req.params.id));
     if (!rows[0]) return reply.code(404).send({ error: "unknown program" });
-    const network = rows[0].network as "mainnet" | "devnet";
     const stored = await readUsage(req.params.id);
     return { usage: stored.value, sampledAt: stored.sampledAt?.toISOString() ?? null };
+  });
+
+  // --- fill: measure this one program, because somebody opened it ----------
+  //
+  // The cache filler. Deliberately POST: Next.js prefetches links by rendering
+  // the page server-side, which is a GET — that is how the old design ended up
+  // treating "this row scrolled past on the feed" as "somebody wants this", and
+  // enrolled 6,000 programs into a paid refresh loop. A prefetch cannot reach
+  // this route; only the client effect that runs after a real navigation does
+  // (UsageSection.tsx), which also excludes every crawler that doesn't run JS.
+  //
+  // Three bounds, because this is the only unauthenticated path that spends:
+  //   stale-only  a sample newer than FILL_STALE_MS is reused as-is. Repeat
+  //               visitors, and everyone after the first, cost nothing.
+  //   one-flight  concurrent openers of the same program share one measurement
+  //               instead of each starting their own.
+  //   budget      a rolling hourly ceiling across all programs. Worst case is
+  //               therefore MAX_PER_HOUR x ~200 credits, whatever happens out
+  //               there — and beyond it the route still answers, from the
+  //               stored row, it just declines to spend.
+  app.post<{ Params: { id: string } }>("/api/programs/:id/usage", async (req, reply) => {
+    const rows = await db
+      .select({ network: schema.subjects.network })
+      .from(schema.subjects)
+      .where(eq(schema.subjects.id, req.params.id));
+    if (!rows[0]) return reply.code(404).send({ error: "unknown program" });
+    const network = rows[0].network as "mainnet" | "devnet";
+    const id = req.params.id;
+
+    const stored = await readUsage(id);
+    const age = stored.sampledAt ? Date.now() - stored.sampledAt.getTime() : Infinity;
+    if (age < FILL_STALE_MS) {
+      return { usage: stored.value, sampledAt: stored.sampledAt?.toISOString() ?? null, measured: false };
+    }
+    // join an existing measurement before touching the budget — the page opens
+    // two sections against the same program, and that is one measurement, not
+    // two slots
+    let flight = usageInFlight.get(id);
+    if (!flight) {
+      if (!spendBudget()) {
+        req.log.warn({ id }, "usage fill: hourly budget spent, serving the stored sample");
+        return { usage: stored.value, sampledAt: stored.sampledAt?.toISOString() ?? null, measured: false };
+      }
+      flight = sampleUsageNow(network, id, { sample: FILL_PARSE }).finally(() => usageInFlight.delete(id));
+      usageInFlight.set(id, flight);
+    }
+    try {
+      const fresh = await flight;
+      return { usage: fresh.value, sampledAt: fresh.sampledAt?.toISOString() ?? null, measured: true };
+    } catch (err) {
+      // a failed measurement must still render the page: hand back whatever was
+      // stored (usually nothing) and let the reader see "not sampled yet"
+      req.log.warn({ id, err: String(err) }, "usage fill failed");
+      return { usage: stored.value, sampledAt: stored.sampledAt?.toISOString() ?? null, measured: false };
+    }
   });
 
   // --- what changed between versions -------------------------------------

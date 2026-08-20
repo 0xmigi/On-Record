@@ -494,8 +494,8 @@ export interface InstructionUsage {
 
 /** Usage as last measured, with the measurement time. `sampledAt: null` means
  *  nobody has sampled this program yet — which the UI must not render as "no
- *  usage". The API no longer decodes on demand (it used to, at ~400 Helius
- *  credits per page view); a background sweep takes the sample. */
+ *  usage". This read never measures: opening the page does that, once a week at
+ *  most, from the client (UsageSection.tsx). */
 export interface StoredUsage {
   usage: InstructionUsage | null;
   sampledAt: string | null;

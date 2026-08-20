@@ -21,8 +21,8 @@ export function UsageBars({
 }: {
   usage: InstructionUsage;
   /** when the sample was taken (ISO). Shown so the reader knows how old these
-   *  counts are — samples are stored and refreshed on a sweep, not measured on
-   *  page load, so "now" is never the right assumption. */
+   *  counts are — a sample is stored and reused for a week, so "now" is never
+   *  the right assumption. */
   sampledAt?: string | null;
   compact?: boolean;
   top?: number;
