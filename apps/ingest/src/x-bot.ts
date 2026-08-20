@@ -95,8 +95,10 @@ async function fetchMentions(sinceId: string | null): Promise<Mention[]> {
 }
 
 /** OAuth 1.0a signature — posting is a user-context action and the app-only
- *  bearer cannot do it. Standard HMAC-SHA1 over the normalised request. */
-function oauthHeader(method: string, url: string): string {
+ *  bearer cannot do it. Standard HMAC-SHA1 over the normalised request.
+ *  Exported so the credentials can be proved against a harmless user-context
+ *  GET; the alternative is finding out whether signing works by posting. */
+export function oauthHeader(method: string, url: string): string {
   const c = cfg();
   const params: Record<string, string> = {
     oauth_consumer_key: c.apiKey,
