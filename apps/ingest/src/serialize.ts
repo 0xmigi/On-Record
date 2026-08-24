@@ -32,6 +32,7 @@ export interface NearestMeta {
   isReference: boolean;
   deployedAt: string | null; // neighbor's first deploy — for the before/after-this hint
   sizeBytes: number | null; // against this program's size — see nearestWeakness()
+  closedAt: string | null; // null = still open — lineage marks the dead ones
 }
 
 /** TLSH distance → display similarity. 0 = identical code, ≥300 = unrelated
@@ -54,6 +55,7 @@ function nearestOf(
     similarity: Math.round(similarityFromDistance(n.distance) * 100) / 100,
     isReference: m?.isReference ?? false,
     deployedAt: m?.deployedAt ?? null,
+    closedAt: m?.closedAt ?? null,
     peersWithin5: n.peersWithin5 ?? null,
     runnerUpSimilarity:
       typeof n.runnerUpDistance === "number"
@@ -194,6 +196,7 @@ export function serializeProgramDetail(
   nearestMeta?: Map<string, NearestMeta>,
   sourceKin: ApiProgramDetail["sourceKin"] = [],
   references: ApiProgramDetail["references"] = { names: [], namedBy: [] },
+  similarityTo: ApiProgramDetail["similarityTo"] = {},
 ): ApiProgramDetail {
   const facts = (row.facts ?? {}) as {
     securityTxt?: SecurityTxt;
@@ -219,6 +222,7 @@ export function serializeProgramDetail(
     events: events.map(serializeEvent),
     neighbors,
     sourceKin,
+    similarityTo,
     references,
     idlInstructions,
     strings,

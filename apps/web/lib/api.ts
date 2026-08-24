@@ -89,6 +89,10 @@ export interface ApiProgram {
     similarity: number; // 0..1
     isReference: boolean; // true = a famous protocol, false = a peer deploy
     deployedAt: string | null; // neighbor's first deploy — for before/after-this direction
+    /** ISO close time, null while open. Optional: an API deployed before this
+     *  field existed omits it, and an unmarked row must then read as "unknown",
+     *  never as "live". */
+    closedAt?: string | null;
     peersWithin5: number | null; // distinct programs within 5 pts — high = generic crowd
     runnerUpSimilarity: number | null; // 2nd-nearest similarity (0..1) — gap = standout
     /** set by the API when this match can't carry a name: "crowd" = many
@@ -223,7 +227,13 @@ export interface ApiProgramDetail extends ApiProgram {
     sharedFiles: number;
     overlap: number;
     deployedAt: string | null;
+    closedAt?: string | null; // ISO close time, null while open
   }[];
+  /** Measured bytecode similarity (0..1) to each program lineage lists.
+   *  Optional: an API deployed before this field existed omits it, and a
+   *  relative outside the size prefilter has no entry — both mean "not
+   *  measured", never zero. */
+  similarityTo?: Record<string, number>;
   /** the reference graph: program ids embedded in this image, and the ones
    *  that embed it. Optional — a program only has edges once it has been
    *  through reference extraction. */
@@ -312,6 +322,7 @@ export interface ApiCluster {
     name: string | null;
     deployedAt: string | null;
     closed: boolean; // ProgramData gutted, rent reclaimed
+    closedAt?: string | null; // ISO — deployedAt→closedAt is how long it lived
   }[];
 }
 

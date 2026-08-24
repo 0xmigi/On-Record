@@ -121,6 +121,7 @@ async function nearestMetaFor(rows: { facts: unknown }[]): Promise<Map<string, N
       firstDeployAt: schema.subjects.firstDeployAt,
       firstSeenAt: schema.subjects.firstSeenAt,
       sizeBytes: schema.subjects.sizeBytes,
+      closedAt: sql<string | null>`${schema.subjects.facts} ->> 'closedAt'`,
     })
     .from(schema.subjects)
     .where(inArray(schema.subjects.id, ids));
@@ -132,6 +133,7 @@ async function nearestMetaFor(rows: { facts: unknown }[]): Promise<Map<string, N
         isReference: Boolean(r.entityKey) || r.verified,
         deployedAt: (r.firstDeployAt ?? r.firstSeenAt)?.toISOString() ?? null,
         sizeBytes: r.sizeBytes,
+        closedAt: r.closedAt,
       },
     ]),
   );
@@ -156,6 +158,7 @@ async function resolveSourceKin(row: {
       sourcePaths: schema.subjects.sourcePaths,
       firstDeployAt: schema.subjects.firstDeployAt,
       firstSeenAt: schema.subjects.firstSeenAt,
+      closedAt: sql<string | null>`${schema.subjects.facts} ->> 'closedAt'`,
     })
     .from(schema.subjects)
     .where(
@@ -178,6 +181,7 @@ async function resolveSourceKin(row: {
         sharedFiles: sharedPathCount(mine, theirs),
         overlap: pathOverlap(mine, theirs),
         deployedAt: (c.firstDeployAt ?? c.firstSeenAt)?.toISOString() ?? null,
+        closedAt: c.closedAt,
       };
     })
     .filter((k) => isSourceRelative(row.crate, row.crate, k.sharedFiles, k.overlap))
@@ -345,6 +349,7 @@ export function registerPublicRoutes(app: FastifyInstance): void {
 
     // nearest bytecode relatives (size ±20% prefilter, TLSH distance)
     const neighbors: { programId: string; distance: number; name: string | null }[] = [];
+    let distanceOf = new Map<string, number>();
     if (row.tlsh && row.sizeBytes) {
       const [lo, hi] = lineageSizeWindow(row.sizeBytes);
       const candidates = await db
@@ -365,6 +370,12 @@ export function registerPublicRoutes(app: FastifyInstance): void {
         if (d !== null) scored.push({ programId: c.programId, distance: d });
       }
       scored.sort((a, b) => a.distance - b.distance);
+      // Lineage renders a similarity figure on every row, and the distance for
+      // every one of those rows is already sitting in `scored` — the route used
+      // to compute the whole size window and then keep five. Hold on to the
+      // ones lineage will actually show instead of making it print a category
+      // where it could print a measurement.
+      distanceOf = new Map(scored.map((c) => [c.programId, c.distance]));
       const top = scored.slice(0, 5);
       const names = top.length
         ? await db
@@ -393,8 +404,39 @@ export function registerPublicRoutes(app: FastifyInstance): void {
     // been through reference extraction, which is why it degrades to empty
     // rather than erroring.
     const references = await edgesFor(row.network as Network, row.id);
+    // The ids lineage puts in the table: bucket siblings, source relatives and
+    // the nearest match. Only their distances are emitted — `scored` covers the
+    // whole size window and dumping it would be a payload, not an answer.
+    const bucketMembers = row.bucketId
+      ? await db
+          .select({ id: schema.subjects.id })
+          .from(schema.subjects)
+          .where(eq(schema.subjects.bucketId, row.bucketId))
+          .limit(200)
+      : [];
+    const listed = new Set<string>([
+      ...bucketMembers.map((m) => m.id),
+      ...sourceKin.map((k) => k.programId),
+    ]);
+    const nearestId = ((row.facts ?? {}) as { nearest?: { id?: string } }).nearest?.id;
+    if (nearestId) listed.add(nearestId);
+    const similarityTo: Record<string, number> = {};
+    for (const id of listed) {
+      const d = distanceOf.get(id);
+      // same span the structural-novelty score uses, so no two surfaces disagree
+      if (d != null) similarityTo[id] = Math.round(Math.max(0, 1 - d / 300) * 100) / 100;
+    }
 
-    return serializeProgramDetail(row, events, neighbors, clusterSize, nearestMeta, sourceKin, references);
+    return serializeProgramDetail(
+      row,
+      events,
+      neighbors,
+      clusterSize,
+      nearestMeta,
+      sourceKin,
+      references,
+      similarityTo,
+    );
   });
 
   // --- a program's full Anchor IDL (the human-readable interface) ----------
@@ -592,6 +634,7 @@ export function registerPublicRoutes(app: FastifyInstance): void {
         name: m.name,
         deployedAt: m.deployedAt ? new Date(m.deployedAt).toISOString() : null,
         closed: m.closedAt != null,
+        closedAt: m.closedAt,
       })),
     };
     return cluster;

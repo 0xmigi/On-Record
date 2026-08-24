@@ -532,7 +532,13 @@ export default async function ProgramDossierPage({
 
   const compositionPanel = (
     <>
-      <SectionHeader title="Lineage" info="Is it new code, or derived from something known?" />
+      {/* MATCH is a measurement, so it mostly explains itself. This says what
+          is being measured, and covers the two cases where a word appears in
+          place of a figure. */}
+      <SectionHeader
+        title="Lineage"
+        info="Every program built from this code, oldest first. MATCH is how much of the compiled bytecode is the same as this program's — 100% is the same image under a different address. LOOKALIKE means the resemblance is generic enough to mean nothing, so no figure is given. SAME SOURCE means the two share a source tree recovered from panic paths in the binary, but the builds are too far apart in size to score."
+      />
       <Lineage program={program} family={family} />
 
       <SectionHeader

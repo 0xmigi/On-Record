@@ -444,6 +444,11 @@ export interface ApiNearest {
   similarity: number; // 0..1, from TLSH distance
   isReference: boolean; // true = registry/verified protocol, false = a peer deploy
   deployedAt: string | null; // neighbor's first deploy (ISO) — for before/after-this direction
+  /** ISO — when this relative's ProgramData was closed, null while it is still
+   *  open. Lineage prints it: an unmarked row reads as a live sibling, and a
+   *  99%-identical program that was gutted hours after deploy is a different
+   *  fact entirely. */
+  closedAt: string | null;
   /** distinct programs within 5 similarity points of this match — high = the match
    *  is generic framework shape (a crowd), not a specific relative */
   peersWithin5: number | null;
@@ -487,7 +492,14 @@ export interface ApiProgramDetail extends ApiProgram {
     sharedFiles: number;
     overlap: number; // 0..1 jaccard over recovered .rs paths
     deployedAt: string | null;
+    /** ISO close time, null while open — see ApiNearest.closedAt */
+    closedAt: string | null;
   }[];
+  /** Measured bytecode similarity (0..1) to each program lineage lists —
+   *  bucket siblings, source relatives, the nearest match. Same TLSH span the
+   *  novelty score uses. Absent for a relative outside the size window, which
+   *  the UI must render as "not measured" rather than as zero. */
+  similarityTo: Record<string, number>;
   /** the reference graph: program ids embedded in this image, and the ones
    *  that embed it. `namedBy` is the more telling direction — who reaches for
    *  this program says more about its place than its own import list does.
@@ -569,6 +581,9 @@ export interface ApiCluster {
     name: string | null;
     deployedAt: string | null;
     closed: boolean;
+    /** ISO close time — deployedAt→closedAt is how long the deploy lived,
+     *  which is the whole story of a redeploy-and-gut family */
+    closedAt: string | null;
   }[];
 }
 

@@ -4663,87 +4663,24 @@ a.copy-addr-text:hover {
   padding: 2px 6px;
   white-space: nowrap;
 }
-/* ---- lineage: one read, then the family as a dated rail ---- */
+/* ---- lineage: the record's table, collapsed into one panel ---- */
 
-/* ---------------- lineage ---------------- */
-
-/* One record per relative: date, id, relation — three columns sized to their
- * content and packed left. Stretching them across the panel left a void the
- * width of the page between the id and the relation, which read as a broken
- * table. Column gaps live in the cell padding (not grid gap) so the "this
- * program" row can carry a continuous tint. */
+/* Collapsed it is one line; open it is a single compact table. Reuses
+ * .table-scroll / .record-table / .evt-tag / .cluster-record-net so it reads as
+ * the same instrument as the record on the Activity tab. */
 .lineage-panel {
-  position: relative;
+  margin-top: 14px;
   background: var(--card);
   border: 1px solid var(--border);
-  border-radius: var(--radius);
-  margin-top: 14px;
-  font-family: var(--font-mono);
+  border-radius: 6px;
 }
 
-.lin-list {
-  display: grid;
-  grid-template-columns: max-content max-content minmax(0, 1fr);
-  list-style: none;
-  margin: 0;
-  padding: 0;
-}
-
-.lin-row {
-  display: contents;
-}
-
-.lin-list span {
-  padding: 7px 28px 7px 0;
-  font-size: 12.5px;
-  line-height: 1.4;
-}
-
-.lin-when {
-  color: var(--ink-faint);
-  white-space: nowrap;
-}
-
-.lin-who {
-  color: var(--ink);
-  white-space: nowrap;
-}
-
-.lin-why {
-  color: var(--ink-soft);
-  padding-right: 0 !important;
-  overflow-wrap: anywhere;
-}
-
-/* you are here — a tint, not a marker in a gutter */
-.lin-self span {
-  background: var(--bg);
-}
-
-.lin-self .lin-when {
-  padding-left: 8px;
-  margin-left: -8px;
-  border-radius: 3px 0 0 3px;
-}
-
-.lin-self .lin-why {
-  padding-right: 8px !important;
-  margin-right: -8px;
-  border-radius: 0 3px 3px 0;
-}
-
-.lin-more span {
-  color: var(--ink-faint);
-}
-
-/* Collapsed shows the header alone; open reveals the rows under it. Same
- * label/value shape the radar cards use, so it reads as data, not a sentence. */
 .lin-head {
   display: flex;
-  align-items: baseline;
+  align-items: center;
   justify-content: space-between;
   gap: 16px;
-  padding: 11px 20px;
+  padding: 10px 16px;
   cursor: pointer;
   list-style: none;
   user-select: none;
@@ -4753,37 +4690,16 @@ a.copy-addr-text:hover {
   display: none;
 }
 
-.lin-head-fields {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: baseline;
-  gap: 6px 26px;
-  min-width: 0;
-}
-
-.lin-field {
-  display: inline-flex;
-  align-items: baseline;
-  gap: 8px;
-  min-width: 0;
-}
-
-.lin-k {
-  font-size: 10px;
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
-  color: var(--ink-faint);
-}
-
-.lin-v {
-  font-size: 12.5px;
+.lin-sum {
+  font-family: var(--font-mono);
+  font-size: 12px;
   color: var(--ink);
+  min-width: 0;
   overflow-wrap: anywhere;
 }
 
 .lin-head-chev {
   flex: none;
-  align-self: center;
   width: 15px;
   height: 15px;
 }
@@ -4792,99 +4708,115 @@ a.copy-addr-text:hover {
   transform: rotate(180deg);
 }
 
-.lineage-panel[open] .lin-head {
-  padding-bottom: 6px;
-  border-bottom: 1px solid var(--border);
-}
-
-.lin-body {
-  padding: 6px 20px 10px;
-}
-
-/* facts about the family or this id's own past — a different axis from the
- * rows, so they sit under the list, one per line */
-.lin-meta {
-  margin: 2px 0 4px;
-  padding-top: 10px;
+/* the panel already draws the frame — the table inside must not draw a second */
+.lin-scroll {
+  background: none;
+  border: none;
   border-top: 1px solid var(--border);
-  font-size: 12.5px;
-  color: var(--ink-soft);
-  line-height: 1.5;
+  border-radius: 0;
 }
 
-.lin-meta + .lin-meta {
-  margin-top: 0;
-  padding-top: 6px;
+/* tighter than the record's own rows: this panel sits above Framework and
+ * Footprint and has to stay small enough that opening it is cheap */
+.lin-table th {
+  padding: 9px 14px 6px;
+}
+
+.lin-table td {
+  padding: 7px 14px;
+}
+
+/* Tags are written lower-case in the source and shouted here, so the labels
+ * stay readable in the component and still match the record's DEPLOY/UPGRADE. */
+.lin-table .evt-tag {
+  text-transform: uppercase;
+}
+
+/* which cluster the rows under it are on — a divider, and only rendered when
+ * there is more than one cluster to separate */
+.lin-net-tr td {
+  padding: 10px 14px 4px;
+  border-bottom: none;
+  font-size: 10px;
+  letter-spacing: 0.04em;
+}
+
+.lin-table tr:first-child td,
+.lin-net-tr + tr td {
   border-top: none;
 }
 
-.lin-meta-label {
-  display: inline-block;
-  min-width: 96px;
-  color: var(--ink-faint);
-  margin-right: 14px;
+/* the program this page is about, tinted in place rather than marked in a
+ * gutter — the reader's eye needs to find its own row before anything else */
+.lin-tr-self td {
+  background: var(--bg);
 }
 
-/* nothing found — one dim line, not an empty card */
+.lin-tr-more td {
+  white-space: normal;
+}
+
+/* How it was matched: a shaded meter and the axis it was matched on. Not a
+ * badge — a badge says "category", and the whole complaint was that the
+ * categories had to be learned before the column meant anything. */
+.lin-match {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--ink-soft);
+  white-space: nowrap;
+}
+
+.lin-match-self {
+  color: var(--accent);
+}
+
+.lin-match-weak {
+  color: var(--ink-faint);
+}
+
+.lin-meter {
+  display: inline-flex;
+  gap: 2px;
+}
+
+.lin-seg {
+  width: 4px;
+  height: 10px;
+  border-radius: 1px;
+  background: var(--border);
+}
+
+.lin-seg-on {
+  background: currentColor;
+}
+
+/* open or gutted — a label, because that is what it is */
+.lin-state-live {
+  border-color: var(--border-strong);
+  color: var(--ink);
+}
+
+.lin-state-closed {
+  border-style: dashed;
+  color: var(--ink-faint);
+}
+
+/* nothing found — one dim line, not an empty table */
 .lineage-none {
-  padding: 12px 20px;
-  font-size: 12.5px;
+  margin-top: 14px;
+  padding: 10px 16px;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  font-family: var(--font-mono);
+  font-size: 12px;
   color: var(--ink-faint);
-}
-
-/* narrow: the three columns won't fit, so each record becomes two lines —
- * id, then date · relation. Flex (not the grid) so the id can lead. */
-@media (max-width: 720px) {
-  .lin-head {
-    padding: 11px 16px;
-  }
-
-  .lin-body {
-    padding: 6px 16px 10px;
-  }
-
-  .lin-list {
-    display: block;
-  }
-
-  .lin-row {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: baseline;
-    gap: 0 8px;
-    padding: 7px 0;
-  }
-
-  .lin-list span {
-    padding: 0 !important;
-  }
-
-  .lin-who {
-    order: -1;
-    flex: 0 0 100%;
-    padding-bottom: 2px !important;
-  }
-
-  .lin-when::after {
-    content: " ·";
-  }
-
-  /* the "+N more" row has no date — no dangling separator */
-  .lin-when:empty::after {
-    content: none;
-  }
-
-  .lin-self {
-    background: var(--bg);
-    border-radius: 3px;
-    padding: 7px 8px;
-    margin: 0 -8px;
-  }
-
-  .lin-self span {
-    background: none;
-    margin: 0 !important;
-  }
 }
 
 .churn-note {
