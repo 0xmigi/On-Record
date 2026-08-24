@@ -30,7 +30,7 @@ nearly missing, got there for genuinely different reasons:
   launcher on devnet. Flint trading on mainnet for six weeks before the
   announcement. Earliness is the product; it needs no contradiction.
 - **Whose it is.** A project or team people already follow, doing something new.
-  This has no tension in it at all and is often the strongest reason.
+  Nothing has to be wrong with it; this is often the strongest reason.
 - **The mechanism is worth looking at on its own.** The Helius transfer
   diagram — his best-performing post ever — just showed how a thing works. No
   anomaly, no verdict, no takedown.
@@ -68,7 +68,13 @@ section, it is the "if someone presses" material.
 
 Fetch all programs in parallel. Don't serialize the batch.
 
-Only reach for more when the dossier leaves a specific question open:
+**The dossier tells you what the binary is, not what the product is.** It cannot
+answer "why does this exist". For that, go to what the deployer published — the
+website, the repo, the README, the actual Rust source if the repo is live. A
+declared repo with source in it beats every recovered artefact, and reading it
+is usually two calls. Do this before writing, not after he asks.
+
+Only reach for more when a specific question is still open:
 
 ```
 /api/programs/:id        full JSON record
@@ -90,6 +96,17 @@ The dossier already reports whether the program is on mainnet or devnet, so the
   830", "2 of 2,412 programs import this syscall". A bare adjective is noise.
 - **Label inference as inference.** Say what's decoded, what's inferred, and
   what can't be determined from here.
+- **Never lead with forensics.** Handler counts, syscall names and rarity tiers,
+  kilobytes, section sizes, TLSH distances, novelty scores, percentile-of-corpus
+  — these are how you *worked it out*, not what you found. They belong in the
+  brief, or in one clause backing a specific claim, never as the description of
+  a program. He has said this outright: he wants to know what it does and why it
+  exists, not how many instructions it has.
+- **Never use a "The tension:" section, or any relabelled version of it.** No
+  bolded lead-in that sets up a contradiction — not "The tension", "The catch",
+  "What doesn't fit", "The wrinkle", "The twist". Whatever doesn't add up gets
+  said in the prose, in the same voice as everything else. The only bolded
+  labels in the whole output are the three closers.
 - **Don't write in post voice.** This is analysis for Ash, not copy. No hooks,
   no lowercase affect, no closers.
 - **Don't posture.** Report what the tool recovered. Never imply domain
@@ -108,12 +125,24 @@ verdict label — not a neutral title:
 ## <name or id-prefix> — the most interesting one
 `<id>` · mainnet · deployed 5 Aug 2026
 
-<the tell: the specific decoded thing that says what this is — syscalls,
-handler names, source tree, transaction shape. Two or three sentences.>
-
-**The tension:** <the two facts that don't fit. Or "none — it is exactly what
-it says it is," and stop.>
+<What it does, in plain language, first sentence. Then: why it exists — what
+problem it is for, who it is for. Then: what system it belongs to — the product,
+the other programs around it, where it sits in that machine. Then: why it is on
+the radar today — what changed, what he is actually looking at. Then anything
+that doesn't add up, in the same prose. Four to six sentences.>
 ```
+
+Answer these four, in this order, for every program:
+
+1. **What does it do?** In a sentence a person could repeat.
+2. **Why does it exist?** The problem it is for.
+3. **What system is it part of?** The product, the sibling programs, the layer.
+4. **Why am I seeing it now?** What changed today.
+
+If a program cannot answer them — anonymous, no strings, nothing published —
+say that plainly in two sentences and move on. "I can't tell you what this does
+and here is why" is a complete answer. Padding it with structural measurements
+is not.
 
 Then close with:
 

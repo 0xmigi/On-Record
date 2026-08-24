@@ -51,6 +51,13 @@ he has formed his own read.
 **1. What it is.** Written for someone who knows nothing about it. The section
 the whole document exists for, and the one he reads first.
 
+Open it layered, always: a **single sentence** saying what the program is in
+plain words with zero jargon, then a **three-sentence** version with the
+essential mechanics, then the full explanation. He reads only as deep as the
+first two layers earn. He asked for this explicitly (2026-08-18) — a brief
+that opens with a multi-paragraph analogy and no distilled snapshot forces him
+to re-prompt just to learn what the thing is.
+
 Header it exactly `## What it is` — no clever subtitle. If a heading needs
 decoding, the section under it will too.
 
