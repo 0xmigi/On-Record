@@ -32,3 +32,13 @@ docs/diagrams/
 
 # local experiments — build artifacts and keypairs, never publish
 experiments/
+
+# Skills installed from someone else's repo (currently simple-english, an
+# ASD-STE100 technical-writing rulebook). They change how an agent writes prose
+# here; they are not part of On Record and nothing in the app imports them.
+# Vendored code, so treated like node_modules — kept local, never committed.
+# skills-lock.json records where they came from; that stays local too, so a
+# fresh install never shows up as 400-odd uncommitted lines again.
+.agents/
+skills-lock.json
+.claude/skills/simple-english
