@@ -2,6 +2,7 @@ import crypto from "node:crypto";
 import { and, desc, eq, gte, sql } from "drizzle-orm";
 import { db, schema, logger, newId } from "@onrecord/core";
 import { composeReply, programIdsIn } from "./reply.js";
+import { renderCardFor } from "./card.js";
 
 // ---------------------------------------------------------------------------
 // The query bot — answers a mention on X with what the record holds.
@@ -129,13 +130,45 @@ export function oauthHeader(method: string, url: string): string {
     .join(", ")}`;
 }
 
-/** Post one reply. Returns the new post's id. */
-async function postReply(text: string, inReplyTo: string): Promise<string> {
+/**
+ * Upload a PNG and return its media id.
+ *
+ * v1.1 upload, which is still the endpoint that takes a simple multipart body.
+ * OAuth 1.0a excludes a multipart body from the signature base string, so the
+ * existing signer covers this unchanged — the body is never hashed.
+ *
+ * Returns null rather than throwing: a card is an enhancement, and a reply that
+ * carries the facts as text is worth more than no reply at all.
+ */
+async function uploadMedia(png: Buffer, mention: string): Promise<string | null> {
+  const url = "https://upload.twitter.com/1.1/media/upload.json";
+  try {
+    const form = new FormData();
+    form.append("media", new Blob([new Uint8Array(png)], { type: "image/png" }), "card.png");
+    const res = await fetch(url, {
+      method: "POST",
+      headers: { authorization: oauthHeader("POST", url) },
+      body: form,
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status} ${(await res.text()).slice(0, 200)}`);
+    const body = (await res.json()) as { media_id_string?: string };
+    if (!body.media_id_string) throw new Error("no media_id_string in response");
+    return body.media_id_string;
+  } catch (err) {
+    logger.warn({ mention, err: String(err) }, "x bot: media upload failed, posting text only");
+    return null;
+  }
+}
+
+/** Post one reply, with the card attached when there is one. Returns the id. */
+async function postReply(text: string, inReplyTo: string, mediaId?: string | null): Promise<string> {
   const url = `${API}/tweets`;
+  const payload: Record<string, unknown> = { text, reply: { in_reply_to_tweet_id: inReplyTo } };
+  if (mediaId) payload.media = { media_ids: [mediaId] };
   const res = await fetch(url, {
     method: "POST",
     headers: { authorization: oauthHeader("POST", url), "content-type": "application/json" },
-    body: JSON.stringify({ text, reply: { in_reply_to_tweet_id: inReplyTo } }),
+    body: JSON.stringify(payload),
   });
   if (!res.ok) throw new Error(`x post: HTTP ${res.status} ${await res.text()}`);
   const body = (await res.json()) as { data?: { id?: string } };
@@ -252,7 +285,11 @@ export async function sweepMentions(): Promise<{ seen: number; drafted: number; 
         continue;
       }
       try {
-        const id = await postReply(outcome.text, m.id);
+        // the card is rendered from the same stored rows the text came from,
+        // in-process, ~110ms — no browser, no extra fetch
+        const png = outcome.programId ? await renderCardFor(outcome.programId) : null;
+        const mediaId = png ? await uploadMedia(png, m.id) : null;
+        const id = await postReply(outcome.text, m.id, mediaId);
         await db
           .update(schema.botReplies)
           .set({ status: "posted", postedId: id, postedAt: new Date() })
@@ -333,7 +370,9 @@ export async function approveReply(rowId: string): Promise<{ postedId: string }>
   if (!row) throw new Error("unknown reply");
   if (row.status === "posted") throw new Error("already posted");
   if (!row.text) throw new Error("nothing to post");
-  const postedId = await postReply(row.text, row.mentionId);
+  const png = row.programId ? await renderCardFor(row.programId) : null;
+  const mediaId = png ? await uploadMedia(png, row.mentionId) : null;
+  const postedId = await postReply(row.text, row.mentionId, mediaId);
   await db
     .update(schema.botReplies)
     .set({ status: "posted", postedId, postedAt: new Date() })

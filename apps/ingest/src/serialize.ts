@@ -204,6 +204,7 @@ export function serializeProgramDetail(
     securityTxt?: SecurityTxt;
     repoLink?: RepoLink;
     activity?: { t: number; c: number }[];
+    rate?: { t: number; r: number }[];
   };
   // pull IDL instructions + notable strings from the most recent fingerprint
   let idlInstructions: string[] = [];
@@ -241,5 +242,8 @@ export function serializeProgramDetail(
         ? { ...facts.repoLink, repoUrl: httpUrl(facts.repoLink.repoUrl)! }
         : null,
     activity: facts.activity ?? null, // full 7-day series on the dossier
+    // the rate series, which — unlike the counts — does not saturate on a busy
+    // program (momentum.ts)
+    rate: facts.rate ?? null,
   };
 }

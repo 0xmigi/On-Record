@@ -483,6 +483,9 @@ export interface ApiProgramDetail extends ApiProgram {
   /** repo found by searching public code for the program id — an inference,
    *  shown apart from `repoUrl`, which somebody declared */
   repoLink: RepoLink | null;
+  /** transactions-per-minute readings, one per sampler tick. Unlike `activity`
+   *  counts these do not saturate on a busy program (momentum.ts). */
+  rate: { t: number; r: number }[] | null;
   /** programs compiled from the same crate — the fork signal TLSH misses.
    *  Ranked by how much of the source tree they literally share. */
   sourceKin: {

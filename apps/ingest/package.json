@@ -20,6 +20,7 @@
     "@fastify/basic-auth": "^6.0.1",
     "@onrecord/core": "workspace:*",
     "@onrecord/enrich": "workspace:*",
+    "@resvg/resvg-js": "2.6.2",
     "bs58": "^6.0.0",
     "bullmq": "^5.34.0",
     "drizzle-orm": "^0.38.3",
