@@ -32,6 +32,7 @@ export interface NearestMeta {
   isReference: boolean;
   deployedAt: string | null; // neighbor's first deploy — for the before/after-this hint
   sizeBytes: number | null; // against this program's size — see nearestWeakness()
+  crate: string | null; // against this program's crate — see nearestWeakness()
   closedAt: string | null; // null = still open — lineage marks the dead ones
 }
 
@@ -44,6 +45,7 @@ function similarityFromDistance(distance: number): number {
 function nearestOf(
   facts: { nearest?: NearestFact },
   sizeBytes: number | null,
+  crate: string | null,
   meta?: Map<string, NearestMeta>,
 ): ApiNearest | null {
   const n = facts.nearest;
@@ -63,7 +65,7 @@ function nearestOf(
         : null,
     // computed here, not in the UI: the radar card, the dossier and anything
     // else reading the API must agree on when this match can carry a name
-    weak: nearestWeakness(n.peersWithin5, sizeBytes, m?.sizeBytes),
+    weak: nearestWeakness(n.peersWithin5, sizeBytes, m?.sizeBytes, crate, m?.crate),
   };
 }
 
@@ -169,7 +171,7 @@ export function serializeProgram(
       typeof facts.deployCostLamports === "number"
         ? Math.round((facts.deployCostLamports / 1e9) * 1000) / 1000
         : null,
-    nearest: nearestOf(facts, row.sizeBytes, nearestMeta),
+    nearest: nearestOf(facts, row.sizeBytes, row.crate, nearestMeta),
     codeMatch: facts.codeMatch ?? null,
     incubation: facts.incubation ?? null,
     // never probed stays null; probed-and-absent is a stored `present: false`

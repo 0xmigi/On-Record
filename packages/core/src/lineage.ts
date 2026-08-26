@@ -52,10 +52,27 @@ export function lineageSizeWindow(sizeBytes: number): [number, number] {
 //     Token-2022 a fork of NOTCH Classic, raydium-clmm a fork of stork. None
 //     share a line of code.
 //
-// So the ratio below is calibrated on this corpus, not derived: 3x sits under
-// the observed failure band with margin and marks 4.4% of matches weak. A weak
-// match is still shown — it is a real measurement and the row keeps it — but it
-// stops being the headline and stops being called a fork.
+//  3. Two different crates. The size test only catches the far pairs; it says
+//     nothing about two unrelated programs that happen to be the same size, and
+//     at these sizes Anchor boilerplate dominates the hash. Virtuals' Agentic
+//     Commerce (518 KB) was chipped "fork of Zenex Revshare Pools" (520 KB) at
+//     distance 12 — different team, different site, different everything. The
+//     crate name is the developer's own Cargo package, recovered from panic
+//     paths, and it is the same evidence resolveSourceKin() already trusts over
+//     the fuzzy hash. Two programs that name different crates are not one
+//     forking the other.
+//
+// So the thresholds below are calibrated on this corpus, not derived. 3x sits
+// under the observed size-failure band with margin. The crate test was run over
+// all 478 live fork chips: 372 have both crates known, 96 keep the chip
+// (oft→oft, dvn→dvn, whirlpool→Orca Whirlpool — all genuine), and 276 lose it.
+// Of those 276, 273 name wholly unrelated crates; the only 3 where one crate
+// contains the other are example-native-token-transfers→native-token-transfers
+// and two hanging off crates as generic as `staking` and `vault`. Rescuing one
+// true relative was not worth the carve-out, and the match is still shown.
+//
+// A weak match is still shown — it is a real measurement and the row keeps it —
+// but it stops being the headline and stops being called a fork.
 // ---------------------------------------------------------------------------
 
 /** Distinct programs within 5 similarity points before "nearest" means nothing. */
@@ -63,18 +80,24 @@ export const NEAREST_CROWD_PEERS = 6;
 /** How far apart in size two binaries may be and still be called relatives. */
 export const NEAREST_MAX_SIZE_RATIO = 3;
 
-export type NearestWeakness = "crowd" | "size";
+export type NearestWeakness = "crowd" | "size" | "crate";
 
 /** Why this match can't carry a name, or null if it can. */
 export function nearestWeakness(
   peersWithin5: number | null | undefined,
   sizeBytes: number | null | undefined,
   neighborSizeBytes: number | null | undefined,
+  crate?: string | null,
+  neighborCrate?: string | null,
 ): NearestWeakness | null {
   if ((peersWithin5 ?? 0) >= NEAREST_CROWD_PEERS) return "crowd";
   if (sizeBytes && neighborSizeBytes) {
     const ratio = Math.max(sizeBytes / neighborSizeBytes, neighborSizeBytes / sizeBytes);
     if (ratio >= NEAREST_MAX_SIZE_RATIO) return "size";
   }
+  // Only when BOTH are known: the crate comes out of panic paths and is absent
+  // on roughly 15% of programs, and an unknown crate is not evidence of
+  // anything. Those matches keep whatever the two tests above decided.
+  if (crate && neighborCrate && crate !== neighborCrate) return "crate";
   return null;
 }

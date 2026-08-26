@@ -10,6 +10,7 @@ import {
   sharedPathCount,
   pathOverlap,
   isSourceRelative,
+  nearestWeakness,
   type ApiCounterpart,
   type EventEnrichment,
   type Network,
@@ -518,12 +519,47 @@ export async function buildDossier(programId: string, opts: DossierOptions = {})
     ),
   );
   if (facts.nearest) {
+    // The card refuses to name a weak match (core/lineage.ts). The dossier is
+    // read by something that will happily build a whole paragraph on a number,
+    // so it has to carry the same verdict — a bare "TLSH distance 12" next to a
+    // named program is an accusation of forking. Virtuals' Agentic Commerce
+    // read that way against Zenex Revshare Pools before this line existed.
+    const [near] = facts.nearest.id
+      ? await db
+          .select({
+            name: schema.subjects.name,
+            crate: schema.subjects.crate,
+            sizeBytes: schema.subjects.sizeBytes,
+          })
+          .from(schema.subjects)
+          .where(
+            and(
+              eq(schema.subjects.id, facts.nearest.id),
+              eq(schema.subjects.network, row.network),
+            ),
+          )
+      : [];
+    const weak = nearestWeakness(
+      facts.nearest.peersWithin5,
+      row.sizeBytes,
+      near?.sizeBytes,
+      row.crate,
+      near?.crate,
+    );
+    const why: Record<NonNullable<typeof weak>, string> = {
+      crowd: "a lookalike crowd, so the score measures framework shape, not kinship",
+      size: "too far apart in size to share a body of code",
+      crate: `different crates (\`${row.crate}\` vs \`${near?.crate}\`), so this is framework shape, not shared code`,
+    };
     out.push(
       fact(
         "Nearest relative",
-        `${facts.nearest.id} at TLSH distance ${facts.nearest.distance}` +
-          (facts.nearest.peersWithin5 ? ` · ${facts.nearest.peersWithin5} peers within 5 points` : ""),
-        "TLSH over the bytecode; many peers at the same distance means a generic cluster, not a fork",
+        `${facts.nearest.id}${near?.name ? ` (${near.name})` : ""} at TLSH distance ${facts.nearest.distance}` +
+          (facts.nearest.peersWithin5 ? ` · ${facts.nearest.peersWithin5} peers within 5 points` : "") +
+          (weak ? ` · **NOT a relative** — ${why[weak]}` : ""),
+        weak
+          ? "this match is measured but disqualified — do not describe it as a fork, a variant of, or derived from that program"
+          : "TLSH over the bytecode; many peers at the same distance means a generic cluster, not a fork",
       ),
     );
   }

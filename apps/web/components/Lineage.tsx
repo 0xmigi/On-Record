@@ -60,7 +60,7 @@ type Relative = {
   measured: number | null;
   /** set when the similarity is measuring generic shape, not kinship — the API
    *  decides this (core/lineage.ts) so every surface agrees */
-  weak: "crowd" | "size" | null;
+  weak: "crowd" | "size" | "crate" | null;
   peersWithin5: number | null; // how big the lookalike crowd is, when it is one
 };
 
@@ -233,7 +233,9 @@ function matchOf(r: Relative): { level: number; label: string; tone: Tone; tip: 
       tip:
         (r.weak === "crowd"
           ? `${r.peersWithin5 ?? "Many"} programs sit equally close on the fuzzy hash, so the score is measuring framework shape rather than kinship. Probably not related at all.`
-          : "Too far apart in size to share a body of code. Probably not related at all.") +
+          : r.weak === "crate"
+            ? "The two name different crates, so the fuzzy hash is measuring framework shape rather than shared code. Probably not related at all."
+            : "Too far apart in size to share a body of code. Probably not related at all.") +
         (pct != null ? ` Bytecode is ${Math.round(pct * 100)}% alike.` : ""),
     };
   }
