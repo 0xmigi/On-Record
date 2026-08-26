@@ -27,10 +27,11 @@ import { edgesFor, type EdgeNode } from "./refs.js";
 // ---------------------------------------------------------------------------
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
-/** Both the source tree (src/) and the build output (dist/) sit one level under
- *  apps/ingest, so the repo root is the same three hops up from either. */
-const REPO = path.resolve(HERE, "../../..");
-const FONT_DIR = path.join(REPO, "apps/web/assets/og");
+/** The faces live inside this app, not the web one. The container image only
+ *  copies packages/ and apps/ingest/ — reaching into apps/web for a font
+ *  compiled fine and then killed the process at boot, because the directory
+ *  does not exist there. Both src/ and dist/ sit one level under apps/ingest. */
+const FONT_DIR = path.resolve(HERE, "../assets/fonts");
 
 /** Embedded, and system fonts are switched off at render time. A card that
  *  picks up whatever the host machine happens to have installed is not a record
