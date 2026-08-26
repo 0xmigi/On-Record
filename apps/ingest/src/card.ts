@@ -254,8 +254,8 @@ function computeBlock(cu: ComputeSample | null, y: number): { svg: string; next:
   const W = COL_R - L - 60;
   const out = [t(L, y, "COMPUTE PER TRANSACTION", { size: 10, tracking: 2, weight: 600, fill: MUTED })];
   if (!cu) {
-    out.push(t(L, y + 34, "NOT YET SAMPLED", { size: 11, tracking: 1.6, weight: 600, fill: MUTED }));
-    return { svg: out.join(""), next: y + 40 };
+    out.push(t(L, y + 30, "not sampled yet", { size: 17, fill: FAINT }));
+    return { svg: out.join(""), next: y + 30 };
   }
   const BY = y + 26, BH = 34;
   const px = (v: number) => Math.max(2, (Math.min(v, TX_CU_LIMIT) / TX_CU_LIMIT) * W);
@@ -424,6 +424,9 @@ export function cardSvg(f: CardFacts, logoDataUri: string | null = null): string
   const nameW = textW(nameText, 38);
   const g = graphBlock(f);
   const cmp = computeBlock(f.compute, CARD_Y + 150);
+  // the footprint follows the compute block rather than sitting at a fixed y,
+  // so a program without a reading does not leave the bar's band empty
+  const fpY = cmp.next + 56;
   const kicker = [
     "PROGRAM",
     f.firstDeployAt ? `deployed ${fullDate(f.firstDeployAt)}` : null,
@@ -461,7 +464,7 @@ export function cardSvg(f: CardFacts, logoDataUri: string | null = null): string
     ${t(R, CARD_Y + 64, auth, { size: isRatio ? 26 : 19, weight: 600, tracking: isRatio ? 1.2 : 0.4, anchor: "end" })}
 
     ${cmp.svg}
-    ${footprintBlock(f, CARD_Y + 310, CARD_Y + 400)}
+    ${footprintBlock(f, fpY, fpY + 90)}
     ${reachBlock(f, CARD_Y + 150)}
 
     ${g.svg}
