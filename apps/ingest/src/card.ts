@@ -122,7 +122,10 @@ export interface CardFacts {
   authorityClass: string | null;
   multisig: { threshold?: number | null; members?: number | null } | null;
   verified: boolean;
+  /** the deployer's own declared logo, when there is one */
   logoUrl: string | null;
+  /** whatever the record knows to source a favicon from, in the site's order */
+  iconSource: string | null;
   /** hourly transaction counts, up to 7 days (momentum.ts) */
   activity: { t: number; c: number }[] | null;
   /** the sampler hit its page cap, so the counts are a floor */
@@ -166,11 +169,55 @@ export async function cardFacts(programId: string): Promise<CardFacts | null> {
     multisig: (facts.multisig as CardFacts["multisig"]) ?? null,
     verified: row.verified,
     logoUrl: (facts.logoUrl as string | undefined) ?? null,
+    iconSource:
+      (facts.website as string | undefined) ??
+      (facts.social as string | undefined) ??
+      row.repoUrl ??
+      null,
     activity: (facts.activity as CardFacts["activity"]) ?? null,
     truncated: momentum?.txns24hTruncated === true,
     compute: (facts.compute as ComputeSample | undefined) ?? null,
     references: await edgesFor(network, programId),
   };
+}
+
+/**
+ * The program's icon, as bytes.
+ *
+ * Same source order the site's ProgramAvatar uses: the declared logo, else a
+ * favicon for whichever of website / social / repo we hold. This is the
+ * record's own pattern, not a new data path — the radar row and the dossier
+ * header resolve their icons exactly this way.
+ *
+ * The difference is that a browser can fetch lazily and fail invisibly, while
+ * the card has to embed the bytes. So: a short timeout, a size ceiling, and a
+ * null on any failure — the card then draws the two-character avatar instead,
+ * which is what the site falls back to as well. A missing icon must never cost
+ * us a reply.
+ */
+export async function fetchIcon(f: CardFacts): Promise<string | null> {
+  const direct = f.logoUrl;
+  let url = direct;
+  if (!url && f.iconSource) {
+    try {
+      url = `https://www.google.com/s2/favicons?domain=${new URL(f.iconSource).hostname}&sz=128`;
+    } catch {
+      return null;
+    }
+  }
+  if (!url) return null;
+  try {
+    const res = await fetch(url, { signal: AbortSignal.timeout(2500) });
+    if (!res.ok) return null;
+    const type = res.headers.get("content-type") ?? "";
+    // resvg rasterises PNG and JPEG; an SVG favicon is not worth the risk here
+    if (!/^image\/(png|jpeg)/.test(type)) return null;
+    const buf = Buffer.from(await res.arrayBuffer());
+    if (!buf.length || buf.length > 200_000) return null;
+    return `data:${type.split(";")[0]};base64,${buf.toString("base64")}`;
+  } catch {
+    return null;
+  }
 }
 
 /** Deployer-authored text, stripped of anything that could act. A program's
@@ -372,7 +419,7 @@ export function cardSvg(f: CardFacts, logoDataUri: string | null = null): string
   const auth = authority(f.authorityClass, f.multisig);
   const isRatio = /^\d/.test(auth);
   const nameText = f.name ?? "unnamed program";
-  const nameX = logoDataUri ? L + 46 : L;
+  const nameX = L + 46;
   const nameY = CARD_Y + 78;
   const nameW = textW(nameText, 38);
   const g = graphBlock(f);
@@ -395,7 +442,12 @@ export function cardSvg(f: CardFacts, logoDataUri: string | null = null): string
   <rect x="${CARD_X}" y="${CARD_Y}" width="${CARD_W}" height="${CARD_H}" rx="12" fill="${PAPER}" stroke="#d8d8d2" stroke-width="1"/>
   <g clip-path="url(#card)">
     ${t(L, CARD_Y + 34, kicker, { size: 10, tracking: 2.2, weight: 600, fill: MUTED })}
-    ${logoDataUri ? `<image href="${logoDataUri}" x="${L}" y="${nameY - 29}" width="34" height="34" preserveAspectRatio="xMidYMid meet"/>` : ""}
+    ${
+      logoDataUri
+        ? `<image href="${logoDataUri}" x="${L}" y="${nameY - 29}" width="34" height="34" preserveAspectRatio="xMidYMid meet"/>`
+        : `<rect x="${L}" y="${nameY - 29}" width="34" height="34" rx="9" fill="#eceae4" stroke="#d8d8d2" stroke-width="1"/>` +
+          t(L + 17, nameY - 7, f.programId.slice(0, 2), { size: 15, weight: 600, fill: MUTED, anchor: "middle" })
+    }
     ${t(nameX, nameY, nameText, { size: 38, weight: 600 })}
     ${
       f.verified
@@ -443,5 +495,6 @@ export function renderCard(f: CardFacts, logoDataUri: string | null = null): Buf
 /** Facts to PNG in one call, for the route and the bot alike. */
 export async function renderCardFor(programId: string): Promise<Buffer | null> {
   const facts = await cardFacts(programId);
-  return facts ? renderCard(facts) : null;
+  if (!facts) return null;
+  return renderCard(facts, await fetchIcon(facts));
 }
