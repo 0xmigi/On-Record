@@ -5,6 +5,7 @@ import { Resvg } from "@resvg/resvg-js";
 import { and, eq } from "drizzle-orm";
 import { db, schema, type Network } from "@onrecord/core";
 import { edgesFor, type EdgeNode } from "./refs.js";
+import { sampleComputeOnDemand, type ComputeSample } from "./compute.js";
 
 // ---------------------------------------------------------------------------
 // The share card — a program's hard facts, as one SVG.
@@ -94,18 +95,6 @@ const t = (x: number, y: number, s: string, o: TextOpts = {}): string =>
   (o.tracking ? ` letter-spacing="${o.tracking}"` : "") +
   (o.anchor ? ` text-anchor="${o.anchor}"` : "") +
   `>${esc(s)}</text>`;
-
-/** Sampled compute for one program, as stored in facts.compute. */
-export interface ComputeSample {
-  median: number;
-  p10: number;
-  p90: number;
-  /** transactions inspected */
-  n: number;
-  /** how many of them failed — falls out of the same call for nothing */
-  failed: number;
-  sampledAt: string;
-}
 
 export interface CardFacts {
   programId: string;
@@ -499,5 +488,11 @@ export function renderCard(f: CardFacts, logoDataUri: string | null = null): Buf
 export async function renderCardFor(programId: string): Promise<Buffer | null> {
   const facts = await cardFacts(programId);
   if (!facts) return null;
+  // A card is the one place the gap is visible, so this is where it gets
+  // closed: no stored reading means take one now, budgeted and written through
+  // so the next caller — the bot, the dossier, the API — finds it there.
+  if (!facts.compute) {
+    facts.compute = await sampleComputeOnDemand(facts.network, programId);
+  }
   return renderCard(facts, await fetchIcon(facts));
 }

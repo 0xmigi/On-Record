@@ -486,6 +486,19 @@ export interface ApiProgramDetail extends ApiProgram {
   /** transactions-per-minute readings, one per sampler tick. Unlike `activity`
    *  counts these do not saturate on a busy program (momentum.ts). */
   rate: { t: number; r: number }[] | null;
+  /** Compute burned by transactions that touch this program: the median and the
+   *  middle 80% of a sample, against the 1,400,000 one transaction may use.
+   *  TRANSACTION-level — a swap pays for every program it routes through — so
+   *  it is never "what this program uses". `failed` is how many of the sampled
+   *  transactions errored, which is free from the same call. */
+  compute: {
+    median: number;
+    p10: number;
+    p90: number;
+    n: number;
+    failed: number;
+    sampledAt: string;
+  } | null;
   /** programs compiled from the same crate — the fork signal TLSH misses.
    *  Ranked by how much of the source tree they literally share. */
   sourceKin: {

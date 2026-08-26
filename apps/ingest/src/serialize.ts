@@ -205,6 +205,9 @@ export function serializeProgramDetail(
     repoLink?: RepoLink;
     activity?: { t: number; c: number }[];
     rate?: { t: number; r: number }[];
+    compute?: {
+      median: number; p10: number; p90: number; n: number; failed: number; sampledAt: string;
+    };
   };
   // pull IDL instructions + notable strings from the most recent fingerprint
   let idlInstructions: string[] = [];
@@ -245,5 +248,7 @@ export function serializeProgramDetail(
     // the rate series, which — unlike the counts — does not saturate on a busy
     // program (momentum.ts)
     rate: facts.rate ?? null,
+    // compute per transaction, the same reading the card draws (compute.ts)
+    compute: facts.compute ?? null,
   };
 }
