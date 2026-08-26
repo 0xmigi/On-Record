@@ -163,8 +163,10 @@ async function uploadMedia(png: Buffer, mention: string): Promise<string | null>
 /** Post one reply, with the card attached when there is one. Returns the id. */
 async function postReply(text: string, inReplyTo: string, mediaId?: string | null): Promise<string> {
   const url = `${API}/tweets`;
-  const payload: Record<string, unknown> = { text, reply: { in_reply_to_tweet_id: inReplyTo } };
+  const payload: Record<string, unknown> = { reply: { in_reply_to_tweet_id: inReplyTo } };
+  if (text) payload.text = text;
   if (mediaId) payload.media = { media_ids: [mediaId] };
+  if (!text && !mediaId) throw new Error("x post: refusing to post an empty reply");
   const res = await fetch(url, {
     method: "POST",
     headers: { authorization: oauthHeader("POST", url), "content-type": "application/json" },
@@ -289,6 +291,15 @@ export async function sweepMentions(): Promise<{ seen: number; drafted: number; 
         // in-process, ~110ms — no browser, no extra fetch
         const png = outcome.programId ? await renderCardFor(outcome.programId) : null;
         const mediaId = png ? await uploadMedia(png, m.id) : null;
+        if (!mediaId) {
+          // the card IS the answer; without it there is nothing worth posting
+          await db
+            .update(schema.botReplies)
+            .set({ status: "failed", error: "card render or upload failed" })
+            .where(eq(schema.botReplies.id, row));
+          logger.error({ mention: m.id }, "x bot: no card, nothing posted");
+          continue;
+        }
         const id = await postReply(outcome.text, m.id, mediaId);
         await db
           .update(schema.botReplies)
@@ -369,10 +380,11 @@ export async function approveReply(rowId: string): Promise<{ postedId: string }>
   const [row] = await db.select().from(schema.botReplies).where(eq(schema.botReplies.id, rowId));
   if (!row) throw new Error("unknown reply");
   if (row.status === "posted") throw new Error("already posted");
-  if (!row.text) throw new Error("nothing to post");
+
   const png = row.programId ? await renderCardFor(row.programId) : null;
   const mediaId = png ? await uploadMedia(png, row.mentionId) : null;
-  const postedId = await postReply(row.text, row.mentionId, mediaId);
+  if (!mediaId) throw new Error("card render or upload failed — nothing to post");
+  const postedId = await postReply(row.text ?? "", row.mentionId, mediaId);
   await db
     .update(schema.botReplies)
     .set({ status: "posted", postedId, postedAt: new Date() })

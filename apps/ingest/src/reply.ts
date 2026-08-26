@@ -2,7 +2,19 @@ import { and, eq, ne, sql } from "drizzle-orm";
 import { db, schema, readUsage, type Network } from "@onrecord/core";
 
 // ---------------------------------------------------------------------------
-// The reply — one program in a post's worth of characters.
+// The reply — the card, and nothing else.
+//
+// There is no sentence to write. The card (card.ts) says what the program is,
+// how much compute its transactions burn, what it trusts and what trusts it,
+// and how busy it has been; it letters the dossier URL along its own footer.
+// Any text beside it repeated the picture or editorialised over it, and every
+// phrasing we tried did one or the other.
+//
+// Two things follow from posting no text. A post carrying a link costs $0.20
+// against $0.015 for one that does not, and X has downranked outbound links
+// for years — so this is thirteen times cheaper AND travels further. And the
+// old worry about a model writing in Ash's voice is gone by construction:
+// there is no prose in the path at all.
 //
 // The dossier is written for a reader who has to defend every sentence
 // afterwards; this is written for someone who asked a question in public and
@@ -35,9 +47,6 @@ import { db, schema, readUsage, type Network } from "@onrecord/core";
 
 const WEB = process.env.PUBLIC_WEB_URL ?? "https://on-record.azuolas.xyz";
 
-/** X's limit for an unverified account. Ash's may be higher; the reply is
- *  built to fit the smaller one so it reads the same everywhere. */
-const LIMIT = Number(process.env.REPLY_MAX_CHARS ?? 280);
 
 export interface ReplyDraft {
   programId: string;
@@ -70,46 +79,8 @@ export function sanitizeDeclared(raw: string | null): string | null {
   return clean.length > 40 ? `${clean.slice(0, 39)}…` : clean;
 }
 
-const KB = 1024;
-const MB = KB * KB;
-const fmtSize = (n: number | null): string | null =>
-  n === null ? null : n >= MB ? `${(n / MB).toFixed(1)} MB` : n >= KB ? `${Math.round(n / KB)} KB` : `${n} B`;
 
-function ago(d: Date | null): string | null {
-  if (!d) return null;
-  const h = (Date.now() - d.getTime()) / 3_600_000;
-  if (h < 1) return `${Math.max(1, Math.round(h * 60))}m ago`;
-  if (h < 48) return `${Math.round(h)}h ago`;
-  return `${Math.round(h / 24)}d ago`;
-}
 
-/** Past a season, a day count stops being readable — "deployed 1254d ago" is
- *  arithmetic homework. Old programs get the month they landed. */
-function when(d: Date | null): string | null {
-  if (!d) return null;
-  const days = (Date.now() - d.getTime()) / 86_400_000;
-  if (days <= 90) return ago(d);
-  return d.toLocaleDateString("en-US", { month: "short", year: "numeric", timeZone: "UTC" });
-}
-
-/** How the upgrade authority reads in four words or fewer. */
-function control(row: { authorityClass: string | null; facts: Record<string, unknown> }): string | null {
-  const multisig = (row.facts as { multisig?: { threshold?: number; members?: number } }).multisig;
-  switch (row.authorityClass) {
-    case "none":
-      return "immutable";
-    case "squads":
-      return multisig?.threshold && multisig?.members
-        ? `${multisig.threshold}-of-${multisig.members} multisig`
-        : "squads multisig";
-    case "program":
-      return "authority is a program";
-    case "hot_wallet":
-      return "authority is a hot wallet";
-    default:
-      return null;
-  }
-}
 
 /**
  * One program, as a reply.
@@ -121,94 +92,23 @@ function control(row: { authorityClass: string | null; facts: Record<string, unk
  */
 export async function composeReply(
   programId: string,
-  opts: { limit?: number } = {},
+  _opts: { limit?: number } = {},
 ): Promise<ReplyDraft | null> {
-  const limit = opts.limit ?? LIMIT;
   const [row] = await db
-    .select()
+    .select({ id: schema.subjects.id, network: schema.subjects.network, name: schema.subjects.name })
     .from(schema.subjects)
     .where(and(eq(schema.subjects.id, programId), eq(schema.subjects.kind, "program")));
   if (!row) return null;
 
-  const network = row.network as Network;
-  const facts = (row.facts ?? {}) as Record<string, unknown>;
-  const profile = row.profile as { framework?: string } | null;
-  const lines: string[] = [];
-
-  // 1. what it is. The declared name is the deployer's claim, so it is quoted
-  //    and scrubbed; everything after it is read off the binary.
-  const name = sanitizeDeclared(row.name);
-  const identity = [
-    name ? `"${name}"` : "unnamed",
-    profile?.framework && profile.framework !== "unknown" ? profile.framework : null,
-    fmtSize(row.sizeBytes),
-    // firstDeployAt is the program's ORIGINAL deploy, read from ProgramData
-    // history; firstSeenAt is only when the radar started watching. Kamino
-    // deployed in 2023 and landed on record 84 days ago — calling the second
-    // one "deployed" would be a wrong fact in a public reply.
-    row.firstDeployAt
-      ? `deployed ${when(row.firstDeployAt)}`
-      : when(row.firstSeenAt)
-        ? `on record ${when(row.firstSeenAt)}`
-        : null,
-  ].filter(Boolean);
-  lines.push(identity.join(" · "));
-
-  // 2. where it sits against everything on record. The band alone is an
-  //    adjective; the distance is the fact behind it.
-  const nearest = facts.nearest as { distance?: number } | undefined;
-  const [{ n: corpus } = { n: 0 }] = await db
-    .select({ n: sql<number>`count(*)` })
-    .from(schema.subjects)
-    .where(
-      and(
-        eq(schema.subjects.network, network),
-        eq(schema.subjects.kind, "program"),
-        ne(schema.subjects.id, programId),
-      ),
-    );
-  if (row.noveltyBand) {
-    const against = `${Number(corpus).toLocaleString("en-US")} on record`;
-    lines.push(
-      nearest?.distance != null
-        ? `${row.noveltyBand} — closest code of ${against} is ${nearest.distance} TLSH away`
-        : `${row.noveltyBand} against ${against}`,
-    );
-  }
-
-  // 3. who can change it, and whether the source is confirmed. Both are the
-  //    questions somebody asking about an unknown program actually has.
-  const trust = [
-    control({ authorityClass: row.authorityClass, facts }),
-    row.verified ? "verified build" : "build not verified",
-  ].filter(Boolean);
-  if (trust.length) lines.push(trust.join(" · "));
-
-  // 4. what it is actually used for — from the stored parse, with its age.
-  //    Silent when nobody has sampled it: a blank is honest, a zero is not.
-  const usage = await readUsage(programId);
-  const top = usage.value?.instructions?.[0];
-  if (top && usage.value && usage.sampledAt) {
-    lines.push(
-      `top call: ${top.name}, ${top.pct.toFixed(0)}% of ${usage.value.window.txnsWithProgram} txns (${ago(usage.sampledAt)})`,
-    );
-  }
-
-  const link = `${WEB}/p/${programId}`;
-  const considered = [...lines];
-
-  // budget: keep the link, then take lines from the top until they stop fitting
-  const room = limit - link.length - 1;
-  const kept: string[] = [];
-  let used = 0;
-  for (const line of lines) {
-    const cost = kept.length ? line.length + 1 : line.length;
-    if (used + cost > room) break;
-    kept.push(line);
-    used += cost;
-  }
-
-  return { programId, network, text: [...kept, link].join("\n"), considered };
+  // `text` is what gets POSTED, and nothing does. `considered` is what the
+  // review queue shows a human so they know which program they are approving —
+  // it never reaches X.
+  return {
+    programId,
+    network: row.network as Network,
+    text: "",
+    considered: [sanitizeDeclared(row.name) ?? "unnamed program", programId],
+  };
 }
 
 // --- reading the question -----------------------------------------------
