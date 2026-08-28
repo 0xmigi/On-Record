@@ -279,7 +279,7 @@ export async function sweepMentions(): Promise<{ seen: number; drafted: number; 
     if (outcome.status !== "pending") continue;
     drafted++;
 
-    if (c.mode === "live" && outcome.text) {
+    if (c.mode === "live") {
       if (await atDailyPostCap(c.maxPostsPerDay)) {
         // the draft stays pending, so a capped day is a queue to read rather
         // than an answer nobody got
@@ -300,7 +300,7 @@ export async function sweepMentions(): Promise<{ seen: number; drafted: number; 
           logger.error({ mention: m.id }, "x bot: no card, nothing posted");
           continue;
         }
-        const id = await postReply(outcome.text, m.id, mediaId);
+        const id = await postReply(outcome.text ?? "", m.id, mediaId);
         await db
           .update(schema.botReplies)
           .set({ status: "posted", postedId: id, postedAt: new Date() })
