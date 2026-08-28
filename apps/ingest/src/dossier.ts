@@ -18,6 +18,7 @@ import {
   type TrafficSample,
 } from "@onrecord/core";
 import { familyFor } from "./interest.js";
+import { rankUtilisation, sampleComputeOnDemand, type ComputeSample } from "./compute.js";
 
 // ---------------------------------------------------------------------------
 // The LLM dossier: one program, as plain text, with the provenance attached.
@@ -50,6 +51,17 @@ const fmtBytes = (n: number | null): string =>
   n === null ? "unknown" : n >= KB ? `${Math.round(n / KB).toLocaleString()} KB (${n.toLocaleString()} B)` : `${n} B`;
 const pct = (n: number): string => `${Math.round(n * 100)}%`;
 const iso = (d: Date | null): string => d?.toISOString().replace(".000Z", "Z") ?? "unknown";
+
+const compactCU = (n: number): string =>
+  n >= 1_000_000 ? `${(n / 1_000_000).toFixed(1)}M` : n >= 1_000 ? `${Math.round(n / 1_000)}k` : String(n);
+
+/** "64%" — how much more a transaction reserved than it burned, from the median
+ *  per-transaction ratio. Capped, because a program using 1% of a 1.2M
+ *  reservation produces a number that reads as a typo. */
+function overRequest(utilisation: number): string {
+  const over = 1 / utilisation - 1;
+  return over > 9.99 ? ">999%" : `${Math.round(over * 100)}%`;
+}
 
 /** " (3.2 h ago)" — how old a stored measurement is, so its age is impossible
  *  to miss. A sample read without its age is the failure mode this guards. */
@@ -212,6 +224,7 @@ export async function buildDossier(programId: string, opts: DossierOptions = {})
     closedAt?: string;
     interest?: { score: number; components: Record<string, number> };
     repoUrlDead?: boolean;
+    compute?: ComputeSample;
   };
   const profile = row.profile ?? null;
 
@@ -261,6 +274,14 @@ export async function buildDossier(programId: string, opts: DossierOptions = {})
       trafficError = String(err);
     }
   }
+
+  // Compute follows the same three modes as traffic, and the same rule: a
+  // figure without its measurement time is a claim that cannot be defended.
+  // "live" goes through sampleComputeOnDemand, which writes through, so the
+  // dossier, the card and the API keep reading one number.
+  let compute: ComputeSample | null = mode === "off" ? null : (facts.compute ?? null);
+  if (mode === "live") compute = (await sampleComputeOnDemand(network, row.id)).sample ?? compute;
+  const computeRank = await rankUtilisation(network, compute?.utilisation);
 
   const out: string[] = [];
   const h = (t: string) => out.push("", `## ${t}`, "");
@@ -728,6 +749,112 @@ export async function buildDossier(programId: string, opts: DossierOptions = {})
     }
   }
 
+  // --- compute --------------------------------------------------------------
+  // Two numbers, and the gap between them is the story. SGP-0003 proposed
+  // charging a resource fee per compute unit REQUESTED — so a program that
+  // reserves 1.2M and burns 8.6k would pay for 1.2M. Any copy tying this to the
+  // fee proposal has to use the requested figure, never the consumed one.
+  h("Compute per transaction");
+  out.push(
+    "_TRANSACTION-level, never per-program: `computeUnitsConsumed` covers the whole " +
+      "transaction, so a swap here also pays for every token program it routes through. " +
+      "The label is always \"per transaction\"; there is no cheaper per-program " +
+      "attribution — the enhanced-transactions API does not return compute at all._",
+  );
+  out.push("");
+  if (mode === "off") {
+    out.push(fact("Sample", "not run (sampling disabled)", "drop ?sample=0 to read the stored reading"));
+  } else if (!compute) {
+    out.push(
+      fact(
+        "Sample",
+        "not sampled yet",
+        "nobody has taken a compute reading on this program — say nothing about what it " +
+          "burns or reserves. ?sample=live measures it now",
+      ),
+    );
+  } else {
+    const at = new Date(compute.sampledAt);
+    out.push(
+      fact(
+        "Measured at",
+        `${iso(at)}${ageSuffix(at)}`,
+        `${compute.n} transactions, newest first — a sample, not the program's history. ` +
+          "?sample=live re-measures before you publish a claim",
+      ),
+    );
+    out.push(
+      fact(
+        "Consumed",
+        `median ${compactCU(compute.median)} CU · ${compactCU(compute.p10)}–${compactCU(compute.p90)} for most calls` +
+          (typeof compute.max === "number" ? ` · heaviest ${compactCU(compute.max)}` : ""),
+        "the spread, not the median alone — a single median lies about a bimodal " +
+          "program, and half of these are bimodal",
+      ),
+    );
+    // A reading taken before the requested figure existed carries no opinion on
+    // it. Absent is not "none" — saying "no transaction set a limit" of a
+    // reading that never looked is exactly the collapse this document refuses.
+    const partialReading = typeof compute.max !== "number" || typeof compute.noLimit !== "number";
+    out.push(
+      fact(
+        "Requested",
+        compute.requestedMedian == null
+          ? partialReading
+            ? "not measured — this reading predates the requested figure. It will be retaken; ?sample=live forces it now"
+            : "no sampled transaction set a compute limit"
+          : `median ${compactCU(compute.requestedMedian)} CU via SetComputeUnitLimit`,
+        "the number SGP-0003's resource fee would be charged on — what it costs to " +
+          "ASK, not what the work cost",
+      ),
+    );
+    out.push(
+      fact(
+        "Utilisation",
+        compute.utilisation === null
+          ? null
+          : `${pct(compute.utilisation)} of what it reserves — over-requests by ${overRequest(compute.utilisation)}`,
+        "median of consumed ÷ requested per transaction. The unused part is capacity " +
+          "the scheduler reserved and nobody else could use",
+      ),
+    );
+    out.push(
+      fact(
+        "Against the corpus",
+        computeRank === null || compute.utilisation === null
+          ? null
+          : computeRank.below === null
+            ? `only ${computeRank.n} program${computeRank.n === 1 ? "" : "s"} on record carr${computeRank.n === 1 ? "ies" : "y"} a reading — too few to rank against`
+            : `uses less of its reservation than ${pct(computeRank.below)} of ${computeRank.n} programs on record` +
+              (computeRank.median !== null ? ` · corpus median ${pct(computeRank.median)}` : ""),
+        "utilisation is meaningless on its own — 20% is only a finding against a median",
+      ),
+    );
+    out.push(
+      fact(
+        "No limit set",
+        partialReading ? null : `${compute.noLimit} of ${compute.n} sampled transactions`,
+        "those run on the per-instruction default, which is not a number the " +
+          "transaction chose — a fee on requested compute lands on them differently",
+      ),
+    );
+    out.push(
+      fact(
+        "Cheap calls",
+        typeof compute.cheapShare === "number" ? `${pct(compute.cheapShare)} under 2,000 CU` : null,
+        "bookkeeping rather than work — a high share means the median describes cranks",
+      ),
+    );
+    out.push(
+      fact(
+        "Failed",
+        `${compute.failed} of ${compute.n}`,
+        "free from the same call. Usually normal on a busy program — bots losing " +
+          "races, not a defect. Do not lead with it",
+      ),
+    );
+  }
+
   // --- limits ---------------------------------------------------------------
   h("What is not known");
   const gaps: string[] = [];
@@ -739,6 +866,12 @@ export async function buildDossier(programId: string, opts: DossierOptions = {})
   else if ((traffic.invocationShare ?? 1) < 0.5)
     gaps.push(
       `Only ${pct(traffic.invocationShare ?? 0)} of sampled transactions invoked the program. Whatever the rest are, they are not usage — identify them before describing this program as active.`,
+    );
+  if (!compute && mode !== "off")
+    gaps.push("No compute reading — nothing can be said about what a transaction here burns or reserves.");
+  else if (compute && compute.requestedMedian === null)
+    gaps.push(
+      "No sampled transaction set a compute limit, so there is no requested figure — the number SGP-0003 would price does not exist for this program, and utilisation is undefined rather than high.",
     );
   if (facts.securityTxt)
     gaps.push("Everything in security.txt is self-declared by whoever deployed the binary. It names an entity; it does not prove one.");

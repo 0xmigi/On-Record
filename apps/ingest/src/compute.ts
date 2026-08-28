@@ -1,5 +1,5 @@
 import bs58 from "bs58";
-import { and, eq } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import { db, schema, logger, rpc, getSignaturesForAddress, type Network } from "@onrecord/core";
 
 // ---------------------------------------------------------------------------
@@ -99,9 +99,16 @@ function budgetAllows(): boolean {
   return spentThisHour < ON_DEMAND_PER_HOUR;
 }
 
-/** Is this reading old enough to retake? */
+/** Is this reading old enough — or old enough in SHAPE — to retake?
+ *
+ *  Readings taken before the spread and the requested figure existed carry only
+ *  a median and a band. They are not wrong, but every surface now draws `max`
+ *  and `requestedMedian`, and a reading missing them renders as a hole rather
+ *  than as an absence. Age them out on shape as well as on the clock: one tick
+ *  replaces them, and nothing has to special-case a partial sample forever. */
 export function isStale(c: ComputeSample | null | undefined): boolean {
   if (!c) return true;
+  if (typeof c.max !== "number" || typeof c.noLimit !== "number") return true;
   return (Date.now() - Date.parse(c.sampledAt)) / 3_600_000 > MAX_AGE_H;
 }
 
@@ -176,22 +183,40 @@ export async function storeCompute(programId: string, compute: ComputeSample): P
     .where(eq(schema.subjects.id, programId));
 }
 
+/** Why a reading is not being returned. The distinction is the whole point: a
+ *  program with almost no transactions is NOT one we have yet to get to, and a
+ *  surface that says "measuring…" about the first is telling the reader to wait
+ *  for something that will never arrive. */
+export type ComputeMissReason =
+  /** too little traffic to read — this is an answer about the program */
+  | "too-quiet"
+  /** the hourly ceiling is spent; a later visit gets a reading */
+  | "budget"
+  /** the read was attempted and failed */
+  | "failed";
+
+export interface ComputeReading {
+  sample: ComputeSample | null;
+  /** set whenever `sample` is null, never otherwise */
+  reason: ComputeMissReason | null;
+}
+
 /**
  * Take a reading now, for a program nothing has sampled yet.
  *
- * Returns null when the budget is spent, the program is known to be too quiet
- * to read, or the chain says nothing useful — the caller then draws "not
- * sampled yet", which is the honest answer and costs nothing.
+ * Never throws, and always says WHY it has nothing: the caller renders "not
+ * enough traffic to measure" or "not sampled yet" accordingly, and both cost
+ * nothing.
  */
 export async function sampleComputeOnDemand(
   network: Network,
   programId: string,
-): Promise<ComputeSample | null> {
+): Promise<ComputeReading> {
   const barredUntil = barren.get(programId);
-  if (barredUntil && Date.now() < barredUntil) return null;
+  if (barredUntil && Date.now() < barredUntil) return { sample: null, reason: "too-quiet" };
   if (!budgetAllows()) {
     logger.warn({ programId, cap: ON_DEMAND_PER_HOUR }, "compute: on-demand budget spent this hour");
-    return null;
+    return { sample: null, reason: "budget" };
   }
   spentThisHour++;
   try {
@@ -199,18 +224,104 @@ export async function sampleComputeOnDemand(
     if (sigs.length < 10) {
       // a program with almost no history will not become readable soon
       barren.set(programId, Date.now() + 24 * 3_600_000);
-      return null;
+      return { sample: null, reason: "too-quiet" };
     }
     const compute = await computeFromSignatures(network, sigs.map((s) => s.signature));
     if (!compute) {
+      // signatures existed but under ten of them parsed — same answer to the
+      // reader, shorter bar, because this one can change within the day
       barren.set(programId, Date.now() + 6 * 3_600_000);
-      return null;
+      return { sample: null, reason: "too-quiet" };
     }
     await storeCompute(programId, compute);
     logger.info({ programId, median: compute.median, n: compute.n }, "compute: sampled on demand");
-    return compute;
+    return { sample: compute, reason: null };
   } catch (err) {
     logger.warn({ programId, err: String(err) }, "compute: on-demand sample failed");
-    return null;
+    return { sample: null, reason: "failed" };
   }
+}
+
+// ---------------------------------------------------------------------------
+// Where a reading sits among the others — the comparison, not the number.
+//
+// "Uses 20% of what it reserves" means nothing on its own. It means something
+// against "the median program on record uses 61%". Corpus-relative, always:
+// the same rule the syscall census and the size cohort already follow.
+//
+// Cached per network for a few minutes. This is a full-table aggregate over a
+// corpus that grows by ~157 rows a day, so a stale-by-minutes answer is exact
+// enough to rank one program, and it saves a scan per program in a batch.
+// ---------------------------------------------------------------------------
+
+export interface ComputeCensus {
+  /** programs on this network carrying a utilisation reading */
+  n: number;
+  /** median utilisation across them, 0–1 — the number a rank is read against */
+  median: number | null;
+  /** every reading, ascending, so a rank is a scan of an array not a query */
+  sorted: number[];
+  computedAt: number;
+}
+
+const computeCensusCache = new Map<Network, ComputeCensus>();
+const COMPUTE_CENSUS_TTL_MS = 5 * 60_000;
+
+/** Below this the distribution is too thin to rank against, and a percentile
+ *  would be a number dressed up as a finding. Only a corpus backfill lifts it. */
+const MIN_CORPUS = 30;
+
+export async function computeCensus(network: Network): Promise<ComputeCensus> {
+  const hit = computeCensusCache.get(network);
+  if (hit && Date.now() - hit.computedAt < COMPUTE_CENSUS_TTL_MS) return hit;
+
+  const rows = await db.execute<{ u: string }>(sql`
+    select ${schema.subjects.facts} -> 'compute' ->> 'utilisation' as u
+    from ${schema.subjects}
+    where ${schema.subjects.network} = ${network}
+      and ${schema.subjects.kind} = 'program'
+      and ${schema.subjects.facts} -> 'compute' ->> 'utilisation' is not null
+  `);
+  const sorted = rows
+    .map((r) => Number(r.u))
+    .filter((u) => Number.isFinite(u))
+    .sort((a, b) => a - b);
+
+  const census: ComputeCensus = {
+    n: sorted.length,
+    median: sorted.length ? sorted[Math.floor(sorted.length / 2)]! : null,
+    sorted,
+    computedAt: Date.now(),
+  };
+  computeCensusCache.set(network, census);
+  return census;
+}
+
+export interface ComputeRank {
+  /** programs the rank was taken against */
+  n: number;
+  /** the corpus median utilisation, 0–1 */
+  median: number | null;
+  /** share of them using a SMALLER fraction of their reservation, 0–1.
+   *  Null when the corpus is too thin to rank against — which is not the same
+   *  as "average", and must never be rendered as a percentile. */
+  below: number | null;
+}
+
+/** Rank one utilisation reading against everything else on record. */
+export async function rankUtilisation(
+  network: Network,
+  utilisation: number | null | undefined,
+): Promise<ComputeRank | null> {
+  if (typeof utilisation !== "number") return null;
+  const census = await computeCensus(network);
+  if (!census.n) return null;
+  return {
+    n: census.n,
+    median: census.median,
+    below:
+      census.n >= MIN_CORPUS
+        ? census.sorted.filter((u) => u < utilisation).length / census.n
+        : null,
+  };
 }

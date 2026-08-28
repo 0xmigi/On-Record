@@ -5,7 +5,7 @@ import { Resvg } from "@resvg/resvg-js";
 import { and, eq } from "drizzle-orm";
 import { db, schema, type Network } from "@onrecord/core";
 import { edgesFor, type EdgeNode } from "./refs.js";
-import { sampleComputeOnDemand, type ComputeSample } from "./compute.js";
+import { isStale, sampleComputeOnDemand, type ComputeSample } from "./compute.js";
 
 // ---------------------------------------------------------------------------
 // The share card — a program's hard facts, as one SVG.
@@ -516,10 +516,12 @@ export async function renderCardFor(programId: string): Promise<Buffer | null> {
   const facts = await cardFacts(programId);
   if (!facts) return null;
   // A card is the one place the gap is visible, so this is where it gets
-  // closed: no stored reading means take one now, budgeted and written through
+  // closed: no usable reading means take one now, budgeted and written through
   // so the next caller — the bot, the dossier, the API — finds it there.
-  if (!facts.compute) {
-    facts.compute = await sampleComputeOnDemand(facts.network, programId);
+  // isStale, not a null check: a reading taken before the spread existed has a
+  // median and nothing to draw a bar with, and would render as a hole.
+  if (isStale(facts.compute)) {
+    facts.compute = (await sampleComputeOnDemand(facts.network, programId)).sample ?? facts.compute;
   }
   return renderCard(facts, await fetchIcon(facts));
 }

@@ -5530,3 +5530,116 @@ a.copy-addr-text:hover {
     display: none;
   }
 }
+
+/* --- compute per transaction (what it burns vs what it reserved) --------- */
+.cu {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 14px 18px 16px;
+}
+.cu-head {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: 10px;
+}
+.cu-sub {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--ink-faint);
+}
+
+/* The bar is against the 1.4M a transaction may burn, so the empty part is
+   headroom. Log scale — a linear axis puts everything under 20k in one pixel. */
+.cu-track {
+  position: relative;
+  height: 28px;
+  border: 1px solid var(--border-strong);
+  border-radius: 3px;
+  background: transparent;
+  overflow: hidden;
+}
+.cu-band {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  background: var(--ink);
+  opacity: 0.12;
+}
+.cu-median {
+  position: absolute;
+  top: -2px;
+  bottom: -2px;
+  width: 2px;
+  margin-left: -1px;
+  background: var(--accent);
+}
+/* dashed, because "reserved" is a declaration and the rest is measurement */
+.cu-req {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 0;
+  border-left: 1.5px dashed var(--ink-soft);
+}
+.cu-max {
+  position: absolute;
+  top: 5px;
+  bottom: 5px;
+  width: 1px;
+  background: var(--ink-faint);
+}
+.cu-axis {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  margin-top: 5px;
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  color: var(--ink-faint);
+}
+.cu-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px;
+  margin-top: 10px;
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  color: var(--ink-soft);
+}
+.cu-key {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+.cu-key i {
+  display: inline-block;
+  width: 12px;
+  height: 10px;
+}
+.cu-k-band {
+  background: var(--ink);
+  opacity: 0.12;
+}
+.cu-k-median {
+  width: 2px !important;
+  background: var(--accent);
+}
+.cu-k-req {
+  width: 0 !important;
+  border-left: 1.5px dashed var(--ink-soft);
+}
+.cu-k-max {
+  width: 1px !important;
+  background: var(--ink-faint);
+}
+.cu-facts {
+  margin-top: 14px;
+}
+.cu-foot {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  line-height: 1.55;
+  color: var(--ink-faint);
+  margin: 12px 0 0;
+}

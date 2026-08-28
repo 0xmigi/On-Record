@@ -9,6 +9,7 @@ import { VerifiedBadge } from "@/components/VerifiedBadge";
 import { ClusterBadge } from "@/components/ClusterBadge";
 import { IdlViewer } from "@/components/IdlViewer";
 import { UsageSection } from "@/components/UsageSection";
+import { ComputeSection } from "@/components/ComputeSection";
 import { DossierTabs, type DossierTab } from "@/components/DossierTabs";
 import { RecordTable, type Trail } from "@/components/RecordTable";
 import { SignalHex } from "@/components/SignalHex";
@@ -659,6 +660,18 @@ export default async function ProgramDossierPage({
           </div>
         </div>
       ) : null}
+
+      {/* Footprint is what the build put on-chain; this is what a call costs to
+          run. Same tab, next section — the runtime half of the same question. */}
+      <SectionHeader
+        title="Compute per transaction"
+        info="What one transaction touching this program burns, and what it reserved. Sampled and parsed, never counted."
+      />
+      <ComputeSection
+        programId={program.id}
+        initialCompute={program.compute ?? null}
+        initialRank={program.computeRank ?? null}
+      />
 
       {comp.crate || comp.moduleGroups.length || comp.instructions.length ? (
         <>

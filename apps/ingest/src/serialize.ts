@@ -199,6 +199,7 @@ export function serializeProgramDetail(
   sourceKin: ApiProgramDetail["sourceKin"] = [],
   references: ApiProgramDetail["references"] = { names: [], namedBy: [] },
   similarityTo: ApiProgramDetail["similarityTo"] = {},
+  computeRank: ApiProgramDetail["computeRank"] = null,
 ): ApiProgramDetail {
   const facts = (row.facts ?? {}) as {
     securityTxt?: SecurityTxt;
@@ -252,5 +253,8 @@ export function serializeProgramDetail(
     rate: facts.rate ?? null,
     // compute per transaction, the same reading the card draws (compute.ts)
     compute: facts.compute ?? null,
+    // and where that reading sits in the corpus. Taken by the route, not here:
+    // it is a full-table aggregate, and this function is pure over one row.
+    computeRank,
   };
 }

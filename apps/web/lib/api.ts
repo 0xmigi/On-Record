@@ -234,6 +234,17 @@ export interface ApiProgramDetail extends ApiProgram {
    *  relative outside the size prefilter has no entry — both mean "not
    *  measured", never zero. */
   similarityTo?: Record<string, number>;
+  /** Compute burned by transactions that touch this program, sampled.
+   *  TRANSACTION-level — a swap pays for every program it routes through — so
+   *  it is never "what this program uses". `requestedMedian` is the number
+   *  SGP-0003's proposed resource fee would be charged on: what it costs to
+   *  ASK, not what the work cost. Optional: an API deployed before this field
+   *  existed omits it, and a program nobody has sampled has null. */
+  compute?: ComputeProfileData | null;
+  /** where `compute.utilisation` sits among every program on record carrying a
+   *  reading. `below` is null while the corpus is too thin to rank against —
+   *  which is not "average", and must not render as one. */
+  computeRank?: ComputeRankData | null;
   /** the reference graph: program ids embedded in this image, and the ones
    *  that embed it. Optional — a program only has edges once it has been
    *  through reference extraction. */
@@ -641,4 +652,42 @@ const RADAR_TYPES: RadarType[] = ["deploy", "upgrade"];
 
 export function isRadarType(value: string | undefined): value is RadarType {
   return value !== undefined && (RADAR_TYPES as string[]).includes(value);
+}
+
+
+/** One compute reading. Written by the sampler in apps/ingest/src/compute.ts;
+ *  the same numbers the share card draws, by construction — one sampler. */
+export interface ComputeProfileData {
+  /** consumed, in compute units */
+  median: number;
+  p10: number;
+  p90: number;
+  n: number;
+  failed: number;
+  sampledAt: string;
+  // Everything below arrived after the first readings were written, so a row
+  // sampled before then carries a median and a band and nothing else. The API
+  // ages those out on shape (compute.ts `isStale`), but a page must render one
+  // correctly in the meantime — optional here, guarded where it is drawn.
+  /** the heaviest call in the sample — on a bimodal program this is the story */
+  max?: number;
+  /** share of calls under 2,000 CU — bookkeeping rather than work */
+  cheapShare?: number;
+  /** median compute REQUESTED via SetComputeUnitLimit. Null when no sampled
+   *  transaction set a limit at all, which is not the same as zero. */
+  requestedMedian?: number | null;
+  /** median consumed ÷ requested, 0–1 */
+  utilisation?: number | null;
+  /** sampled transactions that set no compute limit */
+  noLimit?: number;
+}
+
+/** why there is no reading — "too-quiet" is an answer about the program, the
+ *  other two are answers about us, and they must not be worded the same */
+export type ComputeMissReason = "too-quiet" | "budget" | "failed";
+
+export interface ComputeRankData {
+  n: number;
+  median: number | null;
+  below: number | null;
 }

@@ -36,6 +36,14 @@ import { buildDossier } from "../dossier.js";
 import { edgesFor } from "../refs.js";
 import { composeReply } from "../reply.js";
 import { renderCardFor } from "../card.js";
+import {
+  isStale,
+  rankUtilisation,
+  sampleComputeOnDemand,
+  type ComputeMissReason,
+  type ComputeReading,
+  type ComputeSample,
+} from "../compute.js";
 
 /** How old a usage sample may be before an opener pays to refresh it. A week:
  *  instruction mix moves slowly, and every surface renders the measurement time
@@ -48,6 +56,9 @@ const FILL_MAX_PER_HOUR = Number(process.env.USAGE_FILL_MAX_PER_HOUR ?? 40);
 
 /** one measurement per program at a time — concurrent openers share it */
 const usageInFlight = new Map<string, Promise<StoredSample<InstructionUsage>>>();
+/** same one-flight rule for compute: two people opening the same program is one
+ *  reading, not two slots out of the sampler's hourly budget */
+const computeInFlight = new Map<string, Promise<ComputeReading>>();
 /** start times of the measurements taken in the last hour */
 let fillsThisHour: number[] = [];
 
@@ -420,6 +431,13 @@ export function registerPublicRoutes(app: FastifyInstance): void {
       ...bucketMembers.map((m) => m.id),
       ...sourceKin.map((k) => k.programId),
     ]);
+    // Where this program's compute utilisation sits among every program on
+    // record carrying a reading. Corpus-relative or it says nothing — the raw
+    // "uses 20% of what it reserves" is only a finding against a median.
+    const computeRank = await rankUtilisation(
+      row.network as Network,
+      ((row.facts ?? {}) as { compute?: { utilisation?: number | null } }).compute?.utilisation,
+    );
     const nearestId = ((row.facts ?? {}) as { nearest?: { id?: string } }).nearest?.id;
     if (nearestId) listed.add(nearestId);
     const similarityTo: Record<string, number> = {};
@@ -438,6 +456,7 @@ export function registerPublicRoutes(app: FastifyInstance): void {
       sourceKin,
       references,
       similarityTo,
+      computeRank,
     );
   });
 
@@ -532,6 +551,58 @@ export function registerPublicRoutes(app: FastifyInstance): void {
       // stored (usually nothing) and let the reader see "not sampled yet"
       req.log.warn({ id, err: String(err) }, "usage fill failed");
       return { usage: stored.value, sampledAt: stored.sampledAt?.toISOString() ?? null, measured: false };
+    }
+  });
+
+  // --- fill: take a compute reading, because somebody opened the page -----
+  //
+  // POST for the same reason the usage filler is POST: this is a metered path
+  // (SAMPLE_N getTransaction calls) and a Next.js link prefetch is a GET. Only
+  // the client effect in ComputeProfile.tsx, after a real navigation, reaches
+  // it — which also excludes every crawler that does not run JS.
+  //
+  // The spend ceiling lives in compute.ts, not here, so the card and the page
+  // draw from one budget rather than two. Beyond it this route still answers,
+  // from the stored row; it just declines to spend.
+  app.post<{ Params: { id: string } }>("/api/programs/:id/compute", async (req, reply) => {
+    const rows = await db
+      .select({ network: schema.subjects.network, facts: schema.subjects.facts })
+      .from(schema.subjects)
+      .where(eq(schema.subjects.id, req.params.id));
+    if (!rows[0]) return reply.code(404).send({ error: "unknown program" });
+    const id = req.params.id;
+    const network = rows[0].network as Network;
+    const stored = ((rows[0].facts ?? {}) as { compute?: ComputeSample }).compute ?? null;
+
+    const answer = async (
+      compute: ComputeSample | null,
+      measured: boolean,
+      reason: ComputeMissReason | null = null,
+    ) => ({
+      compute,
+      computeRank: await rankUtilisation(network, compute?.utilisation),
+      measured,
+      // Only ever set when there is nothing to show. "too-quiet" is an answer
+      // ABOUT the program; the page says so instead of implying a wait.
+      reason: compute ? null : reason,
+    });
+
+    if (!isStale(stored)) return answer(stored, false);
+
+    let flight = computeInFlight.get(id);
+    if (!flight) {
+      flight = sampleComputeOnDemand(network, id).finally(() => computeInFlight.delete(id));
+      computeInFlight.set(id, flight);
+    }
+    try {
+      const fresh = await flight;
+      // No sample means the budget was spent, or the program is too quiet to
+      // read. Either way the honest answer is whatever was already stored,
+      // plus the reason there is nothing newer.
+      return fresh.sample ? answer(fresh.sample, true) : answer(stored, false, fresh.reason);
+    } catch (err) {
+      req.log.warn({ id, err: String(err) }, "compute fill failed");
+      return answer(stored, false, "failed");
     }
   });
 

@@ -509,6 +509,15 @@ export interface ApiProgramDetail extends ApiProgram {
     failed: number;
     sampledAt: string;
   } | null;
+  /** Where `compute.utilisation` sits among every program on record carrying a
+   *  reading. The rank is the point: 20% of a reservation means nothing until
+   *  you know the median is 61%. `below` is null while the corpus is too thin
+   *  to rank against — which is not "average", and must not render as one. */
+  computeRank: {
+    n: number;
+    median: number | null;
+    below: number | null;
+  } | null;
   /** programs compiled from the same crate — the fork signal TLSH misses.
    *  Ranked by how much of the source tree they literally share. */
   sourceKin: {

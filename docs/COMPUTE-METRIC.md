@@ -65,7 +65,10 @@ dossier and the API cannot disagree.
 - `computeFromSignatures(network, signatures)` — the reading itself.
 - `sampleComputeOnDemand(network, programId)` — takes a reading for a program
   nothing has sampled, writes it through to `subjects.facts.compute`.
-- `isStale(sample)` — older than `COMPUTE_MAX_AGE_H` (default 24h).
+- `isStale(sample)` — older than `COMPUTE_MAX_AGE_H` (default 24h), **or**
+  missing `max`/`noLimit`, i.e. written before those fields existed.
+- `computeCensus(network)` / `rankUtilisation(network, u)` — the corpus
+  distribution, and where one reading sits in it.
 - `requestedFrom(instructions)` — decodes the ComputeBudget
   `SetComputeUnitLimit` instruction: program
   `ComputeBudget111111111111111111111111111111`, tag byte `0x02`, then a u32
@@ -91,18 +94,89 @@ Env knobs: `COMPUTE_SAMPLE_N` (100), `COMPUTE_MAX_AGE_H` (24),
 
 1. **`momentum.ts`** — on its hourly tick, from the signature page it already
    fetched, so the marginal cost is only the `getTransaction` calls.
-2. **`card.ts` → `renderCardFor`** — if a card is about to be drawn and there is
-   no reading, it takes one. Budgeted, because `/card.png` is public.
+2. **`card.ts` → `renderCardFor`** — if a card is about to be drawn and the
+   reading is stale or unusable, it takes one. Budgeted, because `/card.png` is
+   public.
+3. **`POST /api/programs/:id/compute`** — the page filler, hit by a client
+   effect after a real navigation (never on a prefetch, which is a GET; that is
+   how 6,000 programs once got enrolled in a paid refresh loop). One-flight per
+   program, and it spends from the same `COMPUTE_ON_DEMAND_PER_HOUR` ceiling as
+   the card, so the two surfaces cannot double-spend.
+4. **`?sample=live` on the dossier** — forces a reading before a claim gets
+   published.
 
 ### Where it surfaces
 
 - `GET /api/programs/:id` → `compute` on the detail payload
-  (`ApiProgramDetail.compute` in `packages/core/src/types.ts`).
+  (`ApiProgramDetail.compute` in `packages/core/src/types.ts`), and
+  `computeRank` beside it — where that reading sits in the corpus.
 - `GET /api/programs/:id/card.png` → the bot's share card draws it as a bar:
   p10–p90 band, median line, tick at the heaviest call, log scale, with
   `ASKS FOR 340k · USES 78% OF IT` underneath.
+- `GET /api/programs/:id/dossier.md` → a **Compute per transaction** section:
+  consumed spread, requested, utilisation and the over-request stated plainly,
+  the corpus rank, `noLimit`, cheap share, failure rate — every line with its
+  method, and the transaction-level caveat above all of it. Honours
+  `?sample=live` (re-measures, writes through) and `?sample=0` (omits it and
+  says so).
+- The program page → **Composition → Compute per transaction**, directly under
+  Footprint: footprint is what the build put on-chain, this is what a call costs
+  to run. Same bar as the card, plus the rows it has no room for.
+  `apps/web/components/ComputeBar.tsx` renders, `ComputeSection.tsx` fills on a
+  real open. Copy is figures and units only — the caveat lives in the section
+  title, which always says "per transaction".
 
----
+  **The empty state is three different sentences, not one.** The sampler returns
+  a `ComputeMissReason`, and it is carried all the way to the page:
+  `too-quiet` → "Too few transactions to measure" (a fact about the program),
+  `budget` → "Not measured yet — check back shortly" (a fact about us),
+  `failed` → "Not sampled yet". "Measuring…" is only ever shown while a request
+  is genuinely in flight; leaving it up as a terminal state tells a reader to
+  wait for something that will never arrive.
+
+### The rank (`compute.ts`, `computeCensus` / `rankUtilisation`)
+
+The single most useful thing about a utilisation figure is where it sits, so
+every surface that shows one shows the rank next to it: *"uses less of its
+reservation than 86% of 412 programs on record · corpus median 61%"*.
+
+Cached per network for 5 minutes — a full-table aggregate over a corpus growing
+by ~157 rows a day, so stale-by-minutes is exact enough to rank one program and
+it saves a scan per program in a batch. **Below 30 readings it returns `below:
+null`** and every surface says "too few to rank against" rather than printing a
+percentile over a handful. That floor is the reason the backfill below matters:
+until it runs, the rank line renders as its own disclaimer.
+
+### What it costs
+
+One reading = **~101 Helius credits** (100 `getTransaction` at 1 credit each,
+plus one `getSignaturesForAddress`; the momentum path reuses a page it already
+fetched, so it pays 100).
+
+| path | ceiling | worst case |
+|---|---|---|
+| momentum tick | `MOMENTUM_MAX_PROGRAMS` (100) per hourly tick, and only for programs with fresh signatures *and* a reading over `COMPUTE_MAX_AGE_H` old | 10,000 credits/h → ~7.2M/month |
+| card + page fill | `COMPUTE_ON_DEMAND_PER_HOUR` (8), **shared** — one process-wide counter in `compute.ts`, so `/card.png` and `POST /compute` cannot double-spend | ~808 credits/h → ~580k/month |
+| `?sample=live` | none — deliberate, it is a manual act | ~101 credits per invocation |
+
+The momentum ceiling is the one that matters and it is nearly never approached:
+most of the rotation is dead code with no fresh signatures in the hour, and a
+program that already has a reading under 24h old costs nothing. The on-demand
+ceiling is absolute and holds whatever the traffic.
+
+**Watch the shape-staleness catch-up.** Ageing pre-upgrade readings out on shape
+makes every one of them due at once. It is bounded by the same 100/tick, so the
+cost is a few hours of full ticks, once.
+
+### Partial readings
+
+Rows written before the spread and the requested figure existed carry a median
+and a band and nothing else. `isStale` now ages them out **on shape as well as
+on the clock**, so one tick replaces them — and until it does, every surface
+says "not measured, this reading predates the requested figure" rather than
+"no sampled transaction set a compute limit". Absent is not none. The card's
+fill went from a null check to `isStale` for the same reason: a reading with no
+`max` has nothing to draw a bar with.
 
 ## Sampling lessons already paid for
 
@@ -121,44 +195,27 @@ collapses into the first pixel.
 
 ---
 
-## What to build next — the actual task
+## What to build next
 
-### 1. Show it on the program page
-
-The dossier page has no compute section. It should carry the same figure the
-card does, plus what the card has no room for:
-
-- requested vs consumed, and the gap stated plainly
-- `noLimit` — how many sampled transactions set no limit at all
-- the failure rate (already stored as `failed`/`n`)
-- when it was sampled, and a way to re-measure (the `?sample=live` convention
-  already exists elsewhere in the dossier)
-
-### 2. Make it comparable
-
-The single most useful thing is **rank**, not the raw number. A program using
-20% of what it reserves means nothing until you know the median is 61%.
-
-Needs a corpus-wide aggregate — the same shape as the existing "closest code of
-N on record" comparison. Probably a periodic job writing a distribution to a
-table, so a page can say "uses less of its reservation than 80% of programs on
-record" without recomputing.
+Items 1 and 2 of the original list shipped — see "Where it surfaces" and "The
+rank" above. What is left:
 
 ### 3. Decide whether it belongs on the radar row / in scoring
 
 `interest.ts` already scores newness, novelty, adoption, momentum, conviction.
 A program reserving 100× what it uses is arguably interesting. **Careful:** the
 existing note about not ranking by interest score applies — this would be a
-signal, not a verdict.
+signal, not a verdict. Not started; it is a judgement call, not a build.
 
 ### 4. Backfill
 
-Only a handful of programs have a reading. A backfill script over the corpus
-(pattern: `apps/ingest/src/backfill-*.ts`) would populate it, but at
-`SAMPLE_N` × programs `getTransaction` calls — needs a budget decision before
-running.
-
----
+Still the blocker on everything comparative. Only a handful of programs have a
+reading, so `rankUtilisation` returns `below: null` and the rank line renders as
+a disclaimer. A backfill script over the corpus (pattern:
+`apps/ingest/src/backfill-*.ts`) would populate it, at `SAMPLE_N` × programs
+`getTransaction` calls — **needs a budget decision before running.** Thirty
+programs is the floor that turns the rank on; the whole corpus is what makes it
+worth reading.
 
 ## Caveats that must survive into any UI copy
 
@@ -188,4 +245,6 @@ a defect. Do not lead with it.
   (transactions/minute, added because hourly *counts* saturate at the
   sampler's page cap on busy programs — Jupiter, Raydium and Meteora all
   flatlined at exactly 3,000)
-- `apps/ingest/src/card.ts` for how the bar is drawn
+- `apps/ingest/src/card.ts` for how the bar is drawn, and
+  `apps/web/components/ComputeBar.tsx` for the same geometry in HTML — both are
+  log scale from a 100 CU floor to the 1,400,000 ceiling, deliberately
