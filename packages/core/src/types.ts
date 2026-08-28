@@ -495,6 +495,16 @@ export interface ApiProgramDetail extends ApiProgram {
     median: number;
     p10: number;
     p90: number;
+    /** the heaviest call in the sample */
+    max: number;
+    /** share of calls under 2,000 CU — bookkeeping rather than work */
+    cheapShare: number;
+    /** median compute REQUESTED — the number SGP-0003's resource fee prices */
+    requestedMedian: number | null;
+    /** median consumed ÷ requested, 0–1 */
+    utilisation: number | null;
+    /** sampled transactions that set no compute limit */
+    noLimit: number;
     n: number;
     failed: number;
     sampledAt: string;

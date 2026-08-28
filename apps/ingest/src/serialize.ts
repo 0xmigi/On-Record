@@ -206,7 +206,9 @@ export function serializeProgramDetail(
     activity?: { t: number; c: number }[];
     rate?: { t: number; r: number }[];
     compute?: {
-      median: number; p10: number; p90: number; n: number; failed: number; sampledAt: string;
+      median: number; p10: number; p90: number; max: number; cheapShare: number;
+      requestedMedian: number | null; utilisation: number | null; noLimit: number;
+      n: number; failed: number; sampledAt: string;
     };
   };
   // pull IDL instructions + notable strings from the most recent fingerprint

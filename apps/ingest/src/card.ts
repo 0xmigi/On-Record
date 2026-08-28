@@ -246,24 +246,51 @@ function computeBlock(cu: ComputeSample | null, y: number): { svg: string; next:
     out.push(t(L, y + 30, "not sampled yet", { size: 17, fill: FAINT }));
     return { svg: out.join(""), next: y + 30 };
   }
-  const BY = y + 26, BH = 34;
-  const px = (v: number) => Math.max(2, (Math.min(v, TX_CU_LIMIT) / TX_CU_LIMIT) * W);
-  const mx = px(cu.median), lo = px(cu.p10), hi = px(cu.p90);
+
+  // A single median lies about a bimodal program. Phoenix Eternal's median is
+  // 894 while its p90 is 118,798 and its heaviest call is 884,264 — "894" makes
+  // a perps engine look trivial. So the bar shows the whole spread: the band
+  // from p10 to p90, the median inside it, and a tick where the heaviest call
+  // landed. The scale is logarithmic because a linear axis against 1.4M puts
+  // everything below 20k in the first pixel.
+  const BY = y + 30, BH = 30;
+  const LOG_MIN = 100;
+  const pos = (v: number) => {
+    const c = Math.min(Math.max(v, LOG_MIN), TX_CU_LIMIT);
+    return (Math.log10(c / LOG_MIN) / Math.log10(TX_CU_LIMIT / LOG_MIN)) * W;
+  };
+  const lo = pos(cu.p10), hi = pos(cu.p90), mid = pos(cu.median), mx = pos(cu.max);
+  const cheapPct = Math.round(cu.cheapShare * 100);
+
   out.push(
-    t(L, y + 18, "0", { size: 11, tracking: 1.6, weight: 600, fill: MUTED }),
-    t(L + W, y + 18, "1.4M ALLOWED", { size: 11, tracking: 1.6, weight: 600, fill: MUTED, anchor: "end" }),
     `<g filter="url(#rough)">
       <rect x="${L}" y="${BY}" width="${W}" height="${BH}" rx="5" fill="none" stroke="${FAINT}" stroke-width="1.2"/>
-      <rect x="${L + lo}" y="${BY}" width="${hi - lo}" height="${BH}" fill="${INK}" opacity="0.15"/>
-      <path d="M ${L + mx} ${BY - 8} L ${L + mx} ${BY + BH + 8}" stroke="${PAPER}" stroke-width="5.4" fill="none" stroke-linecap="round"/>
-      <path d="M ${L + mx} ${BY - 8} L ${L + mx} ${BY + BH + 8}" stroke="${BRAND}" stroke-width="2.8" fill="none" stroke-linecap="round"/>
+      <rect x="${L + lo}" y="${BY}" width="${Math.max(2, hi - lo)}" height="${BH}" fill="${INK}" opacity="0.15"/>
+      <path d="M ${L + mid} ${BY - 7} L ${L + mid} ${BY + BH + 7}" stroke="${PAPER}" stroke-width="5.4" fill="none" stroke-linecap="round"/>
+      <path d="M ${L + mid} ${BY - 7} L ${L + mid} ${BY + BH + 7}" stroke="${BRAND}" stroke-width="2.8" fill="none" stroke-linecap="round"/>
+      <path d="M ${L + mx} ${BY + 4} L ${L + mx} ${BY + BH - 4}" stroke="${MUTED}" stroke-width="1.6" fill="none"/>
+      ${
+        cu.requestedMedian
+          ? `<path d="M ${L + pos(cu.requestedMedian)} ${BY - 4} L ${L + pos(cu.requestedMedian)} ${BY + BH + 4}" stroke="${MUTED}" stroke-width="1.4" stroke-dasharray="3 3" fill="none"/>`
+          : ""
+      }
     </g>`,
-    t(L, BY + BH + 26, `${compact(cu.median)} MEDIAN`, { size: 19, weight: 600, tracking: 1.9 }),
-    t(L, BY + BH + 46, `MOST BETWEEN ${compact(cu.p10)} AND ${compact(cu.p90)} · ${cu.n} SAMPLED`, {
-      size: 11, tracking: 1.6, weight: 600, fill: MUTED,
-    }),
+    t(L, y + 22, `${compact(cu.median)} TYPICAL`, { size: 11, tracking: 1.6, weight: 600, fill: MUTED }),
+    t(L + W, y + 22, "1.4M ALLOWED", { size: 11, tracking: 1.6, weight: 600, fill: MUTED, anchor: "end" }),
+    // the sentence carries the shape; the bar carries the scale
+    t(L, BY + BH + 30, `${compact(cu.p10)}–${compact(cu.p90)}`, { size: 19, weight: 600, tracking: 1.4 }),
+    t(L + textW(`${compact(cu.p10)}–${compact(cu.p90)}`, 19, 1.4) + 12, BY + BH + 30,
+      `for most calls, up to ${compact(cu.max)}`, { size: 17, fill: MUTED }),
+    // requested is the number the proposed resource fee is charged on, so it
+    // gets said plainly next to what the work actually cost
+    cu.requestedMedian
+      ? t(L, BY + BH + 52,
+          `ASKS FOR ${compact(cu.requestedMedian)} · USES ${Math.round((cu.utilisation ?? 0) * 100)}% OF IT`,
+          { size: 11, tracking: 1.6, weight: 600, fill: MUTED })
+      : t(L, BY + BH + 52, `${cheapPct}% UNDER 2k · ${cu.failed} OF ${cu.n} FAILED`,
+          { size: 11, tracking: 1.6, weight: 600, fill: MUTED }),
   );
-  return { svg: out.join(""), next: BY + BH + 46 };
+  return { svg: out.join(""), next: BY + BH + 52 };
 }
 
 // --- footprint + framework -------------------------------------------------

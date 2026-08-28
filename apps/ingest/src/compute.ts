@@ -1,3 +1,4 @@
+import bs58 from "bs58";
 import { and, eq } from "drizzle-orm";
 import { db, schema, logger, rpc, getSignaturesForAddress, type Network } from "@onrecord/core";
 
@@ -22,10 +23,49 @@ import { db, schema, logger, rpc, getSignaturesForAddress, type Network } from "
 // program ids.
 // ---------------------------------------------------------------------------
 
+/** ComputeBudget program — where a transaction declares what it wants. */
+const COMPUTE_BUDGET = "ComputeBudget111111111111111111111111111111";
+
+/**
+ * The compute a transaction ASKED FOR, from its SetComputeUnitLimit
+ * instruction (tag 0x02, then a u32 little-endian).
+ *
+ * This is the number that matters under SGP-0003: the proposed resource fee is
+ * charged per compute unit REQUESTED, not per unit burned, so a program that
+ * asks for 1.4M and uses 50k would pay for 1.4M. Consumed is what the work
+ * cost; requested is what it will cost to ask.
+ *
+ * Null when the transaction sets no limit — it then runs on the per-instruction
+ * default, which is not a number the transaction chose.
+ */
+function requestedFrom(instructions: { programId?: string; data?: string }[] | undefined): number | null {
+  for (const i of instructions ?? []) {
+    if (i.programId !== COMPUTE_BUDGET || typeof i.data !== "string") continue;
+    try {
+      const b = Buffer.from(bs58.decode(i.data));
+      if (b.length >= 5 && b[0] === 2) return b.readUInt32LE(1);
+    } catch {
+      // an undecodable ComputeBudget instruction is not worth failing over
+    }
+  }
+  return null;
+}
+
 export interface ComputeSample {
   median: number;
   p10: number;
   p90: number;
+  /** the heaviest call in the sample — on a bimodal program this is the story */
+  max: number;
+  /** share of calls under 2,000 CU, i.e. cranks rather than work */
+  cheapShare: number;
+  /** median compute REQUESTED via SetComputeUnitLimit — what SGP-0003 prices */
+  requestedMedian: number | null;
+  /** median consumed ÷ requested, 0–1. Low means paying for headroom it never
+   *  uses, which is exactly what the proposed resource fee makes expensive. */
+  utilisation: number | null;
+  /** transactions in the sample that set no limit at all */
+  noLimit: number;
   /** transactions inspected */
   n: number;
   /** how many of them failed — free, from the same call */
@@ -33,11 +73,17 @@ export interface ComputeSample {
   sampledAt: string;
 }
 
-const SAMPLE_N = Number(process.env.COMPUTE_SAMPLE_N ?? 12);
+// Twelve was far too few. Phoenix Eternal spans 556 to 884,264 CU, and twelve
+// consecutive signatures reported medians of 112,477 / 22,912 / 8,743 / 894
+// depending purely on where the window landed — a 126x swing on one program.
+// A hundred is stable across the same windows.
+const SAMPLE_N = Number(process.env.COMPUTE_SAMPLE_N ?? 100);
+/** below this a call is doing bookkeeping, not work */
+const CHEAP_CU = 2_000;
 /** how stale a reading may get before it is taken again */
 export const MAX_AGE_H = Number(process.env.COMPUTE_MAX_AGE_H ?? 24);
 /** on-demand readings allowed per hour, process-wide */
-const ON_DEMAND_PER_HOUR = Number(process.env.COMPUTE_ON_DEMAND_PER_HOUR ?? 40);
+const ON_DEMAND_PER_HOUR = Number(process.env.COMPUTE_ON_DEMAND_PER_HOUR ?? 8);
 
 let windowStart = Date.now();
 let spentThisHour = 0;
@@ -70,29 +116,47 @@ export async function computeFromSignatures(
   signatures: string[],
 ): Promise<ComputeSample | null> {
   const cus: number[] = [];
+  const reqs: number[] = [];
+  const ratios: number[] = [];
   let failed = 0;
+  let noLimit = 0;
   for (const signature of signatures.slice(0, SAMPLE_N)) {
     try {
-      const tx = await rpc<{ meta?: { computeUnitsConsumed?: number; err?: unknown } | null }>(
-        network,
-        "getTransaction",
-        [signature, { maxSupportedTransactionVersion: 0, encoding: "json", commitment: "confirmed" }],
-      );
+      const tx = await rpc<{
+        meta?: { computeUnitsConsumed?: number; err?: unknown } | null;
+        transaction?: { message?: { instructions?: { programId?: string; data?: string }[] } };
+      }>(network, "getTransaction", [
+        signature,
+        { maxSupportedTransactionVersion: 0, encoding: "jsonParsed", commitment: "confirmed" },
+      ]);
       const cu = tx?.meta?.computeUnitsConsumed;
       if (typeof cu === "number") cus.push(cu);
       if (tx?.meta?.err) failed++;
+      const req = requestedFrom(tx?.transaction?.message?.instructions);
+      if (req === null) noLimit++;
+      else {
+        reqs.push(req);
+        if (typeof cu === "number" && req > 0) ratios.push(Math.min(1, cu / req));
+      }
     } catch {
       // one unreadable transaction must not cost the whole reading
     }
   }
-  // three is the floor for a median and a spread that mean anything
-  if (cus.length < 3) return null;
+  // ten is the floor for a spread that means anything
+  if (cus.length < 10) return null;
   const sorted = [...cus].sort((a, b) => a - b);
   const q = (f: number) => sorted[Math.min(sorted.length - 1, Math.floor(f * sorted.length))]!;
   return {
     median: sorted[Math.floor(sorted.length / 2)]!,
     p10: q(0.1),
     p90: q(0.9),
+    max: sorted[sorted.length - 1]!,
+    cheapShare: cus.filter((c) => c < CHEAP_CU).length / cus.length,
+    requestedMedian: reqs.length ? [...reqs].sort((a, b) => a - b)[Math.floor(reqs.length / 2)]! : null,
+    utilisation: ratios.length
+      ? Math.round([...ratios].sort((a, b) => a - b)[Math.floor(ratios.length / 2)]! * 100) / 100
+      : null,
+    noLimit,
     n: cus.length,
     failed,
     sampledAt: new Date().toISOString(),
@@ -132,7 +196,7 @@ export async function sampleComputeOnDemand(
   spentThisHour++;
   try {
     const sigs = await getSignaturesForAddress(network, programId, { limit: SAMPLE_N });
-    if (sigs.length < 3) {
+    if (sigs.length < 10) {
       // a program with almost no history will not become readable soon
       barren.set(programId, Date.now() + 24 * 3_600_000);
       return null;
