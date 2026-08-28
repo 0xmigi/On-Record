@@ -756,10 +756,10 @@ export async function buildDossier(programId: string, opts: DossierOptions = {})
   // fee proposal has to use the requested figure, never the consumed one.
   h("Compute per transaction");
   out.push(
-    "_TRANSACTION-level, never per-program: `computeUnitsConsumed` covers the whole " +
-      "transaction, so a swap here also pays for every token program it routes through. " +
-      "The label is always \"per transaction\"; there is no cheaper per-program " +
-      "attribution — the enhanced-transactions API does not return compute at all._",
+    "_Two different numbers. `computeUnitsConsumed` is the WHOLE transaction — a swap here " +
+      "also pays for every program it routes through. **Own share** is this program alone, " +
+      "summed from the `Program <id> consumed <n> of <m> compute units` lines the runtime " +
+      "writes into the transaction log. Quote whichever you mean, and say which._",
   );
   out.push("");
   if (mode === "off") {
@@ -796,6 +796,20 @@ export async function buildDossier(programId: string, opts: DossierOptions = {})
     // it. Absent is not "none" — saying "no transaction set a limit" of a
     // reading that never looked is exactly the collapse this document refuses.
     const partialReading = typeof compute.max !== "number" || typeof compute.noLimit !== "number";
+    out.push(
+      fact(
+        "Own share",
+        compute.selfMedian === undefined
+          ? "not measured — this reading predates per-program attribution"
+          : compute.selfMedian === null
+            ? "no sampled transaction executed this program (it was named in them, not called)"
+            : `median ${compactCU(compute.selfMedian)} CU of the ${compactCU(compute.median)} CU transaction` +
+              (compute.selfShare != null ? ` — ${pct(compute.selfShare)} of the bill` : "") +
+              (compute.selfN != null ? ` · ${compute.selfN} of ${compute.n} sampled transactions executed it` : ""),
+        "summed per transaction from the runtime's own invocation logs, CPI passes included. " +
+          "The ONLY per-program figure here — everything else in this section is transaction-level",
+      ),
+    );
     out.push(
       fact(
         "Requested",
@@ -885,6 +899,10 @@ export async function buildDossier(programId: string, opts: DossierOptions = {})
     );
   if (row.noveltyBand === "clone")
     gaps.push("Banded as a clone: near-identical code exists on record. Check the sibling before calling anything here new.");
+  if (compute && compute.selfMedian === null)
+    gaps.push(
+      "No sampled transaction actually executed this program — it was named in them, not called. The compute figures describe transactions NEAR it, not work it did.",
+    );
   gaps.push("Purpose is never recoverable from bytecode. Anything about intent is inference and must be labelled as such.");
   for (const g of gaps) out.push(`- ${g}`);
 

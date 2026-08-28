@@ -78,7 +78,8 @@ Stored shape (`facts.compute`):
 
 ```ts
 {
-  median, p10, p90, max,        // consumed
+  median, p10, p90, max,        // consumed — WHOLE TRANSACTION
+  selfMedian, selfShare, selfN, // consumed — THIS PROGRAM, from the logs
   cheapShare,                   // share of calls under 2,000 CU
   requestedMedian,              // null when no transaction set a limit
   utilisation,                  // median consumed ÷ requested, 0–1
@@ -125,6 +126,10 @@ Env knobs: `COMPUTE_SAMPLE_N` (100), `COMPUTE_MAX_AGE_H` (24),
   `apps/web/components/ComputeBar.tsx` renders, `ComputeSection.tsx` fills on a
   real open. Copy is figures and units only — the caveat lives in the section
   title, which always says "per transaction".
+
+  The section is **four rows**: bar, legend, one sentence on what a call burns,
+  one on what it reserved. Every figure is a median, said so in the copy — a
+  mean would report a number no transaction ever cost.
 
   **The empty state is three different sentences, not one.** The sampler returns
   a `ComputeMissReason`, and it is carried all the way to the page:
@@ -219,12 +224,21 @@ worth reading.
 
 ## Caveats that must survive into any UI copy
 
-**It is transaction-level, never per-program.** `computeUnitsConsumed` is the
+**Two numbers, and they must never be swapped.** `computeUnitsConsumed` is the
 whole transaction: a swap pays for Jupiter plus every token program it routes
-through. Orca reading 20% means transactions *touching* Orca reserve 5× what
-they burn, including whatever else rides along. There is no cheaper
-per-program attribution — Helius's enhanced-transactions API does not return
-compute at all. The label must always say "per transaction".
+through. `selfMedian` is this program's own burn.
+
+This note previously said per-program attribution was unavailable. **That was
+wrong.** The runtime writes `Program <id> consumed <n> of <m> compute units`
+into `meta.logMessages` for every invocation, CPI passes included — in the same
+`getTransaction` response the sample already pays for. The mistake was checking
+the enhanced-transactions API, finding no compute there, and concluding the raw
+logs had none either. Attribution costs nothing extra and has been on since
+2026-08-28.
+
+`selfMedian` is `undefined` on readings taken before that, and `null` when no
+sampled transaction actually executed the program — it was named in them, not
+called. Neither is zero, and no surface may render them as "this program".
 
 **Requested ≠ consumed, and SGP-0003 priced the request.** Any copy tying this
 to the fee proposal has to use the requested figure, not the consumed one.
@@ -245,6 +259,12 @@ a defect. Do not lead with it.
   (transactions/minute, added because hourly *counts* saturate at the
   sampler's page cap on busy programs — Jupiter, Raydium and Meteora all
   flatlined at exactly 3,000)
-- `apps/ingest/src/card.ts` for how the bar is drawn, and
-  `apps/web/components/ComputeBar.tsx` for the same geometry in HTML — both are
-  log scale from a 100 CU floor to the 1,400,000 ceiling, deliberately
+- `apps/ingest/src/card.ts` for the card's bar: log scale from a 100 CU floor to
+  the 1,400,000 ceiling, because a card has one line to say how big this is in
+  absolute terms.
+- `apps/web/components/ComputeBar.tsx` for the page's, which is a **different**
+  drawing on purpose: linear, full width = the reservation, segmented into this
+  program / rest of the transaction / held-and-unused, with every value on its
+  own legend swatch. The log-against-1.4M version made the reader decode a scale
+  before reading a number, and put four unlabelled vertical lines behind one
+  legend. Orb's compute-unit profiling is the reference.

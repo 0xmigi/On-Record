@@ -664,8 +664,8 @@ export default async function ProgramDossierPage({
       {/* Footprint is what the build put on-chain; this is what a call costs to
           run. Same tab, next section — the runtime half of the same question. */}
       <SectionHeader
-        title="Compute per transaction"
-        info="What one transaction touching this program burns, and what it reserved. Sampled and parsed, never counted."
+        title="Compute"
+        info="What a call here costs. Every figure is the median over a sample of recent transactions — never a mean, which one heavy outlier would drag to a number no call ever cost. The bar's full width is the reservation the transaction asked the scheduler to hold; 'this program' is its own burn, read off the invocation logs, and the rest is everything else in the same transaction."
       />
       <ComputeSection
         programId={program.id}

@@ -5531,115 +5531,80 @@ a.copy-addr-text:hover {
   }
 }
 
-/* --- compute per transaction (what it burns vs what it reserved) --------- */
+/* --- compute: one bar against the reservation ---------------------------- */
 .cu {
   background: var(--card);
   border: 1px solid var(--border);
   border-radius: var(--radius);
-  padding: 14px 18px 16px;
-}
-.cu-head {
-  display: flex;
-  justify-content: flex-end;
-  margin-bottom: 10px;
-}
-.cu-sub {
-  font-family: var(--font-mono);
-  font-size: 11px;
-  color: var(--ink-faint);
+  padding: 13px 16px 12px;
 }
 
-/* The bar is against the 1.4M a transaction may burn, so the empty part is
-   headroom. Log scale — a linear axis puts everything under 20k in one pixel. */
-.cu-track {
-  position: relative;
-  height: 28px;
+/* Full width IS the reservation, so the empty tail is headroom that was held
+   and never used. Linear — the proportions are the whole point. */
+.cu-bar {
+  display: flex;
+  height: 22px;
   border: 1px solid var(--border-strong);
   border-radius: 3px;
-  background: transparent;
   overflow: hidden;
 }
-.cu-band {
-  position: absolute;
-  top: 0;
-  bottom: 0;
-  background: var(--ink);
-  opacity: 0.12;
+.cu-seg {
+  height: 100%;
+  min-width: 2px;
 }
-.cu-median {
-  position: absolute;
-  top: -2px;
-  bottom: -2px;
-  width: 2px;
-  margin-left: -1px;
+.cu-seg-self {
   background: var(--accent);
 }
-/* dashed, because "reserved" is a declaration and the rest is measurement */
-.cu-req {
-  position: absolute;
-  top: 0;
-  bottom: 0;
-  width: 0;
-  border-left: 1.5px dashed var(--ink-soft);
+.cu-seg-rest {
+  background: var(--ink);
+  opacity: 0.28;
 }
-.cu-max {
-  position: absolute;
-  top: 5px;
-  bottom: 5px;
-  width: 1px;
-  background: var(--ink-faint);
-}
-.cu-axis {
-  display: flex;
-  justify-content: space-between;
-  gap: 10px;
-  margin-top: 5px;
-  font-family: var(--font-mono);
-  font-size: 10.5px;
-  color: var(--ink-faint);
-}
-.cu-legend {
+
+.cu-keys {
   display: flex;
   flex-wrap: wrap;
-  gap: 14px;
-  margin-top: 10px;
+  gap: 4px 16px;
+  margin-top: 8px;
   font-family: var(--font-mono);
-  font-size: 10.5px;
+  font-size: 11px;
   color: var(--ink-soft);
 }
 .cu-key {
   display: inline-flex;
   align-items: center;
-  gap: 5px;
+  gap: 6px;
 }
-.cu-key i {
+.cu-key b {
+  color: var(--ink);
+  font-weight: 600;
+}
+.cu-sw {
   display: inline-block;
-  width: 12px;
-  height: 10px;
+  width: 9px;
+  height: 9px;
+  border-radius: 2px;
 }
-.cu-k-band {
-  background: var(--ink);
-  opacity: 0.12;
-}
-.cu-k-median {
-  width: 2px !important;
+.cu-sw-self {
   background: var(--accent);
 }
-.cu-k-req {
-  width: 0 !important;
-  border-left: 1.5px dashed var(--ink-soft);
+.cu-sw-rest {
+  background: var(--ink);
+  opacity: 0.28;
 }
-.cu-k-max {
-  width: 1px !important;
-  background: var(--ink-faint);
+.cu-sw-free {
+  border: 1px solid var(--border-strong);
 }
-.cu-facts {
-  margin-top: 14px;
-}
-.cu-foot {
+
+.cu-line {
   font-family: var(--font-mono);
-  font-size: 11px;
-  line-height: 1.55;
+  font-size: 11.5px;
+  line-height: 1.6;
+  color: var(--ink);
+  margin: 8px 0 0;
+}
+.cu-line b {
+  font-weight: 600;
+}
+.cu-dim {
   color: var(--ink-faint);
-  margin: 12px 0 0;
 }

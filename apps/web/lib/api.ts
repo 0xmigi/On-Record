@@ -680,6 +680,16 @@ export interface ComputeProfileData {
   utilisation?: number | null;
   /** sampled transactions that set no compute limit */
   noLimit?: number;
+  /** median CU burned by THIS program alone, from the `Program <id> consumed
+   *  <n> of <m> compute units` lines the runtime writes into the transaction
+   *  log. Free — the same getTransaction response the sample already pays for.
+   *  Undefined on readings taken before attribution existed; null when no
+   *  sampled transaction actually executed the program. */
+  selfMedian?: number | null;
+  /** median of this program's own burn ÷ the whole transaction's, 0–1 */
+  selfShare?: number | null;
+  /** how many sampled transactions `selfMedian` rests on */
+  selfN?: number;
 }
 
 /** why there is no reading — "too-quiet" is an answer about the program, the

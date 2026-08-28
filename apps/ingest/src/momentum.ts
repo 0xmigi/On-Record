@@ -172,7 +172,7 @@ export async function sampleMomentum(network: Network = "mainnet"): Promise<void
       // so the card and the dossier can never disagree.
       let compute = facts.compute;
       if (fresh.length && isStale(compute)) {
-        const reading = await computeFromSignatures(network, fresh.map((f) => f.signature));
+        const reading = await computeFromSignatures(network, fresh.map((f) => f.signature), s.id);
         if (reading) {
           compute = reading;
           calls += Math.min(fresh.length, 12);

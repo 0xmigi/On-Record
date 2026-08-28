@@ -51,6 +51,31 @@ function requestedFrom(instructions: { programId?: string; data?: string }[] | u
   return null;
 }
 
+/** The runtime logs one of these per invocation, including CPI children:
+ *  `Program <id> consumed <n> of <m> compute units`. It is in the same
+ *  getTransaction response the sample already pays for, which makes per-program
+ *  attribution free — the enhanced-transactions API not returning compute says
+ *  nothing about the raw logs, and this note used to conflate the two. */
+const CONSUMED_RE = /^Program ([1-9A-HJ-NP-Za-km-z]{32,44}) consumed (\d+) of \d+ compute units$/;
+
+/**
+ * What THIS program burned inside one transaction, summed over every time it
+ * was invoked (a CPI loop logs a line per pass).
+ *
+ * Null when no line names it: the transaction touched the address without
+ * executing it — an account reference, or a failure before invoke. That is not
+ * zero, and averaging it in as zero would understate every program that gets
+ * mentioned more often than it runs.
+ */
+function selfFrom(logs: string[] | undefined, programId: string): number | null {
+  let total: number | null = null;
+  for (const line of logs ?? []) {
+    const m = CONSUMED_RE.exec(line);
+    if (m && m[1] === programId) total = (total ?? 0) + Number(m[2]);
+  }
+  return total;
+}
+
 export interface ComputeSample {
   median: number;
   p10: number;
@@ -66,6 +91,16 @@ export interface ComputeSample {
   utilisation: number | null;
   /** transactions in the sample that set no limit at all */
   noLimit: number;
+  /** median CU burned by THIS program alone, read off the invocation logs.
+   *  Null on readings taken before attribution existed, and on programs no
+   *  sampled transaction actually executed. */
+  selfMedian?: number | null;
+  /** median of this program's own burn ÷ the whole transaction's, 0–1 — how
+   *  much of the bill is actually this program */
+  selfShare?: number | null;
+  /** sampled transactions that executed the program (rather than merely
+   *  naming it), i.e. how many readings `selfMedian` rests on */
+  selfN?: number;
   /** transactions inspected */
   n: number;
   /** how many of them failed — free, from the same call */
@@ -121,16 +156,26 @@ export function isStale(c: ComputeSample | null | undefined): boolean {
 export async function computeFromSignatures(
   network: Network,
   signatures: string[],
+  /** the program the sample is about — needed to pick its own lines out of the
+   *  invocation logs. Optional so an older caller still compiles; without it
+   *  the reading is transaction-level only, as it always was. */
+  programId?: string,
 ): Promise<ComputeSample | null> {
   const cus: number[] = [];
   const reqs: number[] = [];
   const ratios: number[] = [];
+  const selfs: number[] = [];
+  const selfShares: number[] = [];
   let failed = 0;
   let noLimit = 0;
   for (const signature of signatures.slice(0, SAMPLE_N)) {
     try {
       const tx = await rpc<{
-        meta?: { computeUnitsConsumed?: number; err?: unknown } | null;
+        meta?: {
+          computeUnitsConsumed?: number;
+          err?: unknown;
+          logMessages?: string[] | null;
+        } | null;
         transaction?: { message?: { instructions?: { programId?: string; data?: string }[] } };
       }>(network, "getTransaction", [
         signature,
@@ -145,6 +190,12 @@ export async function computeFromSignatures(
         reqs.push(req);
         if (typeof cu === "number" && req > 0) ratios.push(Math.min(1, cu / req));
       }
+      // free, from the response already in hand
+      const own = programId ? selfFrom(tx?.meta?.logMessages ?? undefined, programId) : null;
+      if (own !== null) {
+        selfs.push(own);
+        if (typeof cu === "number" && cu > 0) selfShares.push(Math.min(1, own / cu));
+      }
     } catch {
       // one unreadable transaction must not cost the whole reading
     }
@@ -153,6 +204,8 @@ export async function computeFromSignatures(
   if (cus.length < 10) return null;
   const sorted = [...cus].sort((a, b) => a - b);
   const q = (f: number) => sorted[Math.min(sorted.length - 1, Math.floor(f * sorted.length))]!;
+  const mid = (xs: number[]): number | null =>
+    xs.length ? [...xs].sort((a, b) => a - b)[Math.floor(xs.length / 2)]! : null;
   return {
     median: sorted[Math.floor(sorted.length / 2)]!,
     p10: q(0.1),
@@ -164,6 +217,9 @@ export async function computeFromSignatures(
       ? Math.round([...ratios].sort((a, b) => a - b)[Math.floor(ratios.length / 2)]! * 100) / 100
       : null,
     noLimit,
+    selfMedian: mid(selfs),
+    selfShare: selfShares.length ? Math.round(mid(selfShares)! * 100) / 100 : null,
+    selfN: selfs.length,
     n: cus.length,
     failed,
     sampledAt: new Date().toISOString(),
@@ -226,7 +282,7 @@ export async function sampleComputeOnDemand(
       barren.set(programId, Date.now() + 24 * 3_600_000);
       return { sample: null, reason: "too-quiet" };
     }
-    const compute = await computeFromSignatures(network, sigs.map((s) => s.signature));
+    const compute = await computeFromSignatures(network, sigs.map((s) => s.signature), programId);
     if (!compute) {
       // signatures existed but under ten of them parsed — same answer to the
       // reader, shorter bar, because this one can change within the day

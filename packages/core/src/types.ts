@@ -505,6 +505,14 @@ export interface ApiProgramDetail extends ApiProgram {
     utilisation: number | null;
     /** sampled transactions that set no compute limit */
     noLimit: number;
+    /** median CU burned by THIS program alone, read off the `Program <id>
+     *  consumed <n> of <m> compute units` lines in the transaction log — free,
+     *  from the same call. Absent on readings predating attribution. */
+    selfMedian?: number | null;
+    /** median of this program's own burn ÷ the whole transaction's, 0–1 */
+    selfShare?: number | null;
+    /** sampled transactions that actually executed the program */
+    selfN?: number;
     n: number;
     failed: number;
     sampledAt: string;
