@@ -3,6 +3,14 @@ import type { ComputeProfileData, ComputeRankData } from "@/lib/api";
 const cu = (n: number): string =>
   n >= 1_000_000 ? `${(n / 1_000_000).toFixed(2)}M` : n >= 1_000 ? `${Math.round(n / 1_000)}k` : String(n);
 
+/** "93rd" — a percentile said as one. "more of its reservation than 93% of 196"
+ *  elides its own subject and has to be re-read; the ordinal does not. */
+function ordinal(n: number): string {
+  const t = n % 100;
+  if (t >= 11 && t <= 13) return `${n}th`;
+  return `${n}${["th", "st", "nd", "rd"][n % 10] ?? "th"}`;
+}
+
 /** "4h ago" — coarse on purpose, to stop the numbers reading as live. */
 function sampleAge(iso: string): string {
   const hours = (Date.now() - Date.parse(iso)) / 3_600_000;
@@ -106,7 +114,7 @@ export function ComputeBar({
             {rank && rank.below !== null ? (
               <span className="cu-dim">
                 {" "}
-                · more of its reservation than {Math.round(rank.below * 100)}% of {rank.n} on record
+                · {ordinal(Math.round(rank.below * 100))} percentile of {rank.n} on record
               </span>
             ) : null}
             <span className="cu-dim"> · sampled {sampleAge(compute.sampledAt)}</span>
