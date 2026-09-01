@@ -80,12 +80,25 @@ export interface ComputeSample {
   median: number;
   p10: number;
   p90: number;
+  /** the lightest call in the sample. Optional because readings written before
+   *  it existed do not carry one — and it deliberately does NOT age a reading
+   *  out in `isStale`, because a whisker that starts at p10 instead of the true
+   *  floor is a smaller error than making all ~950 stored readings due at once. */
+  min?: number;
   /** the heaviest call in the sample — on a bimodal program this is the story */
   max: number;
   /** share of calls under 2,000 CU, i.e. cranks rather than work */
   cheapShare: number;
   /** median compute REQUESTED via SetComputeUnitLimit — what SGP-0003 prices */
   requestedMedian: number | null;
+  /** the lowest and highest limit any sampled transaction set. The limit is NOT
+   *  one number per program: transactions choose their own, and the heavy ones
+   *  choose bigger. Without this range a single median limit gets drawn across
+   *  the whole consumed distribution, and Kamino renders a p90 of 202k above a
+   *  "limit" of 195k — which reads as burning past the limit, something the
+   *  runtime makes impossible. Optional, and deliberately not in `isStale`. */
+  requestedMin?: number;
+  requestedMax?: number;
   /** median consumed ÷ requested, 0–1. Low means paying for headroom it never
    *  uses, which is exactly what the proposed resource fee makes expensive. */
   utilisation: number | null;
@@ -101,6 +114,20 @@ export interface ComputeSample {
   /** sampled transactions that executed the program (rather than merely
    *  naming it), i.e. how many readings `selfMedian` rests on */
   selfN?: number;
+  /** THIS PROGRAM's own spread, from the same per-invocation log lines as
+   *  `selfMedian`. Free — the array was already being built and thrown away
+   *  after the median was taken. What a program costs to call is this, not the
+   *  transaction total it sits inside. */
+  selfP90?: number;
+  selfMin?: number;
+  selfMax?: number;
+  /** The whole-transaction figures over THIS PROGRAM'S TRANSACTIONS — the ones
+   *  that actually executed it. Everything the program page draws comes from
+   *  this population, so no two figures on screen are over different sets. */
+  ranMedian?: number;
+  ranRequestedMedian?: number;
+  ranRequestedMin?: number;
+  ranRequestedMax?: number;
   /** transactions inspected */
   n: number;
   /** how many of them failed — free, from the same call */
@@ -162,6 +189,14 @@ export async function computeFromSignatures(
   programId?: string,
 ): Promise<ComputeSample | null> {
   const cus: number[] = [];
+  // The same two figures, but only over the transactions that actually EXECUTED
+  // this program — "this program's transactions". `cus`/`reqs` cover every
+  // sampled signature, including the ones that merely name the address without
+  // calling it: 62 of Orca's 100. Reporting a transaction median over those
+  // beside a per-program median over the 38 that ran it puts two populations
+  // side by side, which is the one thing this reading must never do.
+  const ranCus: number[] = [];
+  const ranReqs: number[] = [];
   const reqs: number[] = [];
   const ratios: number[] = [];
   const selfs: number[] = [];
@@ -195,6 +230,8 @@ export async function computeFromSignatures(
       if (own !== null) {
         selfs.push(own);
         if (typeof cu === "number" && cu > 0) selfShares.push(Math.min(1, own / cu));
+        if (typeof cu === "number") ranCus.push(cu);
+        if (req !== null) ranReqs.push(req);
       }
     } catch {
       // one unreadable transaction must not cost the whole reading
@@ -210,14 +247,26 @@ export async function computeFromSignatures(
     median: sorted[Math.floor(sorted.length / 2)]!,
     p10: q(0.1),
     p90: q(0.9),
+    min: sorted[0]!,
     max: sorted[sorted.length - 1]!,
     cheapShare: cus.filter((c) => c < CHEAP_CU).length / cus.length,
     requestedMedian: reqs.length ? [...reqs].sort((a, b) => a - b)[Math.floor(reqs.length / 2)]! : null,
+    requestedMin: reqs.length ? Math.min(...reqs) : undefined,
+    requestedMax: reqs.length ? Math.max(...reqs) : undefined,
     utilisation: ratios.length
       ? Math.round([...ratios].sort((a, b) => a - b)[Math.floor(ratios.length / 2)]! * 100) / 100
       : null,
     noLimit,
     selfMedian: mid(selfs),
+    selfP90: selfs.length
+      ? [...selfs].sort((a, b) => a - b)[Math.min(selfs.length - 1, Math.floor(0.9 * selfs.length))]!
+      : undefined,
+    selfMin: selfs.length ? Math.min(...selfs) : undefined,
+    ranMedian: mid(ranCus) ?? undefined,
+    ranRequestedMedian: mid(ranReqs) ?? undefined,
+    ranRequestedMin: ranReqs.length ? Math.min(...ranReqs) : undefined,
+    ranRequestedMax: ranReqs.length ? Math.max(...ranReqs) : undefined,
+    selfMax: selfs.length ? Math.max(...selfs) : undefined,
     selfShare: selfShares.length ? Math.round(mid(selfShares)! * 100) / 100 : null,
     selfN: selfs.length,
     n: cus.length,

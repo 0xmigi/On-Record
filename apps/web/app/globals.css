@@ -5531,7 +5531,7 @@ a.copy-addr-text:hover {
   }
 }
 
-/* --- compute: one bar against the reservation ---------------------------- */
+/* --- compute: one distribution, one ceiling, one axis -------------------- */
 .cu {
   background: var(--card);
   border: 1px solid var(--border);
@@ -5539,72 +5539,180 @@ a.copy-addr-text:hover {
   padding: 13px 16px 12px;
 }
 
-/* Full width IS the reservation, so the empty tail is headroom that was held
-   and never used. Linear — the proportions are the whole point. */
-.cu-bar {
-  display: flex;
-  height: 22px;
-  border: 1px solid var(--border-strong);
+/* Linear from zero to just past whichever is further right, the heaviest
+   transaction or what one asked for. Everything inside is the same population —
+   every sampled transaction, transaction-level CU — so no mark is a ratio. */
+.cu-track {
+  position: relative;
+  height: 26px;
+  border: 1px solid var(--border);
   border-radius: 3px;
-  overflow: hidden;
+  background: var(--bg);
 }
-.cu-seg {
-  height: 100%;
+
+/* A thin rail rather than a 26px block: the section sits between two hairline
+   fact panels and a heavy bar shouted over both. */
+.cu-track-thin {
+  height: 10px;
+  background: var(--bg);
+}
+/* what this program burns, from zero */
+.cu-rail {
+  position: absolute;
+  left: 0;
+  top: 2px;
+  bottom: 2px;
   min-width: 2px;
-}
-.cu-seg-self {
-  background: var(--accent);
-}
-.cu-seg-rest {
-  background: var(--ink);
-  opacity: 0.28;
-}
-
-.cu-keys {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 4px 16px;
-  margin-top: 8px;
-  font-family: var(--font-mono);
-  font-size: 11px;
-  color: var(--ink-soft);
-}
-.cu-key {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-}
-.cu-key b {
-  color: var(--ink);
-  font-weight: 600;
-}
-.cu-sw {
-  display: inline-block;
-  width: 9px;
-  height: 9px;
   border-radius: 2px;
-}
-.cu-sw-self {
   background: var(--accent);
+  opacity: 0.85;
 }
-.cu-sw-rest {
-  background: var(--ink);
-  opacity: 0.28;
-}
-.cu-sw-free {
-  border: 1px solid var(--border-strong);
+/* median out to p90 — the heavy tenth */
+.cu-rail-tail {
+  position: absolute;
+  top: 2px;
+  bottom: 2px;
+  min-width: 2px;
+  border-radius: 0 2px 2px 0;
+  background: var(--accent);
+  opacity: 0.3;
 }
 
-.cu-line {
+/* the CU limit, when the sample runs past it */
+/* the CU limit, as a MARK inside the chart. It briefly became the axis's right
+   edge instead, which removed the one thing the section is about — a reader
+   asked "what is the black line, it's not labeled" and the fix was to label it,
+   not to delete it. The `cu limit` row carries this same dash as its glyph. */
+.cu-ceiling {
+  position: absolute;
+  top: -4px;
+  bottom: -4px;
+  width: 0;
+  border-left: 1px dashed var(--ink-soft);
+}
+
+/* the two ends of the axis. Deleted once with the corpus block, which collapsed
+   "0" and "221k CU limit" into "0221k CU limit". */
+.cu-scale {
+  position: relative;
+  margin: 4px 0 0;
   font-family: var(--font-mono);
-  font-size: 11.5px;
-  line-height: 1.6;
+  font-size: 9.5px;
+  min-height: 13px;
+}
+.cu-scale-at {
+  position: absolute;
+  top: 0;
+  white-space: nowrap;
+}
+
+/* Labelled rows, in the same idiom as `.fact-row` on the rest of the page —
+   uppercase mono key, mono value, hairline between. The axis carries the shape;
+   these carry every number, one fact per row. Narrower key column than
+   `.fact-row` because these labels are two words, not sentences. */
+/* The CU limit's own rail, on the same axis as the consumed track above it.
+   The limit is a distribution, not one number: transactions set their own, and
+   the heavy ones set bigger. Drawn as one line across the consumed spread it
+   read as transactions burning past their limit, which the runtime forbids. */
+.cu-limit-rail {
+  position: relative;
+  height: 7px;
+  margin-top: 3px;
+}
+.cu-limit-band {
+  position: absolute;
+  top: 2px;
+  height: 3px;
+  min-width: 2px;
+  border-radius: 2px;
+  background: var(--ink-soft);
+  opacity: 0.35;
+}
+.cu-limit-med {
+  position: absolute;
+  top: 0;
+  height: 7px;
+  width: 0;
+  border-left: 1px dashed var(--ink-soft);
+}
+
+/* the axis runs from zero — without saying so, the box's position along it
+   means nothing */
+.cu-zero {
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+  color: var(--ink-faint);
+  margin: 3px 0 0;
+}
+
+.cu-rows {
+  margin-top: 8px;
+}
+.cu-row {
+  display: grid;
+  grid-template-columns: 158px 1fr;
+  gap: 14px;
+  padding: 6px 0;
+  border-bottom: 1px solid var(--border);
+  align-items: baseline;
+}
+.cu-row:last-child {
+  border-bottom: none;
+  padding-bottom: 0;
+}
+.cu-row dt {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+}
+
+/* THE ROWS ARE THE LEGEND. Each glyph is the mark it names, drawn the same way
+   as on the axis, so nothing has to be matched against a separate key. An empty
+   glyph cell keeps the labels aligned AND says the thing that matters: that row
+   is not on the axis at all. */
+.cu-g {
+  flex: none;
+  width: 12px;
+  height: 9px;
+  position: relative;
+}
+.cu-g-rail {
+  height: 6px;
+  border-radius: 2px;
+  background: var(--accent);
+  opacity: 0.85;
+}
+.cu-g-rail-tail {
+  height: 6px;
+  border-radius: 2px;
+  background: var(--accent);
+  opacity: 0.3;
+}
+.cu-g-ceiling {
+  width: 0;
+  margin-left: 6px;
+  margin-right: 6px;
+  height: 11px;
+  border-left: 1px dashed var(--ink-soft);
+}
+.cu-row dd {
+  font-family: var(--font-mono);
+  font-size: 12.5px;
   color: var(--ink);
-  margin: 8px 0 0;
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
-.cu-line b {
-  font-weight: 600;
-}
+
 .cu-dim {
   color: var(--ink-faint);
+}
+/* said plainly only once it is most of the sample, at which point "typical
+   transaction" is describing failures and the reader has to know */
+.cu-warn {
+  color: var(--red);
 }

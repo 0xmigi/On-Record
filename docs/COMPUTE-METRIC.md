@@ -66,7 +66,11 @@ dossier and the API cannot disagree.
 - `sampleComputeOnDemand(network, programId)` — takes a reading for a program
   nothing has sampled, writes it through to `subjects.facts.compute`.
 - `isStale(sample)` — older than `COMPUTE_MAX_AGE_H` (default 24h), **or**
-  missing `max`/`noLimit`, i.e. written before those fields existed.
+  missing `max`/`noLimit`, i.e. written before those fields existed. **`min` is
+  deliberately NOT in that check**: ageing every stored reading out on shape
+  makes all ~950 due at once, and a whisker that starts at p10 instead of the
+  true floor understates the range rather than misstating it. It fills in on the
+  normal 24h refresh.
 - `computeCensus(network)` / `rankUtilisation(network, u)` — the corpus
   distribution, and where one reading sits in it.
 - `requestedFrom(instructions)` — decodes the ComputeBudget
@@ -78,10 +82,11 @@ Stored shape (`facts.compute`):
 
 ```ts
 {
-  median, p10, p90, max,        // consumed — WHOLE TRANSACTION
+  median, p10, p90, min, max,   // consumed — WHOLE TRANSACTION
   selfMedian, selfShare, selfN, // consumed — THIS PROGRAM, from the logs
   cheapShare,                   // share of calls under 2,000 CU
   requestedMedian,              // null when no transaction set a limit
+  requestedMin, requestedMax,   // the limit is a DISTRIBUTION, not one number
   utilisation,                  // median consumed ÷ requested, 0–1
   noLimit,                      // sampled txns that set no limit
   n, failed, sampledAt
@@ -127,17 +132,99 @@ Env knobs: `COMPUTE_SAMPLE_N` (100), `COMPUTE_MAX_AGE_H` (24),
   real open. Copy is figures and units only — the caveat lives in the section
   title, which always says "per transaction".
 
-  The section is **four rows**: bar, legend, one sentence on what a call burns,
-  one on what it reserved. Every figure is a median, said so in the copy — a
-  mean would report a number no transaction ever cost.
+  **The drawing is three things and nothing else**: the full range of what
+  calls burn, the typical call inside it, and the compute the transaction
+  reserved. One population — every sampled call, transaction-level CU — on one
+  linear axis from zero, so no mark on it is a ratio and nothing on it can
+  contradict anything else.
 
-  **The empty state is three different sentences, not one.** The sampler returns
-  a `ComputeMissReason`, and it is carried all the way to the page:
-  `too-quiet` → "Too few transactions to measure" (a fact about the program),
-  `budget` → "Not measured yet — check back shortly" (a fact about us),
-  `failed` → "Not sampled yet". "Measuring…" is only ever shown while a request
-  is genuinely in flight; leaving it up as a terminal state tells a reader to
-  wait for something that will never arrive.
+  This replaced a segmented bar that tried to hold five figures taken over five
+  different subsets of the sample. Dividing them into each other produced real
+  lies, measured over 369 readings on 2026-08-31:
+
+  | collapse | share of readings |
+  |---|---|
+  | no reservation at all — the bar drew 100% full | 21% |
+  | reservation stated from under half the sampled calls | 11% |
+  | reserves less than it burns — two lines contradicting | 5.4% |
+  | over half the sampled calls failed, never said | 20% |
+  | own-burn above the transaction burn, silently `Math.min`-clamped | 12% |
+  | heaviest tenth runs past the stated reservation | 15% |
+  | bimodal (p90 ≥ 5× p10), spread never drawn | 31% |
+
+  None of those are reachable from a drawing that never divides. `reef` was
+  reporting 25k as its own burn because a `Math.min` clamped it to the
+  transaction median to keep a segment non-negative; it is 162k over the 18 of
+  48 calls that ran it.
+
+  **The labels are Solana's own vocabulary, not plain-English inventions.** The
+  rows read `median` / `p90` / `min–max` / `cu limit` / `whole txn`, because the
+  chain calls these things `computeUnitsConsumed` and the compute unit limit set
+  by `SetComputeUnitLimit` (capped at `MAX_COMPUTE_UNIT_LIMIT`, 1,400,000). An
+  earlier pass shipped "typical call", "middle 80%", "heaviest" and "asked for"
+  — invented phrasings that made a reader stop and work out what was meant.
+  **If a label needs a gloss, the term is wrong** — with one exception: `p90`
+  carries "1 in 10 burned more", because "every developer reads p90" was an
+  assumption and the first person to see it asked what it meant.
+
+  **THE SECTION IS ABOUT ONE PROGRAM.** Everything drawn is this program's own
+  consumption, read per invocation from the runtime's `Program <id> consumed <n>
+  of <m> compute units` log lines. The transaction total is a row, not the
+  headline. A pass that put the whole corpus on the chart — the middle half of
+  every program on record, as a scale to judge this one against — was removed:
+  a program page answers questions about that program, and `196k` against a
+  `221k CU limit` already says whether it is efficient. It does not need a
+  thousand other programs to say it.
+
+  **The rail runs from `selfMin`, never from zero.** Filling from zero asserts
+  that the program's cheapest instruction costs nothing. Nosana Jobs measures
+  min 18,412 / median 22,287 / p90 22,659 — a narrow band sitting high, which is
+  a completely different picture from a bar sweeping up from 0 to 22k. Where
+  `selfMin` is absent the rail starts at the median rather than inventing a
+  floor.
+
+  **The CU limit is transaction-level; the consumption is not.** Above ~95% of
+  the bill (`selfShare`) the gap to the limit really is this program's headroom.
+  Below it, most of that budget belongs to the other programs in the same
+  transaction — Orca is 21% of its transactions, so 38.6k against a 304.5k limit
+  is not 266k of Orca headroom. The row and the axis label both say whose it is.
+
+  **The CU limit is also a distribution.** Transactions choose their own limit
+  and the heavy ones choose bigger, so a single median limit drawn across the
+  whole consumed spread produced Kamino showing a p90 of 202k above a "CU limit"
+  of 195k — reading as burning past the limit, which the runtime makes
+  impossible. Sampled directly, 2026-08-31:
+
+  ```
+  consumed   min  43,643   p50  71,322   p90 176,585   max 176,585
+  CU limit   min  62,061   p50  85,507   p90 200,000   max 200,000
+  transactions exceeding their OWN limit:        0 of 10
+  transactions over the MEDIAN limit:            3 of 10
+  ```
+
+  `requestedMin`/`requestedMax` record the spread. **Invariant:** where every
+  sampled transaction set a limit, `requestedMax >= max`, because consumed ≤
+  limit per transaction.
+
+  **"median", never "average", and the label says which.** Drift V2's mean is
+  dragged to ~12k by one 343k outlier over a body of 8,586 — a number no
+  transaction ever cost.
+
+  **Every count is a count of TRANSACTIONS.** The sampler iterates over
+  signatures, so `n`, `failed`, `noLimit` and `selfN` are all transactions.
+  Calling them "calls" reads as invocations of *this* program, which is the one
+  conflation the metric exists to avoid.
+
+  **THE ROWS ARE THE LEGEND.** Each row describing a mark carries that mark,
+  drawn the same way; rows with no glyph are the figures that are not on the
+  axis. This was got wrong twice by swapping the chart and leaving the old
+  glyphs behind, so the glyphs are derived from which chart is drawn.
+
+  **`ranMedian` / `ranRequestedMedian` restrict the transaction figures to the
+  transactions that actually executed this program.** `median`/`requestedMedian`
+  cover every sampled signature including the ones that merely name the address
+  — 62 of Orca's 100 — and putting a per-program median beside a transaction
+  median over that wider set is two populations side by side.
 
 ### The rank (`compute.ts`, `computeCensus` / `rankUtilisation`)
 
@@ -212,15 +299,22 @@ A program reserving 100× what it uses is arguably interesting. **Careful:** the
 existing note about not ranking by interest score applies — this would be a
 signal, not a verdict. Not started; it is a judgement call, not a build.
 
-### 4. Backfill
+### 4. Backfill — **DONE**
 
-Still the blocker on everything comparative. Only a handful of programs have a
-reading, so `rankUtilisation` returns `below: null` and the rank line renders as
-a disclaimer. A backfill script over the corpus (pattern:
-`apps/ingest/src/backfill-*.ts`) would populate it, at `SAMPLE_N` × programs
-`getTransaction` calls — **needs a budget decision before running.** Thirty
-programs is the floor that turns the rank on; the whole corpus is what makes it
-worth reading.
+947 programs carried a utilisation reading as of 2026-08-31, corpus median 35%.
+`rankUtilisation` is live on every surface and no longer renders as its own
+disclaimer.
+
+### 5. The requested figure needs its own denominator in the DATA, not only in
+the copy
+
+`requestedMedian` is a median over the limit-setting calls while `median` is a
+median over all of them, and comparing them is what produced "reserves 2,970,
+burns 14,919". Every surface now states the two counts, which is enough to stop
+the misread — but storing `medianAmongLimitSetters` would let the bar compare
+like with like instead of caveating. It is an optional field, so it costs
+nothing extra and fills in on the natural 24h refresh; do NOT age readings out
+on shape for it, which would make all 947 due at once.
 
 ## Caveats that must survive into any UI copy
 
@@ -248,7 +342,18 @@ for "on almost every call I sampled", not for "always".
 
 **High failure rates are usually normal.** Kamino 7/12, Marginfi 12/12 sampled
 transactions failed — that is bots losing races on a busy lending program, not
-a defect. Do not lead with it.
+a defect. Do not lead with it. **But do not omit it either**: 20% of readings
+are more than half failed and 7.6% are entirely failed, and "a typical call
+burns X" is not a claim those samples support. Every surface states the count;
+the page marks it when it is most of the sample, and the dossier adds a gap
+line for it.
+
+**The corpus rank sentence was inverted until 2026-08-31.** `below` is the share
+of programs using a SMALLER fraction of their reservation, and `dossier.md` read
+it as "uses less of its reservation than X%" — so Drift V2, the lowest
+utilisation on record, was described as using less than 1% of programs. It is
+"uses MORE of its reservation than X%". Check the direction of any percentile
+sentence written against this field.
 
 ---
 

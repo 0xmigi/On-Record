@@ -495,12 +495,19 @@ export interface ApiProgramDetail extends ApiProgram {
     median: number;
     p10: number;
     p90: number;
+    /** the lightest call in the sample. Absent on readings written before it
+     *  existed — those draw a whisker from p10 rather than the true floor. */
+    min?: number;
     /** the heaviest call in the sample */
     max: number;
     /** share of calls under 2,000 CU — bookkeeping rather than work */
     cheapShare: number;
     /** median compute REQUESTED — the number SGP-0003's resource fee prices */
     requestedMedian: number | null;
+    /** the range of limits set across the sample. Transactions choose their own
+     *  limit, so this is a distribution, not one number per program. */
+    requestedMin?: number;
+    requestedMax?: number;
     /** median consumed ÷ requested, 0–1 */
     utilisation: number | null;
     /** sampled transactions that set no compute limit */
@@ -513,6 +520,16 @@ export interface ApiProgramDetail extends ApiProgram {
     selfShare?: number | null;
     /** sampled transactions that actually executed the program */
     selfN?: number;
+    /** this program's own spread, from the same invocation logs as selfMedian */
+    selfP90?: number;
+    selfMin?: number;
+    selfMax?: number;
+    /** whole-transaction figures over THIS PROGRAM'S TRANSACTIONS — the ones
+     *  that actually executed it. Absent on readings taken before they existed. */
+    ranMedian?: number;
+    ranRequestedMedian?: number;
+    ranRequestedMin?: number;
+    ranRequestedMax?: number;
     n: number;
     failed: number;
     sampledAt: string;

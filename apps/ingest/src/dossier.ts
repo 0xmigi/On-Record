@@ -785,8 +785,8 @@ export async function buildDossier(programId: string, opts: DossierOptions = {})
     );
     out.push(
       fact(
-        "Consumed",
-        `median ${compactCU(compute.median)} CU · ${compactCU(compute.p10)}–${compactCU(compute.p90)} for most calls` +
+        "CU consumed",
+        `median ${compactCU(compute.median)} CU · ${compactCU(compute.p10)}–${compactCU(compute.p90)} for the middle 80%` +
           (typeof compute.max === "number" ? ` · heaviest ${compactCU(compute.max)}` : ""),
         "the spread, not the median alone — a single median lies about a bimodal " +
           "program, and half of these are bimodal",
@@ -796,6 +796,12 @@ export async function buildDossier(programId: string, opts: DossierOptions = {})
     // it. Absent is not "none" — saying "no transaction set a limit" of a
     // reading that never looked is exactly the collapse this document refuses.
     const partialReading = typeof compute.max !== "number" || typeof compute.noLimit !== "number";
+    // What the requested figure and the utilisation actually rest on. Every
+    // figure in this section is a median over a DIFFERENT subset of the sample,
+    // and the ones that do not carry their denominator get quoted as if they
+    // described the program: `alpha_sol_vault` reserves 2,970 on 1 of 26 transactions
+    // and burns 14,919, which reads as "uses 100% of what it reserves".
+    const withLimit = typeof compute.noLimit === "number" ? compute.n - compute.noLimit : null;
     out.push(
       fact(
         "Own share",
@@ -812,24 +818,28 @@ export async function buildDossier(programId: string, opts: DossierOptions = {})
     );
     out.push(
       fact(
-        "Requested",
+        "CU limit",
         compute.requestedMedian == null
           ? partialReading
             ? "not measured — this reading predates the requested figure. It will be retaken; ?sample=live forces it now"
             : "no sampled transaction set a compute limit"
-          : `median ${compactCU(compute.requestedMedian)} CU via SetComputeUnitLimit`,
+          : `median ${compactCU(compute.requestedMedian)} CU via SetComputeUnitLimit` +
+            (withLimit !== null ? ` · over the ${withLimit} of ${compute.n} sampled transactions that set one` : ""),
         "the number SGP-0003's resource fee would be charged on — what it costs to " +
           "ASK, not what the work cost",
       ),
     );
     out.push(
       fact(
-        "Utilisation",
+        "CU limit used",
         compute.utilisation === null
           ? null
-          : `${pct(compute.utilisation)} of what it reserves — over-requests by ${overRequest(compute.utilisation)}`,
+          : `${pct(compute.utilisation)} of what it reserves — over-requests by ${overRequest(compute.utilisation)}` +
+            (withLimit !== null ? ` · from the ${withLimit} of ${compute.n} sampled transactions that set a limit` : ""),
         "median of consumed ÷ requested per transaction. The unused part is capacity " +
-          "the scheduler reserved and nobody else could use",
+          "the scheduler reserved and nobody else could use. NOTE the denominator: this is a " +
+          "median over the limit-setting transactions only, so on a program where most transactions " +
+          "set no limit it describes a corner of the traffic, not the program",
       ),
     );
     out.push(
@@ -839,7 +849,14 @@ export async function buildDossier(programId: string, opts: DossierOptions = {})
           ? null
           : computeRank.below === null
             ? `only ${computeRank.n} program${computeRank.n === 1 ? "" : "s"} on record carr${computeRank.n === 1 ? "ies" : "y"} a reading — too few to rank against`
-            : `uses less of its reservation than ${pct(computeRank.below)} of ${computeRank.n} programs on record` +
+            : // `below` is the share of the corpus using a SMALLER fraction of its
+              // reservation, so the sentence flips at the median. Stated the one
+              // way for every program it read as the opposite of the finding at
+              // the low end: Drift V2 has the lowest utilisation on record and
+              // was described as "uses less of its reservation than 1%".
+              `uses ${computeRank.below >= 0.5 ? "MORE" : "LESS"} of its reservation than ${pct(
+                computeRank.below >= 0.5 ? computeRank.below : 1 - computeRank.below,
+              )} of ${computeRank.n} programs on record` +
               (computeRank.median !== null ? ` · corpus median ${pct(computeRank.median)}` : ""),
         "utilisation is meaningless on its own — 20% is only a finding against a median",
       ),
@@ -854,7 +871,7 @@ export async function buildDossier(programId: string, opts: DossierOptions = {})
     );
     out.push(
       fact(
-        "Cheap calls",
+        "Cheap transactions",
         typeof compute.cheapShare === "number" ? `${pct(compute.cheapShare)} under 2,000 CU` : null,
         "bookkeeping rather than work — a high share means the median describes cranks",
       ),
@@ -862,8 +879,11 @@ export async function buildDossier(programId: string, opts: DossierOptions = {})
     out.push(
       fact(
         "Failed",
-        `${compute.failed} of ${compute.n}`,
-        "free from the same call. Usually normal on a busy program — bots losing " +
+        `${compute.failed} of ${compute.n}` +
+          (compute.n > 0 && compute.failed > compute.n / 2
+            ? ` — MOST OF THE SAMPLE. Every figure above describes those failures too`
+            : ""),
+        "free from the same request. Usually normal on a busy program — bots losing " +
           "races, not a defect. Do not lead with it",
       ),
     );
@@ -886,6 +906,33 @@ export async function buildDossier(programId: string, opts: DossierOptions = {})
   else if (compute && compute.requestedMedian === null)
     gaps.push(
       "No sampled transaction set a compute limit, so there is no requested figure — the number SGP-0003 would price does not exist for this program, and utilisation is undefined rather than high.",
+    );
+  // Each of these is a figure above resting on a subset of the sample small
+  // enough that quoting it as the program's would be wrong. They are gaps, not
+  // findings — the reading is sound, it just does not support that sentence.
+  if (compute && typeof compute.noLimit === "number" && compute.requestedMedian !== null) {
+    const withLimitCount = compute.n - compute.noLimit;
+    if (withLimitCount < compute.n / 2)
+      gaps.push(
+        `The reservation and utilisation figures rest on only ${withLimitCount} of ${compute.n} sampled transactions — the rest set no compute limit. They describe that corner of the traffic, not the program; do not quote either as "this program reserves X".`,
+      );
+    if (compute.requestedMedian < compute.median)
+      gaps.push(
+        `The median reservation (${compactCU(compute.requestedMedian)} CU) is SMALLER than the median transaction burn (${compactCU(compute.median)} CU). Within one transaction that is impossible — the runtime aborts at the limit — so the two medians are over different calls: the ones that set a limit are not the ones doing the work. Utilisation is meaningless here.`,
+      );
+  }
+  if (compute && compute.n > 0 && compute.failed > compute.n / 2)
+    gaps.push(
+      `${compute.failed} of ${compute.n} sampled transactions failed, so the compute figures above are mostly the cost of failed calls. That is usually normal — bots losing races — but "a typical call burns X" is not a claim this sample supports.`,
+    );
+  if (
+    compute &&
+    typeof compute.selfN === "number" &&
+    compute.selfMedian != null &&
+    compute.selfN < compute.n / 2
+  )
+    gaps.push(
+      `Own share rests on the ${compute.selfN} of ${compute.n} sampled transactions that actually executed the program; the other ${compute.n - compute.selfN} named it without calling it. The own-burn and the transaction burn are therefore medians over different sets of calls and cannot be subtracted from one another.`,
     );
   if (facts.securityTxt)
     gaps.push("Everything in security.txt is self-declared by whoever deployed the binary. It names an entity; it does not prove one.");

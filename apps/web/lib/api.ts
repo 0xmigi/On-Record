@@ -669,6 +669,9 @@ export interface ComputeProfileData {
   // sampled before then carries a median and a band and nothing else. The API
   // ages those out on shape (compute.ts `isStale`), but a page must render one
   // correctly in the meantime — optional here, guarded where it is drawn.
+  /** the lightest call in the sample — the low end of the whisker. Absent on
+   *  readings written before it existed, which fall back to p10. */
+  min?: number;
   /** the heaviest call in the sample — on a bimodal program this is the story */
   max?: number;
   /** share of calls under 2,000 CU — bookkeeping rather than work */
@@ -676,6 +679,10 @@ export interface ComputeProfileData {
   /** median compute REQUESTED via SetComputeUnitLimit. Null when no sampled
    *  transaction set a limit at all, which is not the same as zero. */
   requestedMedian?: number | null;
+  /** the lowest and highest limit any sampled transaction set. Absent on
+   *  readings written before the range existed. */
+  requestedMin?: number;
+  requestedMax?: number;
   /** median consumed ÷ requested, 0–1 */
   utilisation?: number | null;
   /** sampled transactions that set no compute limit */
@@ -690,6 +697,16 @@ export interface ComputeProfileData {
   selfShare?: number | null;
   /** how many sampled transactions `selfMedian` rests on */
   selfN?: number;
+  /** this program's own spread, from the same invocation logs as selfMedian */
+  selfP90?: number;
+  selfMin?: number;
+  selfMax?: number;
+  /** whole-transaction figures over THIS PROGRAM'S TRANSACTIONS — the ones
+   *  that actually executed it. Absent on readings taken before they existed. */
+  ranMedian?: number;
+  ranRequestedMedian?: number;
+  ranRequestedMin?: number;
+  ranRequestedMax?: number;
 }
 
 /** why there is no reading — "too-quiet" is an answer about the program, the
