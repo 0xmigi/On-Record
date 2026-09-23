@@ -127,6 +127,31 @@ export async function programDataAlive(network: Network, address: string): Promi
   return head.length >= 4 && head.readUInt32LE(0) === 3;
 }
 
+/** programDataAlive for many addresses, 100 per getMultipleAccounts call —
+ *  one credit per hundred instead of one per program. Same alive rule. Throws
+ *  on RPC error, so a transient failure skips rather than false-marks. */
+export async function programDataAliveMany(
+  network: Network,
+  addresses: string[],
+): Promise<Map<string, boolean>> {
+  const out = new Map<string, boolean>();
+  for (let i = 0; i < addresses.length; i += 100) {
+    const chunk = addresses.slice(i, i + 100);
+    const result = await rpc<{ value: ((AccountInfo & { lamports: number }) | null)[] }>(
+      network,
+      "getMultipleAccounts",
+      [chunk, { encoding: "base64", dataSlice: { offset: 0, length: 4 }, commitment: "confirmed" }],
+    );
+    chunk.forEach((address, j) => {
+      const acc = result.value[j];
+      if (!acc || acc.lamports === 0) return out.set(address, false);
+      const head = Buffer.from(acc.data[0], "base64");
+      out.set(address, head.length >= 4 && head.readUInt32LE(0) === 3);
+    });
+  }
+  return out;
+}
+
 export async function accountExists(network: Network, address: string): Promise<boolean> {
   const result = await rpc<{ value: AccountInfo | null }>(network, "getAccountInfo", [
     address,

@@ -1,5 +1,5 @@
 import { and, eq, gte, isNotNull, sql } from "drizzle-orm";
-import { db, schema, logger, programDataAlive, type Network } from "@onrecord/core";
+import { db, schema, logger, programDataAliveMany, type Network } from "@onrecord/core";
 import { refreshInterest } from "./interest.js";
 
 // ---------------------------------------------------------------------------
@@ -41,24 +41,39 @@ export async function sweepClosed(network: Network = "mainnet"): Promise<void> {
     )
     .limit(SWEEP_MAX);
 
+  // Resolve each subject's ProgramData address first, then check them all in
+  // batched getMultipleAccounts calls — one credit per 100 instead of per program.
+  const targets: { id: string; pd: string }[] = [];
+  for (const s of subs) {
+    const ev = await db
+      .select({ pd: schema.events.programDataAddress })
+      .from(schema.events)
+      .where(and(eq(schema.events.programId, s.id), isNotNull(schema.events.programDataAddress)))
+      .limit(1);
+    const pd = ev[0]?.pd;
+    if (pd) targets.push({ id: s.id, pd });
+  }
+
+  let aliveByPd: Map<string, boolean>;
+  try {
+    // Alive = present + funded + state tag 3. A closed program's ProgramData
+    // is NOT deleted — it survives as a 4-byte Uninitialized husk with zero
+    // lamports, so a bare existence probe never detects a close. Throws on
+    // RPC error, so a transient failure skips the run rather than false-marks.
+    aliveByPd = await programDataAliveMany(network, [...new Set(targets.map((t) => t.pd))]);
+  } catch (err) {
+    logger.warn({ network, err: String(err) }, "closed sweep: batch lookup failed");
+    return;
+  }
+
   let checked = 0;
   let closed = 0;
   const sweptAt = new Date().toISOString();
-  for (const s of subs) {
+  for (const t of targets) {
     try {
-      const ev = await db
-        .select({ pd: schema.events.programDataAddress })
-        .from(schema.events)
-        .where(and(eq(schema.events.programId, s.id), isNotNull(schema.events.programDataAddress)))
-        .limit(1);
-      const pd = ev[0]?.pd;
-      if (!pd) continue;
+      const alive = aliveByPd.get(t.pd);
+      if (alive === undefined) continue;
       checked++;
-      // Alive = present + funded + state tag 3. A closed program's ProgramData
-      // is NOT deleted — it survives as a 4-byte Uninitialized husk with zero
-      // lamports, so a bare existence probe never detects a close. Throws on
-      // RPC error, so a transient failure skips rather than false-marks.
-      const alive = await programDataAlive(network, pd);
       const patch: Record<string, string> = { closedSweepAt: sweptAt };
       if (!alive) patch.closedAt = new Date().toISOString();
       await db
@@ -67,13 +82,13 @@ export async function sweepClosed(network: Network = "mainnet"): Promise<void> {
           facts: sql`coalesce(${schema.subjects.facts}, '{}'::jsonb) || ${JSON.stringify(patch)}::jsonb`,
           updatedAt: new Date(),
         })
-        .where(eq(schema.subjects.id, s.id));
+        .where(eq(schema.subjects.id, t.id));
       if (!alive) {
         closed++;
-        await refreshInterest(s.id); // closed penalty applies immediately
+        await refreshInterest(t.id); // closed penalty applies immediately
       }
     } catch (err) {
-      logger.warn({ id: s.id, err: String(err) }, "closed sweep: subject failed");
+      logger.warn({ id: t.id, err: String(err) }, "closed sweep: subject failed");
     }
   }
   logger.info({ network, checked, closed, of: subs.length }, "closed sweep: done");
