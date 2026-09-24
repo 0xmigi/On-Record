@@ -139,6 +139,7 @@ export function serializeProgram(
     crate: row.crate,
     clusterSize,
     framework: profile?.framework ?? null,
+    anchor: profile?.anchor ?? null,
     capabilities: profile?.capabilities ?? [],
     integrations: profile?.integrations ?? [],
     syscallCount: profile?.syscalls?.length ?? null,

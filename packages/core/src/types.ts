@@ -8,7 +8,7 @@ import type { NearestWeakness } from "./lineage.js";
 // into scored, deduped, categorized *programs*. Fact only.
 // ---------------------------------------------------------------------------
 
-import type { Framework, ProgramProfile } from "./profile.js";
+import type { AnchorBuild, Framework, ProgramProfile } from "./profile.js";
 
 export type Network = "mainnet" | "devnet";
 
@@ -316,6 +316,9 @@ export interface ApiProgram {
   clusterSize: number | null;
   // --- program profile (docs/GRADING.md §5): from the SBF bytecode ---
   framework: Framework | null;
+  /** which Anchor line built it, with the markers behind the verdict — null
+   *  when not Anchor, or when the stored profile predates the classifier */
+  anchor: AnchorBuild | null;
   capabilities: string[];
   integrations: string[];
   syscallCount: number | null;

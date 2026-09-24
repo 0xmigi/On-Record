@@ -1,5 +1,7 @@
 import type { Metadata } from "next";
 import type { ReactNode } from "react";
+import { Chevron } from "@/components/Chevron";
+import { parseAuditors, parseContacts, type SecTxtPart } from "@/lib/securitytxt";
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { BackToRadar } from "@/components/BackToRadar";
@@ -18,7 +20,7 @@ import { deriveSignals } from "@/lib/signals";
 import { deriveComposition } from "@/lib/composition";
 import { TIER_ORDER } from "@/lib/primitives";
 import { deriveLifecycle, botKind, BOT_LABEL } from "@/lib/lifecycle";
-import { OTHER_FRAMEWORKS_NOTE } from "@/lib/frameworks";
+import { ANCHOR_LINE, OTHER_FRAMEWORKS_NOTE, builtWith } from "@/lib/frameworks";
 import { SectionExplainer } from "@/components/SectionExplainer";
 import { BotExplainer } from "@/components/BotExplainer";
 import { SectionHeader } from "@/components/SectionHeader";
@@ -76,7 +78,7 @@ export async function generateMetadata({
   // kept ≲125 chars so social previews don't truncate it (og:description)
   const description = program
     ? `${program.deployType === "upgrade" ? "Upgraded" : "New"} Solana program — ${
-        program.framework && program.framework !== "unknown" ? `${program.framework}, ` : ""
+        builtWith(program.framework, program.anchor) ? `${builtWith(program.framework, program.anchor)}, ` : ""
       }${program.sizeBytes ? formatBytes(program.sizeBytes) : "size unknown"}${
         program.deployCostSol != null ? `, ${program.deployCostSol} SOL locked` : ""
       }. Novelty, control, activity & cost, decoded on-chain.`
@@ -91,12 +93,58 @@ export async function generateMetadata({
 }
 
 /** one label/value row */
-function Row({ label, children }: { label: string; children: React.ReactNode }) {
+function Row({
+  label,
+  children,
+  explain,
+}: {
+  label: string;
+  children: React.ReactNode;
+  /** a "what does this mean" body — the row itself becomes the toggle, so the
+   *  fact and its explanation sit together instead of in a second box below */
+  explain?: React.ReactNode;
+}) {
+  if (!explain) {
+    return (
+      <div className="fact-row">
+        <span className="fact-label">{label}</span>
+        <span className="fact-value">{children}</span>
+      </div>
+    );
+  }
   return (
-    <div className="fact-row">
-      <span className="fact-label">{label}</span>
-      <span className="fact-value">{children}</span>
-    </div>
+    <details className="fact-row-toggle">
+      <summary className="fact-row">
+        <span className="fact-label">{label}</span>
+        <span className="fact-value">{children}</span>
+        <Chevron className="explainer-chev" />
+      </summary>
+      <div className="fact-explain">{explain}</div>
+    </details>
+  );
+}
+
+/** One line per security.txt entry, links as links (lib/securitytxt.ts). */
+function SecTxtParts({ parts }: { parts: SecTxtPart[] }) {
+  return (
+    <span className="sectxt-parts">
+      {parts.map((p, i) => (
+        <span className="sectxt-part" key={i}>
+          {p.via ? <span className="cell-dim">{p.via} · </span> : null}
+          {p.kind === "link" ? (
+            p.href.startsWith("mailto:") ? (
+              <a className="receipt-link" href={p.href}>
+                {p.text}
+              </a>
+            ) : (
+              <Ext href={p.href} text={p.text} />
+            )
+          ) : (
+            p.text
+          )}
+        </span>
+      ))}
+    </span>
   );
 }
 
@@ -301,7 +349,27 @@ export default async function ProgramDossierPage({
     <>
       <SectionHeader title="Control" info="Who can change it — and whether it can rug." />
       <div className="facts-panel">
-        <Row label="Mutability">{mutability}</Row>
+        <Row
+          label="Mutability"
+          explain={
+            <>
+              <p className="explainer-read">
+                The upgrade authority is the account allowed to replace a
+                program&apos;s code after it&apos;s deployed.
+              </p>
+              <p>
+                If it&apos;s set (<strong>mutable</strong>), that key can push new
+                bytecode at any time — including malicious code, the classic
+                &quot;rug&quot; vector. If it&apos;s null (
+                <strong>immutable / frozen</strong>), the code can never change;
+                what&apos;s on-chain is final. A <strong>Squads multisig</strong> sits in
+                between — upgrades are possible but need M-of-N signers, not one hot
+                wallet. So mutable + single hot-wallet = highest risk; immutable or
+                multisig = stronger guarantees.
+              </p>
+            </>
+          }
+        >{mutability}</Row>
         <Row label="Authority">
           {program.multisig ? (
             <>
@@ -323,7 +391,26 @@ export default async function ProgramDossierPage({
             </>
           )}
         </Row>
-        <Row label="Verified build">
+        <Row
+          label="Verified build"
+          explain={
+            <>
+              <p className="explainer-read">
+                A verified build proves the program running on-chain was compiled from
+                the public source you can read — nothing hidden.
+              </p>
+              <p>
+                Someone re-compiles the source in a deterministic (Docker) environment
+                and checks the resulting bytecode is byte-for-byte identical to
+                what&apos;s deployed; tools like <strong>solana-verify</strong> do this
+                and record it with a verification service.{" "}
+                <strong>&quot;Not verified&quot; isn&apos;t a red flag by itself</strong>{" "}
+                — most programs simply never submit one. It just means you&apos;re
+                trusting the deployed bytecode as-is, with no source cross-check.
+              </p>
+            </>
+          }
+        >
           {program.verified ? (
             <>
               yes{" "}
@@ -338,38 +425,7 @@ export default async function ProgramDossierPage({
         </Row>
       </div>
 
-      <SectionExplainer title="What's upgrade authority?">
-        <p className="explainer-read">
-          The upgrade authority is the account allowed to replace a
-          program&apos;s code after it&apos;s deployed.
-        </p>
-        <p>
-          If it&apos;s set (<strong>mutable</strong>), that key can push new
-          bytecode at any time — including malicious code, the classic
-          &quot;rug&quot; vector. If it&apos;s null (
-          <strong>immutable / frozen</strong>), the code can never change; what
-          &apos;s on-chain is final. A <strong>Squads multisig</strong> sits in
-          between — upgrades are possible but need M-of-N signers, not one hot
-          wallet. So mutable + single hot-wallet = highest risk; immutable or
-          multisig = stronger guarantees.
-        </p>
-      </SectionExplainer>
 
-      <SectionExplainer title="What's a verified build?">
-        <p className="explainer-read">
-          A verified build proves the program running on-chain was compiled from
-          the public source you can read — nothing hidden.
-        </p>
-        <p>
-          Someone re-compiles the source in a deterministic (Docker) environment
-          and checks the resulting bytecode is byte-for-byte identical to
-          what&apos;s deployed; tools like <strong>solana-verify</strong> do this
-          and record it with a verification service.{" "}
-          <strong>&quot;Not verified&quot; isn&apos;t a red flag by itself</strong>{" "}
-          — most programs simply never submit one. It just means you&apos;re
-          trusting the deployed bytecode as-is, with no source cross-check.
-        </p>
-      </SectionExplainer>
       {program.repoLink ? (
         <>
           <SectionHeader
@@ -380,7 +436,28 @@ export default async function ProgramDossierPage({
             <Row label="Repo">
               <Ext href={program.repoLink.repoUrl} text={program.repoLink.repo} />
             </Row>
-            <Row label="Match">
+            <Row
+              label="Match"
+              explain={
+                <>
+                  <p className="explainer-read">
+                    A program id is 32 bytes of entropy. A developer who publishes
+                    their source commits it verbatim — so searching public code for
+                    the address finds the repo the binary never names.
+                  </p>
+                  <p>
+                    It only counts when the link closes both ways: the binary leaks a
+                    crate path (<strong>programs/&lt;crate&gt;/src/…</strong>) and the
+                    repo carries that same path, or the repo declares this exact
+                    address as its own program.{" "}
+                    <strong>This is an inference, not a verified build</strong> —
+                    nobody re-compiled the source and matched the bytecode. Treat it
+                    as a lead with its evidence attached, and read the matched files
+                    yourself before trusting it.
+                  </p>
+                </>
+              }
+            >
               {program.repoLink.method === "declared"
                 ? "declares this program id as its own"
                 : "carries the crate path the binary leaked"}
@@ -403,23 +480,6 @@ export default async function ProgramDossierPage({
               </Row>
             ) : null}
           </div>
-          <SectionExplainer title="How was this found?">
-            <p className="explainer-read">
-              A program id is 32 bytes of entropy. A developer who publishes
-              their source commits it verbatim — so searching public code for
-              the address finds the repo the binary never names.
-            </p>
-            <p>
-              It only counts when the link closes both ways: the binary leaks a
-              crate path (<strong>programs/&lt;crate&gt;/src/…</strong>) and the
-              repo carries that same path, or the repo declares this exact
-              address as its own program.{" "}
-              <strong>This is an inference, not a verified build</strong> —
-              nobody re-compiled the source and matched the bytecode. Treat it
-              as a lead with its evidence attached, and read the matched files
-              yourself before trusting it.
-            </p>
-          </SectionExplainer>
         </>
       ) : null}
       {program.securityTxt ? (
@@ -442,10 +502,14 @@ export default async function ProgramDossierPage({
               </Row>
             ) : null}
             {program.securityTxt.contacts ? (
-              <Row label="Contacts">{program.securityTxt.contacts}</Row>
+              <Row label="Contacts">
+                <SecTxtParts parts={parseContacts(program.securityTxt.contacts)} />
+              </Row>
             ) : null}
             {program.securityTxt.auditors ? (
-              <Row label="Auditors">{program.securityTxt.auditors}</Row>
+              <Row label="Auditors">
+                <SecTxtParts parts={parseAuditors(program.securityTxt.auditors)} />
+              </Row>
             ) : null}
             {program.securityTxt.policy ? (
               <Row label="Policy">
@@ -470,20 +534,27 @@ export default async function ProgramDossierPage({
                 <span className="cell-dim">· declared, but the URL 404s</span>
               </Row>
             ) : null}
+            <Row
+              label="About"
+              explain={
+                <>
+                  <p className="explainer-read">
+                    A block of contact info a developer embeds directly in the program
+                    binary — the Neodyme convention — so whitehats know how to report a
+                    vulnerability.
+                  </p>
+                  <p>
+                    It carries contacts, a disclosure policy, auditors, and a source
+                    link. It&apos;s self-declared, so treat it as a claim, not proof —
+                    but its presence signals a team that expects scrutiny and wants to
+                    be reachable.
+                  </p>
+                </>
+              }
+            >
+              <span className="cell-dim">the developer&apos;s own declaration, read verbatim from the binary</span>
+            </Row>
           </div>
-          <SectionExplainer title="What's a security.txt?">
-            <p className="explainer-read">
-              A block of contact info a developer embeds directly in the program
-              binary — the Neodyme convention — so whitehats know how to report a
-              vulnerability.
-            </p>
-            <p>
-              It carries contacts, a disclosure policy, auditors, and a source
-              link. It&apos;s self-declared, so treat it as a claim, not proof —
-              but its presence signals a team that expects scrutiny and wants to
-              be reachable.
-            </p>
-          </SectionExplainer>
         </>
       ) : null}
       <SectionHeader title="Conviction" info="Skin in the game — who funded the deployer and how." />
@@ -546,23 +617,44 @@ export default async function ProgramDossierPage({
         title="Framework"
         info="Read off the ELF — the syscall ABI and marker strings. Confidence: 'confirmed' = provable on-chain (Anchor); 'inferred' = read from binary shape. New to a framework? Expand the explainer at the bottom of this tab."
       />
-      <div className="fw-stat">
-        <span className="fw-stat-value">{comp.framework.label}</span>
-        <span
-          className={`fw-conf fw-conf-${comp.confidence}`}
-          title={comp.framework.detection}
-        >
-          {comp.confidence}
-        </span>
-        {comp.publishesIdl ? (
-          <span className="fw-tag" title="Ships an on-chain Anchor IDL — the program describes itself">
-            self-describing IDL
-          </span>
+      <SectionExplainer
+        title={`What's ${comp.framework.label}?`}
+        summary={
+          <div className="fw-stat fw-stat-summary">
+            <span className="fw-stat-value">{comp.framework.label}</span>
+            <span
+              className={`fw-conf fw-conf-${comp.confidence}`}
+              title={comp.framework.detection}
+            >
+              {comp.confidence}
+            </span>
+            {comp.publishesIdl ? (
+              <span className="fw-tag" title="Ships an on-chain Anchor IDL — the program describes itself">
+                self-describing IDL
+              </span>
+            ) : null}
+            {program.anchor ? (
+              <span className="fw-tag fw-line" title={ANCHOR_LINE[program.anchor.line].note}>
+                {ANCHOR_LINE[program.anchor.line].label}
+              </span>
+            ) : null}
+            <span className="fw-pos">{comp.framework.positioning}</span>
+          </div>
+        }
+      >
+        {/* The line is a verdict, so the markers it rests on travel with it —
+            anyone pressing on "v2" can check each one against the binary. */}
+        {program.anchor ? (
+          <div className="fw-line-detail">
+            <h4 className="explainer-h">Which Anchor: {ANCHOR_LINE[program.anchor.line].label}</h4>
+            <p>{ANCHOR_LINE[program.anchor.line].note}</p>
+            <ul className="fw-evidence">
+              {program.anchor.evidence.map((e) => (
+                <li key={e}>{e}</li>
+              ))}
+            </ul>
+          </div>
         ) : null}
-        <span className="fw-pos">{comp.framework.positioning}</span>
-      </div>
-
-      <SectionExplainer title={`What's ${comp.framework.label}?`}>
         <p className="explainer-read">{comp.framework.read}</p>
         <p className="explainer-tradeoff">{comp.framework.tradeoff}</p>
         <p className="explainer-lead">{comp.framework.explainer.author}</p>
@@ -941,8 +1033,8 @@ export default async function ProgramDossierPage({
             <span className={`cat-chip cat-${program.category}`}>
               {categoryLabel(program.category)}
             </span>
-            {program.framework && program.framework !== "unknown" ? (
-              <span className="fw-chip">{program.framework}</span>
+            {builtWith(program.framework, program.anchor) ? (
+              <span className="fw-chip">{builtWith(program.framework, program.anchor)}</span>
             ) : null}
             {program.deployType === "upgrade" && program.upgradeCount > 0 ? (
               <span

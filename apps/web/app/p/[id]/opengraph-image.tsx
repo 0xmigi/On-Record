@@ -2,6 +2,7 @@ import { ImageResponse } from "next/og";
 import { deriveSignals, type Signal } from "@/lib/signals";
 import { fetchProgram } from "@/lib/api";
 import { formatBytes, truncateAddress } from "@/lib/format";
+import { builtWith } from "@/lib/frameworks";
 import { ORB_RING, MARK_CENTRE, MARK_DOT_R } from "@/components/Mark";
 import { loadOgFont } from "@/lib/og";
 
@@ -113,7 +114,7 @@ export default async function OgImage({ params }: { params: Promise<{ id: string
   const signals = deriveSignals(program);
   const name = program.name ?? truncateAddress(program.id);
   const facts = [
-    program.framework && program.framework !== "unknown" ? program.framework : null,
+    builtWith(program.framework, program.anchor),
     program.category && program.category !== "unknown" ? program.category : null,
     program.sizeBytes ? formatBytes(program.sizeBytes) : null,
     program.deployCostSol != null ? `${program.deployCostSol} SOL rent` : null,

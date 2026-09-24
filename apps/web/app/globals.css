@@ -1411,6 +1411,51 @@ a {
   border-bottom: none;
 }
 
+.sectxt-parts {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+/* an audit report path can be a whole sentence long — let it wrap in place
+   instead of pushing the page sideways */
+.sectxt-part .receipt-link {
+  white-space: normal;
+}
+
+/* a fact row that opens to explain itself — the fact and its meaning in one
+   place, not a second box under the panel */
+.fact-row-toggle > summary.fact-row {
+  grid-template-columns: 200px 1fr auto;
+  cursor: pointer;
+  list-style: none;
+}
+.fact-row-toggle > summary::-webkit-details-marker {
+  display: none;
+}
+.fact-row-toggle > summary .explainer-chev {
+  align-self: center;
+}
+.fact-row-toggle[open] .explainer-chev {
+  transform: rotate(180deg);
+}
+.fact-row-toggle[open] > summary.fact-row {
+  border-bottom: none;
+}
+.fact-explain {
+  padding: 0 0 16px;
+  border-bottom: 1px solid var(--border);
+}
+.fact-explain p {
+  font-size: 13.5px;
+  line-height: 1.6;
+  color: var(--ink);
+  margin: 10px 0 0;
+}
+.fact-row-toggle:last-child > summary.fact-row,
+.fact-row-toggle:last-child > .fact-explain {
+  border-bottom: none;
+}
+
 .fact-label {
   font-family: var(--font-mono);
   font-size: 10px;
@@ -3430,6 +3475,16 @@ a.copy-addr-text:hover {
     grid-template-columns: 1fr;
     gap: 3px;
   }
+  .fact-row-toggle > summary.fact-row {
+    grid-template-columns: 1fr auto;
+  }
+  .fact-row-toggle > summary .fact-value {
+    grid-column: 1;
+  }
+  .fact-row-toggle > summary .explainer-chev {
+    grid-column: 2;
+    grid-row: 1;
+  }
 
   .funnel-strip {
     flex-wrap: wrap;
@@ -3984,6 +4039,31 @@ a.copy-addr-text:hover {
   border: 1px solid var(--border);
   border-radius: 2px;
   padding: 2px 6px;
+}
+
+/* the framework row as the header of its own explainer — one box, not two */
+.fw-stat.fw-stat-summary {
+  flex: 1;
+  border: 0;
+  background: none;
+  padding: 0;
+  font-weight: 400;
+}
+
+/* the Anchor line and the markers behind it */
+.fw-line {
+  color: var(--ink);
+}
+.fw-line-detail {
+  margin-bottom: 14px;
+}
+.fw-evidence {
+  margin: 0;
+  padding-left: 16px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  line-height: 1.6;
+  color: var(--ink-faint);
 }
 
 /* footprint metric row */

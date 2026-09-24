@@ -9,6 +9,7 @@ import type { ApiProgram } from "@/lib/api";
 import { deriveSignals } from "@/lib/signals";
 import { botKind, BOT_LABEL } from "@/lib/lifecycle";
 import { formatBytes, relativeTime, truncateAddress } from "@/lib/format";
+import { builtWith } from "@/lib/frameworks";
 
 // Programs CPI into the token programs almost universally — naming them on
 // every card is chrome, not signal. The dossier Composition tab keeps them.
@@ -230,8 +231,8 @@ export function ProgramRow({
           {program.deployCostSol != null && program.network !== "devnet" ? (
             <Fact label="cost" value={`${program.deployCostSol} SOL`} />
           ) : null}
-          {program.framework && program.framework !== "unknown" ? (
-            <Fact label="built with" value={program.framework} />
+          {builtWith(program.framework, program.anchor) ? (
+            <Fact label="built with" value={builtWith(program.framework, program.anchor)!} />
           ) : null}
           {notableIntegrations.length > 0 ? (
             <Fact label="talks to" value={notableIntegrations.slice(0, 2).join(", ")} />

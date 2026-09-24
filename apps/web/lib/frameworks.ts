@@ -1,4 +1,4 @@
-import type { Framework } from "@/lib/api";
+import type { AnchorBuild, AnchorLine, Framework } from "@/lib/api";
 
 // ---------------------------------------------------------------------------
 // Framework knowledge base — the developer-learning layer. Each entry is a
@@ -42,6 +42,34 @@ export const DETECTION_RELIABLE: Record<Framework, boolean> = {
   unknown: false,
 };
 
+// ---------------------------------------------------------------------------
+// Anchor lines. The profiler only claims as much as the bytes prove, so 1.x
+// has no line of its own: a 1.x build and a 0.x build with `no-idl` are
+// indistinguishable on-chain.
+// ---------------------------------------------------------------------------
+export const ANCHOR_LINE: Record<AnchorLine, { label: string; note: string }> = {
+  "2.x": {
+    label: "v2",
+    note: "Anchor 2 — a rewrite on Pinocchio (2.0.0-rc.1, on crates.io since August 2026). It drops v1's error strings and calls other programs through the C ABI, so before this label existed it read as Pinocchio.",
+  },
+  "0.x-1.x": {
+    label: "0.x or 1.x",
+    note: "The v1 runtime without the legacy IDL instructions: Anchor 1.x, or a 0.x build compiled with no-idl. The binary can't tell those two apart.",
+  },
+  "0.x": {
+    label: "0.x",
+    note: "The legacy IDL instructions are compiled in. Anchor 1.0.0 removed them in April 2026, so this binary was built with 0.x.",
+  },
+};
+
+/** The short "built with" value for a radar card. Only v2 is named: it's the
+ *  line that used to be mislabelled, and the others would just be noise. */
+export function builtWith(framework: Framework | null, anchor: AnchorBuild | null): string | null {
+  if (!framework || framework === "unknown") return null;
+  if (framework === "anchor" && anchor?.line === "2.x") return "anchor v2";
+  return framework;
+}
+
 export const FRAMEWORK_INFO: Record<Framework, FrameworkInfo> = {
   anchor: {
     key: "anchor",
@@ -51,7 +79,7 @@ export const FRAMEWORK_INFO: Record<Framework, FrameworkInfo> = {
     tradeoff:
       "Bigger binary and higher rent in exchange for safety rails, introspection, and dev speed. The choice of a team optimizing for correctness over on-chain footprint.",
     detection:
-      "Confirmed — the binary carries Anchor's error table (AnchorError, Constraint* messages) and IDL-account machinery. Anchor is the one framework reliably identifiable on-chain.",
+      "Confirmed. 0.x and 1.x builds carry Anchor's error table (AnchorError, Constraint* messages). v2 builds carry none of it, and are recognised by the message its account validation logs (\"require_eq violation\") plus handler names that match Anchor's discriminators.",
     explainer: {
       author: "Originally Coral (Armani Ferrante); now community-maintained.",
       whatIs:
@@ -59,7 +87,7 @@ export const FRAMEWORK_INFO: Record<Framework, FrameworkInfo> = {
       whenToPick:
         "Building a new protocol, moving fast, or wanting maximum ecosystem compatibility. It's the beginner default and stays the right call for most production programs.",
       onChain:
-        "The most recognizable framework. Every account it owns begins with an 8-byte discriminator, and the IDL is often published on-chain at a PDA derived from the program id. Both are strong, reliable fingerprints — this is the only framework we can label with confidence.",
+        "The most recognizable framework. Every account it owns begins with an 8-byte discriminator, and the IDL is often published on-chain — in a legacy account derived from the program id up to 0.x, in the Program Metadata program from 1.0 on. Anchor 2 is a rewrite on Pinocchio: same discriminators, but none of v1's error strings, so a detector that only knows v1 reads it as Pinocchio.",
       docsUrl: "https://www.anchor-lang.com",
     },
   },

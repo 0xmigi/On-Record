@@ -129,13 +129,17 @@ interface SizeCohort {
 
 /** Where this program's size sits among programs built the same way. Compared
  *  within framework because the distributions barely overlap — a 40 KB Anchor
- *  program is tiny and a 40 KB Pinocchio program is ordinary. */
+ *  program is tiny and a 40 KB Pinocchio program is ordinary. Anchor v2 is
+ *  compared only with v2: it is a rewrite on Pinocchio, and against the v1
+ *  median every v2 build would read as unusually small. */
 async function sizeCohort(
   network: Network,
   framework: string | null,
+  anchorLine: string | null,
   sizeBytes: number | null,
 ): Promise<SizeCohort | null> {
   if (!framework || sizeBytes === null) return null;
+  const v2 = framework === "anchor" && anchorLine === "2.x";
   const [row] = await db.execute<{ n: number; median: number | null; at_or_below: number }>(sql`
     select count(*)::int as n,
            percentile_cont(0.5) within group (order by ${schema.subjects.sizeBytes}) as median,
@@ -143,11 +147,12 @@ async function sizeCohort(
     from ${schema.subjects}
     where ${schema.subjects.network} = ${network}
       and ${schema.subjects.profile} ->> 'framework' = ${framework}
+      ${v2 ? sql`and ${schema.subjects.profile} -> 'anchor' ->> 'line' = '2.x'` : sql``}
       and ${schema.subjects.sizeBytes} is not null
   `);
   if (!row) return null;
   return {
-    framework,
+    framework: v2 ? "anchor v2" : framework,
     n: Number(row.n),
     median: row.median === null ? null : Number(row.median),
     atOrBelow: Number(row.at_or_below),
@@ -246,7 +251,7 @@ export async function buildDossier(programId: string, opts: DossierOptions = {})
 
   const [census, cohort, kin, family, idl] = await Promise.all([
     syscallCensus(network),
-    sizeCohort(network, profile?.framework ?? null, row.sizeBytes),
+    sizeCohort(network, profile?.framework ?? null, profile?.anchor?.line ?? null, row.sizeBytes),
     sourceKin(row),
     familyFor(row),
     fetchAnchorIdl(network, row.id).catch(() => null),
@@ -290,7 +295,7 @@ export async function buildDossier(programId: string, opts: DossierOptions = {})
   out.push(`# ${row.name ?? "(unnamed)"} — \`${row.id}\``);
   out.push("");
   out.push(
-    `${network} · ${profile?.framework ?? "framework unknown"} · ${fmtBytes(row.sizeBytes)} · ` +
+    `${network} · ${profile?.framework === "anchor" && profile.anchor ? `anchor ${profile.anchor.line}` : (profile?.framework ?? "framework unknown")} · ${fmtBytes(row.sizeBytes)} · ` +
       `first deployed ${iso(row.firstDeployAt ?? row.firstSeenAt)}` +
       (facts.closedAt ? ` · **CLOSED ${facts.closedAt}** (rent reclaimed)` : ""),
   );
@@ -487,6 +492,21 @@ export async function buildDossier(programId: string, opts: DossierOptions = {})
   out.push("");
   out.push(fact("Capabilities", profile?.capabilities?.join(", "), "syscall groups"));
   out.push(fact("Integrations", profile?.integrations?.join(", "), "known program ids embedded in the binary"));
+
+  // --- Anchor line ----------------------------------------------------------
+  // A verdict, so it travels with the markers it rests on: each is a string or
+  // byte pattern that can be checked against the binary directly.
+  if (profile?.anchor) {
+    h("Anchor line");
+    out.push(
+      fact(
+        "Built with",
+        `Anchor ${profile.anchor.line} (${profile.anchor.confidence} confidence)`,
+        "marker strings and discriminator bytes read from the bytecode; the IDL's location is not used, since Anchor 1.0 already writes to Program Metadata",
+      ),
+    );
+    for (const e of profile.anchor.evidence) out.push(`  - ${e}`);
+  }
 
   // --- corpus position ------------------------------------------------------
   h("Position in the corpus");

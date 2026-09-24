@@ -197,23 +197,3 @@ unnamed radar programs by hand and measure the hit rate before building.
 | Bot/lifecycle labels | `apps/web/lib/lifecycle.ts` |
 | Composition / framework KB | `apps/web/lib/composition.ts`, `lib/frameworks.ts` |
 | Family stacking + closed pile | `apps/web/app/page.tsx` (`collapseBuckets`, `ClosedSection`) |
-
-## security.txt contacts render as one raw string (2026-09-09)
-
-`apps/web/app/p/[id]/page.tsx` (the Trust tab, `<Row label="Contacts">`)
-prints `program.securityTxt.contacts` verbatim. The field is, by the
-solana-security-txt convention, a comma-separated list of `type:value`
-entries — `email:`, `link:`, `discord:`, `telegram:`, `twitter:`, `other:` —
-so a program following the convention exactly (e.g. livestock,
-`5X7RTCFFLgCpsRiskzm1gBEQmbzBEL39H6WpN9YzSizB`:
-`link:https://x.com/livestock_gg,link:https://github.com/0xmigi/livestock/security/advisories/new`)
-shows up as one unbroken, unclickable line.
-
-Fix at the source, once, for every program: split `contacts` on commas,
-parse each entry's prefix, and render one row per entry — `link:` and
-`other:` URLs as anchors, `email:` as `mailto:`, `twitter:` as an x.com
-link (handles may come with or without `@`), `discord:`/`telegram:` as
-text with the platform named. Entries with no recognised prefix stay
-verbatim. `packages/core/src/identity.ts` already keeps the field intact;
-only the presentation needs to change. Spec:
-https://github.com/neodyme-labs/solana-security-txt#format

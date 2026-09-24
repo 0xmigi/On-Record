@@ -29,6 +29,15 @@ export type Category =
 export type AuthorityClass = "none" | "squads" | "program" | "hot_wallet" | null;
 export type Framework = "anchor" | "pinocchio" | "native" | "unknown";
 
+/** Which Anchor line built the binary — only as finely as the bytes prove it
+ *  (packages/core/src/profile.ts). */
+export type AnchorLine = "0.x" | "0.x-1.x" | "2.x";
+export interface AnchorBuild {
+  line: AnchorLine;
+  confidence: "high" | "medium";
+  evidence: string[];
+}
+
 export type RadarWindow = "today" | "week" | "month" | "all";
 export type RadarType = "deploy" | "upgrade";
 
@@ -79,6 +88,7 @@ export interface ApiProgram {
   closed: boolean;
   // structured program profile (ELF-parsed)
   framework: Framework | null;
+  anchor: AnchorBuild | null;
   capabilities: string[];
   integrations: string[];
   syscallCount: number | null;
