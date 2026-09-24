@@ -19,7 +19,32 @@
 // capabilities — so the hashed form is resolved too.
 // ---------------------------------------------------------------------------
 
+import { createHash } from "node:crypto";
+
 export type Framework = "anchor" | "pinocchio" | "native" | "unknown";
+
+/**
+ * Which line of Anchor built the binary — only as finely as the bytes prove it.
+ *
+ *   "0.x"     the legacy IDL instructions are compiled in. Anchor 1.0.0 removed
+ *             them (changelog, #3798), so nothing later can carry them.
+ *   "0.x-1.x" the v1 runtime (AnchorError table) without those instructions:
+ *             either 1.x, or 0.x built with `no-idl`. The binary cannot tell.
+ *   "2.x"     the v2 runtime — a rewrite on Pinocchio. No AnchorError table, no
+ *             Rust-ABI CPI, so before this existed it read as "pinocchio".
+ *
+ * Where the IDL is published (Program Metadata vs the legacy account) is NOT
+ * evidence of a line: Anchor 1.0 already writes to Program Metadata.
+ */
+export type AnchorLine = "0.x" | "0.x-1.x" | "2.x";
+
+export interface AnchorBuild {
+  line: AnchorLine;
+  /** high = two independent markers agree; medium = the one required marker */
+  confidence: "high" | "medium";
+  /** plain-English, one line per marker that fired */
+  evidence: string[];
+}
 
 /** How the syscall set was recovered — the evidence class behind the label. */
 export type SyscallSource = "dynsym" | "static" | "strings";
@@ -29,6 +54,8 @@ export type InstructionSource = "idl" | "anchor-log" | "debug-enum";
 
 export interface ProgramProfile {
   framework: Framework;
+  /** set whenever framework is "anchor"; absent on profiles written before it existed */
+  anchor?: AnchorBuild | null;
   syscalls: string[]; // sorted unique sol_* imports, read off the ELF
   syscallSource: SyscallSource | null;
   capabilities: string[]; // derived groups: cpi, pda, hashing, advanced-crypto, tokens, return-data, sysvars
@@ -301,6 +328,30 @@ function scanText(elf: Buffer, text: { off: number; size: number }): TextScan {
 // --- instruction-name recovery ---------------------------------------------
 const IDENT = /^[A-Z][A-Za-z0-9]{2,47}$/;
 
+// Anchor v2 logs the handler name as written — msg!("Instruction: buy_exact_in")
+// — where v1 logged it PascalCased. A lowercase literal alone is too loose (any
+// native program can log one), so a snake name is only taken when the binary
+// also carries its Anchor discriminator, which is proof the name is a handler.
+const SNAKE = /^[a-z][a-z0-9_]{2,47}$/;
+
+/** "DepositFunds" → "deposit_funds": the fn name v1 PascalCased for its log. */
+function snakeCase(name: string): string {
+  return name.replace(/([a-z0-9])([A-Z])/g, "$1_$2").toLowerCase();
+}
+
+/**
+ * Does the binary embed Anchor's default discriminator for this handler,
+ * sha256("global:<name>")[..8]? The dispatcher compares the first 8 bytes of
+ * instruction data against it as a u64, so it sits in .text as an lddw
+ * immediate — split across the two 8-byte slots, low word then high word — or,
+ * in some builds, as the raw 8 bytes. Both are exact byte matches, not guesses.
+ */
+export function hasAnchorDiscriminator(elf: Buffer, handler: string): boolean {
+  const d = createHash("sha256").update(`global:${snakeCase(handler)}`).digest().subarray(0, 8);
+  if (elf.includes(d)) return true;
+  return elf.includes(Buffer.concat([d.subarray(0, 4), Buffer.alloc(4), d.subarray(4, 8)]));
+}
+
 // Fieldless-enum Debug impls put every variant name in .rodata, so a naive scan
 // finds the serde/bincode/core error enums that ship inside every Rust program.
 // Those clusters are indistinguishable from a real instruction enum by shape, so
@@ -385,6 +436,7 @@ function recoverInstructions(
   const fromLiteral = new Set<string>();
   const take = (name: string) => {
     if (IDENT.test(name) && !NOISE.has(name) && !ANCHOR_PLUMBING.test(name)) fromLiteral.add(name);
+    else if (SNAKE.test(name) && hasAnchorDiscriminator(elf, name)) fromLiteral.add(name);
   };
   // sized reads first — the only way to get exact boundaries on a toolchain that
   // stores literals back-to-back with no terminator
@@ -400,7 +452,7 @@ function recoverInstructions(
   }
   // and where .rodata is NUL-delimited the literal terminates itself, so an
   // anchored scan is exact too. Requiring the NUL is what keeps it exact.
-  for (const m of hay.matchAll(/Instruction: ([A-Z][A-Za-z0-9]{2,47})\0/g)) {
+  for (const m of hay.matchAll(/Instruction: ([A-Za-z][A-Za-z0-9_]{2,47})\0/g)) {
     if (m[1]) take(m[1]);
   }
   if (fromLiteral.size) return { names: [...fromLiteral].sort(), source: "anchor-log" };
@@ -463,6 +515,58 @@ function recoverInstructions(
   return names.length ? { names, source: "debug-enum" } : { names: [], source: null };
 }
 
+// --- Anchor line --------------------------------------------------------------
+// Calibrated on toy builds of the same programs under anchor-lang 1.2.0 and
+// 2.0.0-rc.1 (git + crates.io, guardrails on and off), then on the mainnet
+// programs that matched. Derived from those builds, not from the source alone.
+
+/** The v1 runtime: its error table and constraint messages. Every 0.x and 1.x
+ *  build carries these; v2 dropped message strings for bare error codes. */
+const V1_RUNTIME = /AnchorError|Constraint(HasOne|Signer|Seeds|Raw)/;
+
+/** The legacy IDL instructions — gone from Anchor 1.0.0 on. */
+const LEGACY_IDL_IX = /anchor:idl|IdlCreateAccount/;
+
+/** Logged by v2's own require_eq!, which its Signer and Account validation
+ *  call — so every v2 program with a signer or a typed account carries it,
+ *  whether or not the author ever wrote require_eq!. Absent from v1, Pinocchio
+ *  and Quasar. The one marker v2 detection requires. */
+const V2_MARKER = "require_eq violation";
+
+/** Panic locations inside anchor-lang v2 itself (lang-v2/src/…). Common file
+ *  names, so they only ever corroborate. */
+const V2_PATHS = ["src/cursor.rs", "src/context.rs", "src/pod.rs", "src/dispatch.rs", "src/loader.rs"];
+
+function classifyAnchor(elf: Buffer, hay: string, handlers: string[]): AnchorBuild | null {
+  if (V1_RUNTIME.test(hay) || LEGACY_IDL_IX.test(hay)) {
+    return LEGACY_IDL_IX.test(hay)
+      ? {
+          line: "0.x",
+          confidence: "high",
+          evidence: ["carries the legacy IDL instructions (IdlCreateAccount), which Anchor removed in 1.0.0"],
+        }
+      : {
+          line: "0.x-1.x",
+          confidence: "high",
+          evidence: [
+            "carries Anchor's v1 error table (AnchorError) and no legacy IDL instructions — 1.x, or 0.x built with no-idl",
+          ],
+        };
+  }
+  if (!hay.includes(V2_MARKER)) return null;
+
+  const evidence = [`logs "${V2_MARKER}", a message only Anchor v2's account validation emits`];
+  const matched = handlers.filter((h) => hasAnchorDiscriminator(elf, h));
+  if (matched.length) {
+    evidence.push(
+      `${matched.length} of ${handlers.length} instruction names match Anchor's sha256("global:<name>") discriminators`,
+    );
+  }
+  const paths = V2_PATHS.filter((p) => hay.includes(p));
+  if (paths.length >= 2) evidence.push(`panic paths from anchor-lang v2's own source: ${paths.join(", ")}`);
+  return { line: "2.x", confidence: evidence.length > 1 ? "high" : "medium", evidence };
+}
+
 /** Build the structured profile from a program's stripped bytecode. */
 export function profileProgram(
   bytecode: Buffer,
@@ -520,8 +624,14 @@ export function profileProgram(
 
   // 3. framework — marker strings + syscall ABI
   const hay = opts.strings ? opts.strings.join(" ") : bytecode.toString("latin1");
+  // Instruction names are needed here as well as in step 5: a handler name whose
+  // Anchor discriminator is in the binary is corroborating evidence for v2.
+  const idl = (opts.idlInstructions ?? []).filter(Boolean);
+  const rec = parsed ? recoverInstructions(bytecode, parsed, scan) : { names: [], source: null };
+  const anchor = classifyAnchor(bytecode, hay, idl.length ? idl : rec.names);
+
   let framework: Framework;
-  if (/anchor:idl|AnchorError|IdlCreateAccount|Constraint(HasOne|Signer|Seeds|Raw)/.test(hay)) {
+  if (anchor) {
     framework = "anchor";
   } else if (syscalls.includes("sol_invoke_signed_c")) {
     framework = "pinocchio"; // C-ABI, no-std
@@ -545,20 +655,19 @@ export function profileProgram(
   // 5. instructions — a published IDL is authoritative; else recover from the
   //    binary. Both beat having no interface surface at all, which is what every
   //    non-Anchor program used to report.
-  const idl = (opts.idlInstructions ?? []).filter(Boolean);
   let instructionNames: string[];
   let instructionSource: InstructionSource | null;
   if (idl.length) {
     instructionNames = idl;
     instructionSource = "idl";
   } else {
-    const rec = parsed ? recoverInstructions(bytecode, parsed, scan) : { names: [], source: null };
     instructionNames = rec.names;
     instructionSource = rec.source;
   }
 
   return {
     framework,
+    anchor,
     syscalls,
     syscallSource,
     capabilities,

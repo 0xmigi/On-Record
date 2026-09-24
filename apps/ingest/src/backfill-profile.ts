@@ -80,6 +80,9 @@ let missing = 0;
 let syscallsRecovered = 0;
 let instructionsRecovered = 0;
 let frameworkRelabelled = 0;
+// Every program the Anchor-line rules label, kept whole so a --dry run can be
+// read row by row rather than trusted as a count.
+const anchorLines: { id: string; from: string | null; line: string; confidence: string; evidence: string[] }[] = [];
 let regressions = 0;
 let upgraded = 0;
 let corrected = 0;
@@ -157,6 +160,16 @@ await Promise.all(
           );
         }
 
+        if (profile.anchor) {
+          anchorLines.push({
+            id: r.program_id,
+            from: r.old_framework,
+            line: profile.anchor.line,
+            confidence: profile.anchor.confidence,
+            evidence: profile.anchor.evidence,
+          });
+        }
+
         updates.push({ id: r.program_id, profile, count: profile.instructionCount });
       } catch (e) {
         log.warn({ programId: r.program_id, err: (e as Error).message }, "skip");
@@ -206,9 +219,22 @@ PROFILE BACKFILL — ${network}${dry ? " (dry run, nothing written)" : ""}
   false positives fixed   ${corrected}
   regressions skipped     ${regressions}
   rows written            ${written}
+  anchor 0.x              ${anchorLines.filter((a) => a.line === "0.x").length}
+  anchor 0.x-1.x          ${anchorLines.filter((a) => a.line === "0.x-1.x").length}
+  anchor 2.x              ${anchorLines.filter((a) => a.line === "2.x").length}
 
 Novelty scores are NOT recomputed here — instructionSurface now has a non-zero
 input for programs without an IDL, so run the score stage afterwards if you want
 the radar order to reflect it.
 `);
+// v2 is new enough that every verdict should be read, not counted — and each
+// one was labelled something else before.
+const v2 = anchorLines.filter((a) => a.line === "2.x");
+if (v2.length) {
+  console.log(`ANCHOR 2.x — ${v2.length} program(s), each with the markers that fired:`);
+  for (const a of v2) {
+    console.log(`  ${a.id}  (was ${a.from ?? "unprofiled"}, ${a.confidence})`);
+    for (const e of a.evidence) console.log(`      · ${e}`);
+  }
+}
 process.exit(0);
