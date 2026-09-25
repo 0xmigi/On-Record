@@ -558,6 +558,39 @@ export interface ApiVersionDiff {
   flags?: { type: "suppressed" | "unreliable"; label: string; detail: string }[];
 }
 
+/** One version's verification, keyed by its sha256 (= ApiRawEvent.sha256After).
+ *  Only the live version is ever "not-verified"; an older version is either
+ *  known to have been reproduced from source, or absent. */
+export interface ApiVersionVerification {
+  state: "verified" | "not-verified" | "pending";
+  reason?: string;
+  repoUrl?: string;
+  commit?: string;
+  verifiedAt?: string | null;
+}
+
+export interface ApiVerification {
+  checkedAt: string;
+  current: {
+    hash: string;
+    status: "verified" | "verified-older-build" | "not-verified" | "never-submitted" | "unreadable";
+    diagnosis: string;
+    fixes: { text: string; command?: string }[];
+    notes: string[];
+  } | null;
+  versions: Record<string, ApiVersionVerification>;
+}
+
+/** Labels are an extra on the record, never a reason for the page to fail: an
+ *  error, or a cold check still running, renders the record without them. */
+export async function fetchVerification(id: string): Promise<ApiVerification | null> {
+  try {
+    return await getJson<ApiVerification>(`/api/programs/${encodeURIComponent(id)}/verification`);
+  } catch {
+    return null;
+  }
+}
+
 /** version diffs keyed by the slot of the event that produced them */
 export type VersionTrail = Record<string, ApiVersionDiff>;
 
