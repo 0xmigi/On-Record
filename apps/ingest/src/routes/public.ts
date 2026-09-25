@@ -36,6 +36,7 @@ import { buildDossier } from "../dossier.js";
 import { edgesFor } from "../refs.js";
 import { composeReply } from "../reply.js";
 import { renderCardFor } from "../card.js";
+import { getVerificationView } from "../verification-view.js";
 import {
   isStale,
   rankUtilisation,
@@ -53,6 +54,9 @@ const FILL_STALE_MS = Number(process.env.USAGE_FILL_STALE_MS ?? 7 * 24 * 3_600_0
 const FILL_PARSE = Number(process.env.USAGE_FILL_PARSE ?? 200);
 /** rolling ceiling on measurements per hour, across every program */
 const FILL_MAX_PER_HOUR = Number(process.env.USAGE_FILL_MAX_PER_HOUR ?? 40);
+
+/** how long a page waits on a cold verification check before rendering without it */
+const VERIFY_DEADLINE_MS = Number(process.env.VERIFY_DEADLINE_MS ?? 6_000);
 
 /** one measurement per program at a time — concurrent openers share it */
 const usageInFlight = new Map<string, Promise<StoredSample<InstructionUsage>>>();
@@ -645,6 +649,26 @@ export function registerPublicRoutes(app: FastifyInstance): void {
     if (!rows[0]) return reply.code(404).send({ error: "unknown program" });
     const versions = await buildVersionDiffs(req.params.id);
     return { versions };
+  });
+
+  // --- verification, per version -----------------------------------------
+  // The verify doctor over the live program, plus every earlier match kept on
+  // the record (verification-view.ts). Cached 15 min. A cold check reads the
+  // chain, OtterSec and GitHub, so a slow one answers 503 and keeps running to
+  // fill the cache: the page renders without labels rather than waiting.
+  app.get<{ Params: { id: string } }>("/api/programs/:id/verification", async (req, reply) => {
+    const rows = await db
+      .select({ id: schema.subjects.id })
+      .from(schema.subjects)
+      .where(eq(schema.subjects.id, req.params.id));
+    if (!rows[0]) return reply.code(404).send({ error: "unknown program" });
+    const view = await Promise.race([
+      getVerificationView(req.params.id),
+      new Promise<undefined>((r) => setTimeout(() => r(undefined), VERIFY_DEADLINE_MS)),
+    ]);
+    if (view === undefined) return reply.code(503).header("retry-after", "10").send({ error: "still checking" });
+    if (!view) return reply.code(503).send({ error: "verification check failed" });
+    return view;
   });
 
   // --- the LLM dossier: one program as plain text, with provenance ---------
