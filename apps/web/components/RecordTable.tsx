@@ -6,6 +6,7 @@ import {
   type ApiProgramDetail,
   type ApiRawEvent,
   type ApiVersionDiff,
+  type ApiVersionVerification,
   type VersionTrail,
 } from "@/lib/api";
 import { isSyntheticSignature, relativeTime, truncateAddress } from "@/lib/format";
@@ -185,12 +186,49 @@ function Ext({ href, text }: { href: string; text: string }) {
   );
 }
 
+const repoName = (url?: string) => url?.match(/github\.com[/:]([^/\s]+\/[^/\s#?]+)/i)?.[1]?.replace(/\.git$/i, "") ?? url;
+
+/** Verification belongs to a version, so each row is labelled by the hash of
+ *  the bytes it put on chain. Only the live version can read "not verified";
+ *  an older one without a label just has no verified build on record. */
+function VerifyCell({ label }: { label?: ApiVersionVerification }) {
+  // no label is left blank, not dashed: a column of dashes reads as a column
+  // of "no", and for an older version it only means nothing is on record
+  if (!label) return null;
+  if (label.state === "verified") {
+    const from = label.commit ? `${repoName(label.repoUrl)} at ${label.commit.slice(0, 7)}` : repoName(label.repoUrl);
+    return (
+      <span
+        className="vfy vfy-yes tip vfy-tip"
+        data-tip={`OtterSec rebuilt ${from ?? "the published source"} and got exactly these bytes.`}
+        tabIndex={0}
+        role="note"
+      >
+        ✓ verified
+      </span>
+    );
+  }
+  return (
+    <span
+      className={`vfy vfy-${label.state === "pending" ? "pending" : "no"} tip vfy-tip`}
+      data-tip={label.reason ?? "Not verified"}
+      tabIndex={0}
+      role="note"
+    >
+      {label.state === "pending" ? "not verified yet" : "✗ not verified"}
+    </span>
+  );
+}
+
 export function RecordTable({
   events,
   trail,
+  verification,
 }: {
   events: ApiProgramDetail["events"];
   trail: Trail;
+  /** hash → label, mainnet only; absent renders the table as it always was */
+  verification?: Record<string, ApiVersionVerification> | null;
 }) {
   const [open, setOpen] = useState<Set<string>>(new Set());
   const toggle = (id: string) =>
@@ -206,6 +244,10 @@ export function RecordTable({
   // hold nothing for AND the window where the web deploys ahead of the API —
   // in both cases the record renders exactly as it did before this feature.
   const hasTrail = Object.keys(trail).length > 0;
+  // Last column, after Receipt: the phone layout picks cells by position, and
+  // everything it already styles keeps its index this way.
+  const hasVerify = !!verification;
+  const cols = 4 + (hasTrail ? 1 : 0) + (hasVerify ? 1 : 0);
 
   return (
     <div className="table-scroll">
@@ -217,6 +259,17 @@ export function RecordTable({
             <th scope="col">Detail</th>
             {hasTrail ? <th scope="col">What changed</th> : null}
             <th scope="col">Receipt</th>
+            {hasVerify ? (
+              <th scope="col">
+                <span
+                  className="tip vfy-tip"
+                  data-tip="Whether OtterSec rebuilt each version from its published source and got the same bytes. Only the live version can read not verified; a blank older version just has no verified build on record, since OtterSec keeps only its latest build per uploader."
+                  tabIndex={0}
+                >
+                  Verified
+                </span>
+              </th>
+            ) : null}
           </tr>
         </thead>
         <tbody>
@@ -300,10 +353,15 @@ export function RecordTable({
                     <Ext href={orbTx(ev.signature)} text={truncateAddress(ev.signature)} />
                   )}
                 </td>
+                {hasVerify ? (
+                  <td className="vfy-cell">
+                    <VerifyCell label={ev.sha256After ? verification[ev.sha256After] : undefined} />
+                  </td>
+                ) : null}
               </tr>,
               isOpen && t ? (
                 <tr key={`${ev.id}-d`} className="trail-detail-row">
-                  <td colSpan={hasTrail ? 5 : 4}>
+                  <td colSpan={cols}>
                     <Detail t={t} said={said} />
                   </td>
                 </tr>

@@ -14,6 +14,7 @@ import { UsageSection } from "@/components/UsageSection";
 import { ComputeSection } from "@/components/ComputeSection";
 import { DossierTabs, type DossierTab } from "@/components/DossierTabs";
 import { RecordTable, type Trail } from "@/components/RecordTable";
+import { VerifyNote } from "@/components/VerifyNote";
 import { SignalHex } from "@/components/SignalHex";
 import { Sparkline } from "@/components/Sparkline";
 import { deriveSignals } from "@/lib/signals";
@@ -33,12 +34,14 @@ import {
   fetchIdl,
   fetchProgram,
   fetchUsage,
+  fetchVerification,
   fetchVersions,
   versionsBySlot,
   orbAddress,
   orbTx,
   type ApiProgramDetail,
   type ApiRawEvent,
+  type ApiVerification,
 } from "@/lib/api";
 import {
   dayStamp,
@@ -171,12 +174,15 @@ function ClusterRecord({
   program,
   isPrimary,
   trail,
+  verification,
 }: {
   cluster: string;
   events: ApiProgramDetail["events"];
   program: ApiProgramDetail;
   isPrimary: boolean;
   trail: Trail;
+  /** mainnet only: OtterSec's verifier doesn't serve devnet */
+  verification?: ApiVerification | null;
 }) {
   const cp = program.counterpart;
   const upgrades = events.filter((e) => e.type === "upgrade").length;
@@ -207,7 +213,10 @@ function ClusterRecord({
         <span className={`cluster-record-net cluster-record-net-${cluster}`}>on {cluster}</span>
         <span className="cell-dim"> · {bits.join(" · ")}</span>
       </p>
-      <RecordTable events={events} trail={trail} />
+      {/* above the table: it explains the top row, and a long record would
+          push it screens away from the version it's about */}
+      {verification?.current ? <VerifyNote current={verification.current} /> : null}
+      <RecordTable events={events} trail={trail} verification={verification?.versions} />
     </div>
   );
 }
@@ -308,10 +317,14 @@ export default async function ProgramDossierPage({
   // that shipped one later stayed false forever and the tab confidently claimed
   // no IDL existed (horse-fun had 22 instructions published). The IDL endpoint
   // does a live on-chain lookup, so the flag buys nothing but staleness.
-  const [idl, storedUsage, versions] = await Promise.all([
+  // Verification is labelled per version, and only exists for a mainnet
+  // deployment; a failed or slow check renders the record without it.
+  const onMainnet = program.events.some((e) => e.network === "mainnet");
+  const [idl, storedUsage, versions, verification] = await Promise.all([
     fetchIdl(id),
     fetchUsage(id),
     fetchVersions(id),
+    onMainnet ? fetchVerification(id) : Promise.resolve(null),
   ]);
   const trail = versionsBySlot(versions);
   const usage = storedUsage.usage;
@@ -903,6 +916,7 @@ export default async function ProgramDossierPage({
             program={program}
             isPrimary
             trail={trail}
+            verification={program.network === "mainnet" ? verification : null}
           />
           {otherEvents.length > 0 ? (
             <ClusterRecord
@@ -911,6 +925,7 @@ export default async function ProgramDossierPage({
               program={program}
               isPrimary={false}
               trail={trail}
+              verification={otherCluster === "mainnet" ? verification : null}
             />
           ) : null}
         </>

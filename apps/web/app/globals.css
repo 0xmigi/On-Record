@@ -5611,6 +5611,105 @@ a.copy-addr-text:hover {
   }
 }
 
+/* --- verification, per version -----------------------------------------
+   Green for a version OtterSec reproduced from source, red for the live
+   version that isn't, faint for "not yet" and for no label at all. The note
+   above the table is the why for the live version. */
+.record-table td.vfy-cell {
+  white-space: nowrap;
+}
+.vfy {
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+}
+.vfy-yes {
+  color: var(--green);
+}
+.vfy-no {
+  color: var(--red);
+}
+.vfy-pending {
+  color: var(--ink-faint);
+}
+/* the last column: open tooltips leftwards so they stay on the page */
+.vfy-tip.tip::after {
+  left: auto;
+  right: 0;
+}
+.vfy-note {
+  margin-bottom: 10px;
+  padding: 11px 16px;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  font-size: 13px;
+}
+.vfy-note-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 10px;
+  margin: 0;
+}
+.vfy-note-why {
+  font-family: var(--font-sans);
+  color: var(--ink-soft);
+}
+.vfy-fix {
+  margin-top: 9px;
+}
+.vfy-fix summary {
+  cursor: pointer;
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+}
+.vfy-fix ol {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin: 10px 0 0;
+  padding-left: 18px;
+}
+.vfy-fix li p {
+  margin: 0 0 6px;
+  font-family: var(--font-sans);
+  color: var(--ink-soft);
+}
+.vfy-fix pre {
+  margin: 0;
+  padding: 8px 10px;
+  overflow-x: auto;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+}
+.vfy-note-extra {
+  margin: 10px 0 0;
+  font-size: 12px;
+  color: var(--ink-faint);
+}
+/* on a phone the label joins the row's quiet metadata line */
+@media (max-width: 760px) {
+  .trail-table td.vfy-cell {
+    flex: 0 0 auto;
+    width: auto;
+    font-size: 11px;
+  }
+  .trail-table td.vfy-cell::before {
+    content: "·";
+    padding: 0 6px;
+    color: var(--border-strong);
+  }
+  .trail-table td.vfy-cell:empty {
+    display: none;
+  }
+}
+
 /* --- compute: one distribution, one ceiling, one axis -------------------- */
 .cu {
   background: var(--card);
