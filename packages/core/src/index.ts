@@ -30,5 +30,13 @@ export {
 } from "./fingerprint.js";
 export * from "./metadata.js";
 export * from "./otter-verify.js";
+// the verify doctor (verify/): why a program isn't verified, without building
+// anything. Prefixed names, since Report / Fix mean nothing at the package root
+export {
+  diagnose as diagnoseVerification,
+  type Report as VerificationReport,
+  type Fix as VerificationFix,
+} from "./verify/doctor.js";
+export { versionLabels, type VersionLabel, type VersionLabels } from "./verify/labels.js";
 export * from "./samples.js";
 export { db, schema, type Db } from "./db/client.js";
