@@ -579,6 +579,19 @@ export interface ApiVerification {
     notes: string[];
   } | null;
   versions: Record<string, ApiVersionVerification>;
+  /** The upgrade that replaced a verified build, while the live version is
+   *  still unverified. Absent from older API deploys. */
+  broke?: {
+    slot: number;
+    signature: string;
+    blockTime: string | null;
+    previousHash: string;
+    repoUrl: string | null;
+    commit: string | null;
+    /** "verified": we saw it verified before the upgrade. "reproduced":
+     *  OtterSec rebuilt those bytes from source; a badge isn't known. */
+    evidence: "verified" | "reproduced";
+  } | null;
 }
 
 /** Labels are an extra on the record, never a reason for the page to fail: an

@@ -1,4 +1,5 @@
 import type { ApiVerification } from "@/lib/api";
+import { dayStamp, groupNum, relativeTime } from "@/lib/format";
 
 /**
  * The live version's verification, under the mainnet record: what the verify
@@ -10,6 +11,7 @@ import type { ApiVerification } from "@/lib/api";
  */
 
 type Current = NonNullable<ApiVerification["current"]>;
+type Broke = NonNullable<ApiVerification["broke"]>;
 
 const HEAD: Record<Current["status"], string> = {
   verified: "✓ Current version verified",
@@ -19,7 +21,7 @@ const HEAD: Record<Current["status"], string> = {
   unreadable: "",
 };
 
-export function VerifyNote({ current }: { current: Current }) {
+export function VerifyNote({ current, broke }: { current: Current; broke?: Broke | null }) {
   if (current.status === "unreadable" || !current.diagnosis) return null;
   const tone = current.status === "verified" ? "yes" : current.status === "verified-older-build" ? "pending" : "no";
   return (
@@ -28,6 +30,22 @@ export function VerifyNote({ current }: { current: Current }) {
         <span className={`vfy vfy-${tone}`}>{HEAD[current.status]}</span>
         <span className="vfy-note-why">{current.diagnosis}</span>
       </p>
+      {broke && current.status !== "verified" ? (
+        <p className="vfy-note-broke">
+          Verification broke at the upgrade on {dayStamp(broke.blockTime)} ({relativeTime(broke.blockTime)}, slot{" "}
+          {groupNum(broke.slot)}).{" "}
+          {broke.evidence === "verified"
+            ? "The version before it was verified"
+            : "OtterSec had rebuilt the version before it from source"}
+          {broke.commit ? (
+            <>
+              {" "}
+              at commit <code>{broke.commit.slice(0, 7)}</code>
+            </>
+          ) : null}
+          .
+        </p>
+      ) : null}
       {current.fixes.length ? (
         <details className="vfy-fix">
           <summary>What would fix it</summary>
