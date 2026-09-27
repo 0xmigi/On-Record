@@ -38,5 +38,6 @@ export {
   type Fix as VerificationFix,
 } from "./verify/doctor.js";
 export { versionLabels, type VersionLabel, type VersionLabels } from "./verify/labels.js";
+export { osecStatusAll, type OsecRecord } from "./verify/remote.js";
 export * from "./samples.js";
 export { db, schema, type Db } from "./db/client.js";

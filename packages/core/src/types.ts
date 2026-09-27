@@ -197,6 +197,26 @@ export interface BytecodeIdentity {
   anchor: boolean;
 }
 
+/** An upgrade that replaced bytes OtterSec had verified. Written by identify
+ *  when it sees the upgrade; closed by the first later version seen verified
+ *  (apps/ingest/src/verification-stamps.ts). */
+export interface VerificationBreak {
+  /** hash of the verified bytes this upgrade replaced */
+  previousHash: string;
+  repoUrl: string | null;
+  commit: string | null;
+  /** "verified": our last OtterSec status check said verified, before the
+   *  upgrade (seen live by identify).
+   *  "reproduced": OtterSec holds a build that reproduced previousHash from
+   *  source; whether explorers showed it as verified isn't known. */
+  evidence: "verified" | "reproduced";
+  detectedAt: string;
+  /** found afterwards from history by the sweep, not seen as it happened */
+  backfilled?: boolean;
+  /** first time a later version was seen verified; absent while still broken */
+  restoredSeenAt?: string;
+}
+
 export interface EventEnrichment {
   fingerprint?: Fingerprint;
   profile?: ProgramProfile;
@@ -214,6 +234,8 @@ export interface EventEnrichment {
     upgradeCountTruncated?: boolean;
   };
   identity?: Identity;
+  /** Set on the upgrade that replaced a verified build (identify). */
+  verificationBreak?: VerificationBreak;
   classification?: Classification;
   score?: ScoreResult;
   skippedSpamWave?: boolean;

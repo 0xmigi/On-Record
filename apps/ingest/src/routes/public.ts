@@ -37,6 +37,7 @@ import { edgesFor } from "../refs.js";
 import { composeReply } from "../reply.js";
 import { renderCardFor } from "../card.js";
 import { getVerificationView } from "../verification-view.js";
+import type { BreakSummary } from "../verification-stamps.js";
 import {
   isStale,
   rankUtilisation,
@@ -669,6 +670,47 @@ export function registerPublicRoutes(app: FastifyInstance): void {
     if (view === undefined) return reply.code(503).header("retry-after", "10").send({ error: "still checking" });
     if (!view) return reply.code(503).send({ error: "verification check failed" });
     return view;
+  });
+
+  // --- verification breaks, across the corpus -----------------------------
+  // Every upgrade On Record knows replaced a verified (or OtterSec-reproduced)
+  // build, and whether a later version came back. Reads the summaries kept on
+  // subjects.facts, never the events table. "restored" timing is when On Record
+  // first SAW the new version verified, so it is an upper bound on how long the
+  // re-verification took.
+  app.get("/api/verification/breaks", async () => {
+    const rows = await db
+      .select({
+        id: schema.subjects.id,
+        name: schema.subjects.name,
+        brk: sql<BreakSummary>`${schema.subjects.facts}->'verificationBreak'`,
+      })
+      .from(schema.subjects)
+      .where(
+        and(
+          eq(schema.subjects.kind, "program"),
+          eq(schema.subjects.network, "mainnet"),
+          sql`${schema.subjects.facts} ? 'verificationBreak'`,
+        ),
+      );
+    const restoredHours = rows
+      .filter((r) => r.brk.restoredSeenAt && r.brk.blockTime)
+      .map((r) => (Date.parse(r.brk.restoredSeenAt!) - Date.parse(r.brk.blockTime!)) / 3_600_000)
+      .sort((a, b) => a - b);
+    const open = rows.filter((r) => !r.brk.restoredSeenAt);
+    return {
+      total: rows.length,
+      open: open.length,
+      restored: rows.length - open.length,
+      byEvidence: {
+        verified: rows.filter((r) => r.brk.evidence === "verified").length,
+        reproduced: rows.filter((r) => r.brk.evidence === "reproduced").length,
+      },
+      restoredWithinHoursMedian: restoredHours.length ? restoredHours[Math.floor((restoredHours.length - 1) / 2)] : null,
+      openBreaks: open
+        .map((r) => ({ programId: r.id, name: r.name, ...r.brk }))
+        .sort((a, b) => b.slot - a.slot),
+    };
   });
 
   // --- the LLM dossier: one program as plain text, with provenance ---------

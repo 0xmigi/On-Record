@@ -6,7 +6,7 @@ import { sampleMomentum } from "./momentum.js";
 import { sweepClosed } from "./closed.js";
 import { reclassifyRecent } from "./reclassify.js";
 import { sweepRepoLinks, sweepRepoLiveness } from "./repo-link.js";
-import { sweepVerification, sweepVerifyPending } from "./verify-sweep.js";
+import { sweepVerification, sweepVerificationHistory, sweepVerifyPending } from "./verify-sweep.js";
 import { sweepMentions } from "./x-bot.js";
 
 // ---------------------------------------------------------------------------
@@ -50,6 +50,8 @@ export function startCron(): void {
   // frozen at "no" for every program verified after its last upgrade.
   every(Number(process.env.VERIFY_SWEEP_INTERVAL_MS ?? 6 * 3_600_000), "verify-sweep", async () => {
     await sweepVerification("mainnet");
+    // then breaks that happened before identify was watching for them
+    await sweepVerificationHistory("mainnet");
   });
   // the query bot: answer mentions on X with what the record holds. Off unless
   // X_BOT_MODE says otherwise, and `draft` (compose, wait for approval) rather
