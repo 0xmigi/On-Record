@@ -1,7 +1,8 @@
-import { and, eq, inArray, or, sql } from "drizzle-orm";
-import { db, schema, logger, fetchVerifyRequests, type Network } from "@onrecord/core";
+import { and, asc, eq, inArray, or, sql } from "drizzle-orm";
+import { db, schema, logger, fetchVerifyRequests, osecStatusAll, type Network } from "@onrecord/core";
 import { checkVerification } from "@onrecord/enrich";
 import { fetchVerifiedProgramIds } from "./backfill-verified.js";
+import { recordBreak, stampVerified } from "./verification-stamps.js";
 
 // ---------------------------------------------------------------------------
 // Verified-build sweep.
@@ -123,6 +124,12 @@ export async function sweepVerification(network: Network = "mainnet"): Promise<V
       })
       .where(and(eq(schema.subjects.id, row.id), eq(schema.subjects.network, network)));
 
+    // keep the match on the record, and close the break it resolves: this is
+    // how a label survives OtterSec moving on without anyone opening the page
+    if (v.verified && v.hash) {
+      await stampVerified(row.id, network, v.hash, { repoUrl: v.repoUrl, commit: v.commit }, "sweep");
+    }
+
     if (flipped) {
       logger.info(
         { programId: row.id, verified: v.verified, repoUrl: v.repoUrl, commit: v.commit },
@@ -240,6 +247,10 @@ export async function sweepVerifyPending(network: Network = "mainnet"): Promise<
       })
       .where(and(eq(schema.subjects.id, row.id), eq(schema.subjects.network, network)));
 
+    if (v.verified && v.hash) {
+      await stampVerified(row.id, network, v.hash, { repoUrl: v.repoUrl, commit: v.commit }, "sweep");
+    }
+
     if (v.verified) {
       logger.info(
         { programId: row.id, repoUrl: v.repoUrl, commit: v.commit, attempt: attempt + 1 },
@@ -250,6 +261,124 @@ export async function sweepVerifyPending(network: Network = "mainnet"): Promise<
 
   const result = { checked: rows.length, gained, pending };
   logger.info({ network, ...result, requests: requested.size }, "verify fast-path sweep");
+  return result;
+}
+
+// ---------------------------------------------------------------------------
+// Breaks from history.
+//
+// identify records a break as it happens, but only for upgrades it sees from
+// now on, and only when we last knew the program as verified. Many breaks
+// happened before that: OtterSec still holds, per uploader, the build it last
+// ran, so a failing program whose build reproduced an EARLIER version on our
+// record was reproduced from source and then upgraded past it.
+//
+// Dry run 2026-09-26 over the corpus, mainnet events only: of 126 programs
+// that requested verification and aren't verified, 27 had a reproduced
+// earlier version (median 28 days since the upgrade that broke it; 12 of them
+// upgraded only once since). Of 540 verified-registry programs, 539 were
+// verified on their current version, so live re-verification is fast and the
+// breaks that stick are the ones here.
+//
+// Evidence is "reproduced", not "verified": the build matched those bytes, but
+// whether explorers showed a badge for them isn't knowable after the fact.
+// Nothing is stamped verified on the old version for the same reason.
+// ---------------------------------------------------------------------------
+
+const HISTORY_MAX = Number(process.env.VERIFY_HISTORY_MAX ?? 150);
+
+export interface HistoryResult {
+  checked: number;
+  recorded: number;
+  skipped?: "no-requests" | "no-eligible-rows";
+}
+
+export async function sweepVerificationHistory(network: Network = "mainnet"): Promise<HistoryResult> {
+  if (network === "devnet") return { checked: 0, recorded: 0, skipped: "no-requests" };
+  const requested = await fetchVerifyRequests(network);
+  if (!requested.size) return { checked: 0, recorded: 0, skipped: "no-requests" };
+
+  const rows = await db
+    .select({ id: schema.subjects.id })
+    .from(schema.subjects)
+    .where(
+      and(
+        eq(schema.subjects.kind, "program"),
+        eq(schema.subjects.network, network),
+        eq(schema.subjects.verified, false),
+        inArray(schema.subjects.id, [...requested]),
+        // one already recorded is owned by identify / the stamps from here on
+        sql`${schema.subjects.facts}->'verificationBreak' is null`,
+        sql`(${schema.subjects.facts}->>'verifyHistoryAt' is null
+             or (${schema.subjects.facts}->>'verifyHistoryAt')::timestamptz
+                < now() - ${`${RECHECK_HOURS} hours`}::interval)`,
+      ),
+    )
+    .orderBy(sql`${schema.subjects.facts}->>'verifyHistoryAt' asc nulls first`)
+    .limit(HISTORY_MAX);
+  if (!rows.length) return { checked: 0, recorded: 0, skipped: "no-eligible-rows" };
+
+  let checked = 0;
+  let recorded = 0;
+  for (const row of rows) {
+    const records = await osecStatusAll(row.id);
+    // unreachable: try again next pass rather than stamping it checked
+    if (records === null) continue;
+    checked++;
+
+    const events = await db
+      .select({
+        id: schema.events.id,
+        slot: schema.events.slot,
+        blockTime: schema.events.blockTime,
+        hash: schema.events.sha256After,
+      })
+      .from(schema.events)
+      .where(
+        and(
+          eq(schema.events.programId, row.id),
+          eq(schema.events.network, network),
+          inArray(schema.events.type, ["deploy", "upgrade"]),
+        ),
+      )
+      .orderBy(asc(schema.events.slot));
+
+    // the newest version OtterSec reproduced, and the first upgrade after its
+    // last appearance: that upgrade replaced the reproduced bytes. It may be a
+    // "not captured" row with no hash of its own; it's still the one.
+    const built = new Map(records.filter((r) => r.executable_hash).map((r) => [r.executable_hash, r]));
+    let last = -1;
+    events.forEach((e, i) => {
+      if (e.hash && built.has(e.hash)) last = i;
+    });
+    const breaker = last >= 0 ? events.slice(last + 1).find((e) => e.hash !== events[last]!.hash) : undefined;
+    const current = events.at(-1);
+    if (breaker && current?.hash && !built.has(current.hash)) {
+      const rec = built.get(events[last]!.hash!)!;
+      await recordBreak(
+        { id: breaker.id, programId: row.id, network, slot: breaker.slot, blockTime: breaker.blockTime },
+        {
+          previousHash: events[last]!.hash!,
+          repoUrl: rec.repo_url || null,
+          commit: rec.commit || null,
+          evidence: "reproduced",
+          detectedAt: new Date().toISOString(),
+          backfilled: true,
+        },
+      );
+      recorded++;
+    }
+
+    await db
+      .update(schema.subjects)
+      .set({
+        facts: sql`coalesce(${schema.subjects.facts}, '{}'::jsonb) || ${JSON.stringify({ verifyHistoryAt: new Date().toISOString() })}::jsonb`,
+      })
+      .where(and(eq(schema.subjects.id, row.id), eq(schema.subjects.network, network)));
+  }
+
+  const result = { checked, recorded };
+  logger.info({ network, ...result, candidates: rows.length }, "verify history sweep");
   return result;
 }
 

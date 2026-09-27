@@ -22,11 +22,13 @@ import {
   deriveBytecodeIdentity,
   buildSearchText,
   recoverSourceTree,
+  osecStatusAll,
   type Category,
   type EventEnrichment,
   type Fingerprint,
   type Network,
   type ScoreResult,
+  type VerificationBreak,
 } from "@onrecord/core";
 import {
   appendToCorpus,
@@ -42,6 +44,7 @@ import {
   watchDevnetNovel,
 } from "@onrecord/enrich";
 import { refreshInterest } from "./interest.js";
+import { breakSummary, stampVerified } from "./verification-stamps.js";
 import { tryExtractReferences } from "./refs.js";
 import { linkIncubation } from "./incubation.js";
 import { recordCounterpart } from "./counterpart.js";
@@ -245,13 +248,18 @@ export async function identifyStage(eventId: string): Promise<void> {
   const verification =
     programId && network !== "devnet"
       ? await checkVerification(programId, { bustCache: event.type === "upgrade" })
-      : { verified: false, repoUrl: null, commit: null };
+      : { verified: false, repoUrl: null, commit: null, hash: null };
+  // OtterSec can still say "verified" in the moments after an upgrade, about
+  // the bytes it replaced; its build hash says which bytes it means
+  const newHash = enrichment.fingerprint?.sha256 ?? null;
+  const verifiedNow =
+    verification.verified && (!verification.hash || !newHash || verification.hash === newHash);
 
   // exact-code lineage: does this bytecode match a verified build of some
   // OTHER program? (Self-matches are just the program's own verification.)
   const fpForMatch = enrichment.fingerprint;
   let codeMatch = null;
-  if (fpForMatch?.sha256 && !verification.verified) {
+  if (fpForMatch?.sha256 && !verifiedNow) {
     const match = await resolveCodeMatch(fpForMatch.sha256);
     if (match && match.programId !== programId) {
       codeMatch = { programId: match.programId, repository: match.repository, trusted: match.trusted };
@@ -262,6 +270,25 @@ export async function identifyStage(eventId: string): Promise<void> {
     ? await db.select().from(schema.subjects).where(eq(schema.subjects.id, programId))
     : [];
   const previousCommit = subjectRows[0]?.repoCommit ?? null;
+
+  // Did this upgrade break a verification? The subject row still describes
+  // the version before this one: verified, with its bytes' hash. Only the
+  // program's newest event can break anything, so a backfill replaying an old
+  // upgrade stays quiet.
+  const prev = subjectRows[0];
+  if (
+    programId &&
+    network === "mainnet" &&
+    prev?.network === "mainnet" &&
+    prev.verified &&
+    prev.sha256 &&
+    newHash &&
+    prev.sha256 !== newHash &&
+    !verifiedNow &&
+    (!prev.lastEventAt || !event.blockTime || event.blockTime >= prev.lastEventAt)
+  ) {
+    enrichment.verificationBreak = await recordVerificationBreak(programId, prev);
+  }
 
   let authorityClass = await classifyAuthority(network, event.authorityAfter);
 
@@ -315,7 +342,7 @@ export async function identifyStage(eventId: string): Promise<void> {
     entityId: entity?.id ?? entityByAuthority?.id ?? null,
     entityName: entity?.name ?? entityByAuthority?.name ?? null,
     entityCategory: entity?.category ?? entityByAuthority?.category ?? null,
-    verified: verification.verified,
+    verified: verifiedNow,
     repoUrl: verification.repoUrl,
     repoCommit: verification.commit,
     previousCommit,
@@ -330,6 +357,34 @@ export async function identifyStage(eventId: string): Promise<void> {
 
   await enqueue("classify", { eventId });
   log.info({ eventId, ms: Date.now() - start, entity: enrichment.identity.entityName, outcome: "ok" }, "done");
+}
+
+/** Keep the evidence for the version an upgrade just replaced, and describe
+ *  the break. OtterSec still holds the build that reproduced the old bytes
+ *  until the team verifies again, so this is the last moment to read it. */
+async function recordVerificationBreak(
+  programId: string,
+  prev: { sha256: string | null; repoUrl: string | null; repoCommit: string | null },
+): Promise<VerificationBreak> {
+  const previousHash = prev.sha256!;
+  const records = await osecStatusAll(programId);
+  const build = records?.find((r) => r.executable_hash === previousHash) ?? null;
+  if (build) {
+    await stampVerified(
+      programId,
+      "mainnet",
+      previousHash,
+      { repoUrl: build.repo_url, commit: build.commit, verifiedAt: build.last_verified_at },
+      "upgrade",
+    );
+  }
+  return {
+    previousHash,
+    repoUrl: build?.repo_url ?? prev.repoUrl,
+    commit: build?.commit ?? prev.repoCommit,
+    evidence: "verified",
+    detectedAt: new Date().toISOString(),
+  };
 }
 
 async function upsertSubject(event: EventRow, enrichment: EventEnrichment): Promise<void> {
@@ -389,6 +444,10 @@ async function upsertSubject(event: EventRow, enrichment: EventEnrichment): Prom
       ...(md?.security ? { pmpSecurity: md.security } : {}),
       ...(id?.codeMatch ? { codeMatch: id.codeMatch } : {}),
       ...(id?.multisig ? { multisig: id.multisig } : {}),
+      // the latest break, on the small table, so corpus counts never scan events
+      ...(enrichment.verificationBreak
+        ? { verificationBreak: breakSummary(enrichment.verificationBreak, event.slot, event.blockTime) }
+        : {}),
       // kept out of repoUrl on purpose: that column is the repo somebody
       // DECLARED (verified build / security.txt). This one was inferred by
       // searching public code, and the dossier says so.

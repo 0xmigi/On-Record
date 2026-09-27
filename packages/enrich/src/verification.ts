@@ -11,6 +11,11 @@ export interface Verification {
   verified: boolean;
   repoUrl: string | null;
   commit: string | null;
+  /** The bytes OtterSec's build reproduced (solana-verify hash, same format as
+   *  our fingerprint sha256). Set only when verified and the build matches what
+   *  OtterSec last saw on chain; lets callers tell "verified" from "verified,
+   *  but for bytes that have since been replaced". */
+  hash: string | null;
 }
 
 const CACHE_MS = 24 * 60 * 60 * 1000;
@@ -21,6 +26,8 @@ interface OtterSecResponse {
   repo_url?: string;
   commit?: string;
   message?: string;
+  on_chain_hash?: string;
+  executable_hash?: string;
 }
 
 export async function checkVerification(
@@ -30,7 +37,7 @@ export async function checkVerification(
   const hit = cache.get(programId);
   if (hit && !opts.bustCache && Date.now() - hit.at < CACHE_MS) return hit.value;
 
-  let value: Verification = { verified: false, repoUrl: null, commit: null };
+  let value: Verification = { verified: false, repoUrl: null, commit: null, hash: null };
   try {
     const res = await fetch(
       `https://verify.osec.io/status/${encodeURIComponent(programId)}`,
@@ -38,10 +45,15 @@ export async function checkVerification(
     );
     if (res.ok) {
       const json = (await res.json()) as OtterSecResponse;
+      const verified = json.is_verified === true;
       value = {
-        verified: json.is_verified === true,
+        verified,
         repoUrl: json.repo_url ?? null,
         commit: json.commit ?? null,
+        hash:
+          verified && json.executable_hash && json.executable_hash === json.on_chain_hash
+            ? json.executable_hash
+            : null,
       };
     }
   } catch (err) {

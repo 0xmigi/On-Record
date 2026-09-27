@@ -1,4 +1,4 @@
-import { and, eq, isNotNull, isNull, sql } from "drizzle-orm";
+import { and, eq, isNotNull, sql } from "drizzle-orm";
 import {
   db,
   schema,
@@ -12,17 +12,15 @@ import {
   type VersionLabel,
   type VersionLabels,
 } from "@onrecord/core";
+import { openBreak, stampVerified, type Stamp } from "./verification-stamps.js";
 
 // ---------------------------------------------------------------------------
 // Verification per version, for The Record.
 //
 // Runs the verify doctor (packages/core/src/verify) against mainnet and
-// labels each version by hash. What it learns is kept: OtterSec
-// holds only its latest build per uploader, so the evidence that an older
-// version was verified disappears from their API as soon as the team verifies
-// the next one. Every match seen here is stamped onto the events carrying that
-// hash (enrichment.verification) and merged back in on every read, so the
-// record keeps a version's label after OtterSec has moved on.
+// labels each version by hash. Every match seen here is kept on the record
+// (verification-stamps.ts) and merged back in on every read, so a version
+// keeps its label after OtterSec has moved on.
 //
 // Mainnet only: OtterSec's remote verifier doesn't serve devnet.
 // ---------------------------------------------------------------------------
@@ -38,14 +36,18 @@ export interface VerificationView {
     notes: string[];
   } | null;
   versions: VersionLabels;
-}
-
-interface Stamp {
-  verified: true;
-  repoUrl?: string;
-  commit?: string;
-  verifiedAt?: string | null;
-  seenAt: string;
+  /** The upgrade that broke a verification, while the live version is still
+   *  unverified. null when nothing broke, or it has been re-verified since. */
+  broke: {
+    slot: number;
+    signature: string;
+    blockTime: string | null;
+    previousHash: string;
+    repoUrl: string | null;
+    commit: string | null;
+    /** what the "before" claim rests on; the page words it accordingly */
+    evidence: "verified" | "reproduced";
+  } | null;
 }
 
 /** OtterSec, GitHub and the chain all move slowly next to a page view. */
@@ -105,35 +107,28 @@ async function build(programId: string): Promise<VerificationView> {
   const onRecord = new Set(rows.map((r) => r.hash));
   for (const [hash, label] of Object.entries(live)) {
     if (label.state !== "verified" || stamped.has(hash) || !onRecord.has(hash)) continue;
-    const stamp: Stamp = {
-      verified: true,
-      repoUrl: label.repoUrl,
-      commit: label.commit,
-      verifiedAt: label.verifiedAt ?? null,
-      seenAt: new Date().toISOString(),
-    };
-    await db
-      .update(schema.events)
-      .set({
-        enrichment: sql`jsonb_set(coalesce(${schema.events.enrichment}, '{}'::jsonb), '{verification}', ${JSON.stringify(stamp)}::jsonb, true)`,
-      })
-      .where(
-        and(
-          eq(schema.events.programId, programId),
-          eq(schema.events.network, "mainnet"),
-          eq(schema.events.sha256After, hash),
-          isNull(sql`${schema.events.enrichment}->'verification'`),
-        ),
-      );
+    await stampVerified(programId, "mainnet", hash, label, "page");
   }
 
   const p = report.program;
+  const brk = p && versions[p.hash]?.state !== "verified" ? await openBreak(programId, "mainnet") : null;
   return {
     checkedAt: new Date().toISOString(),
     current: p
       ? { hash: p.hash, status: report.status, diagnosis: report.diagnosis, fixes: report.fixes, notes: report.notes }
       : null,
     versions,
+    broke: brk
+      ? {
+          slot: brk.slot,
+          signature: brk.signature,
+          blockTime: brk.blockTime,
+          previousHash: brk.previousHash,
+          repoUrl: brk.repoUrl,
+          commit: brk.commit,
+          evidence: brk.evidence,
+        }
+      : null,
   };
 }
 
