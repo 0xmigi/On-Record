@@ -5688,6 +5688,14 @@ a.copy-addr-text:hover {
   font-family: var(--font-mono);
   font-size: 11.5px;
 }
+.vfy-note-broke {
+  margin: 7px 0 0;
+  font-family: var(--font-sans);
+  color: var(--ink-soft);
+}
+.vfy-note-broke code {
+  font-size: 12px;
+}
 .vfy-note-extra {
   margin: 10px 0 0;
   font-size: 12px;

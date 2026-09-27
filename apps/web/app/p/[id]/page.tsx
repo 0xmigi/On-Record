@@ -215,7 +215,7 @@ function ClusterRecord({
       </p>
       {/* above the table: it explains the top row, and a long record would
           push it screens away from the version it's about */}
-      {verification?.current ? <VerifyNote current={verification.current} /> : null}
+      {verification?.current ? <VerifyNote current={verification.current} broke={verification.broke} /> : null}
       <RecordTable events={events} trail={trail} verification={verification?.versions} />
     </div>
   );
