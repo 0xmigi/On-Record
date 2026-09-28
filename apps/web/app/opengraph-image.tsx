@@ -14,7 +14,7 @@ import { ORB_RING, MARK_CENTRE, MARK_DOT_R } from "@/components/Mark";
 
 export const size = { width: 1200, height: 630 };
 export const contentType = "image/png";
-export const alt = "On Record — the novel-program radar for Solana";
+export const alt = "On Record — a Solana program radar";
 
 export default async function OgImage() {
   const [fontRegular, fontSemiBold] = await Promise.all([
@@ -75,7 +75,7 @@ export default async function OgImage() {
                   color: OG.ink,
                 }}
               >
-                the novel-program
+                a Solana program
               </div>
               <div
                 style={{
@@ -88,7 +88,7 @@ export default async function OgImage() {
                   color: OG.ink,
                 }}
               >
-                radar for Solana
+                radar
               </div>
             </div>
 
@@ -111,7 +111,7 @@ export default async function OgImage() {
               letterSpacing: 1.6,
             }}
           >
-            <span>STRIP THE COPY-PASTE. RANK WHAT&apos;S NEW.</span>
+            <span>EVERY DEPLOY AND UPGRADE ON SOLANA MAINNET.</span>
           </div>
         </div>
       </div>

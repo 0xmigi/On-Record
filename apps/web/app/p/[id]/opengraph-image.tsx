@@ -332,7 +332,7 @@ export default async function OgImage({ params }: { params: Promise<{ id: string
               fontSize: 19,
             }}
           >
-            <span style={{ color: INK_SOFT }}>the novel-program radar for Solana</span>
+            <span style={{ color: INK_SOFT }}>a Solana program radar</span>
           </div>
         </div>
       </div>

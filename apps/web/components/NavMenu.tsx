@@ -79,7 +79,7 @@ export function NavMenu() {
             {l.label}
           </Link>
         ))}
-        <p className="navmenu-motto">Strip the copy-paste. Rank what&apos;s new.</p>
+        <p className="navmenu-motto">Every deploy and upgrade on Solana mainnet.</p>
       </div>
     </div>
   );

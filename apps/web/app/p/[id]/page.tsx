@@ -85,7 +85,7 @@ export async function generateMetadata({
       }${program.sizeBytes ? formatBytes(program.sizeBytes) : "size unknown"}${
         program.deployCostSol != null ? `, ${program.deployCostSol} SOL locked` : ""
       }. Novelty, control, activity & cost, decoded on-chain.`
-    : "A Solana program on On Record — the novel-program radar for Solana.";
+    : "A Solana program on On Record, a Solana program radar.";
   return {
     title: label,
     description,

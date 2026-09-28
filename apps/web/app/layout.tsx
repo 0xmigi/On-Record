@@ -26,11 +26,11 @@ const plexMono = IBM_Plex_Mono({
 export const metadata: Metadata = {
   metadataBase: new URL("https://on-record.azuolas.xyz"),
   title: {
-    default: "On Record — the novel-program radar for Solana",
+    default: "On Record — a Solana program radar",
     template: "%s — On Record",
   },
   description:
-    "On Record watches every program deployed or upgraded on Solana mainnet, strips out the copy-paste clones, and ranks what's left by a novelty score.",
+    "On Record watches every program deployed or upgraded on Solana mainnet and shows what each one is, where its code came from, and whether it still matches its published source.",
   // og:site_name — Discord/Slack show this above the title; without it the card reads anonymous
   openGraph: { siteName: "On Record", type: "website" },
   // X defaults to the small "summary" tile, which showed a placeholder icon
@@ -79,7 +79,7 @@ export default function RootLayout({
 
         <footer className="footer">
           <p className="footer-motto">
-            Strip the copy-paste. Rank what&apos;s new.
+            Every deploy and upgrade on Solana mainnet.
           </p>
           <a
             className="footer-credit"
