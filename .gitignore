@@ -42,3 +42,8 @@ experiments/
 .agents/
 skills-lock.json
 .claude/skills/simple-english
+
+# Ash's private working instructions for Claude: the routine, the drafting
+# rules, the triage/brief/draft-post skills. They live on his machine only.
+CLAUDE.md
+.claude/skills/
