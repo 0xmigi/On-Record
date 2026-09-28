@@ -25,7 +25,7 @@ docs/programs/
 # the writing itself: post drafts and their diagrams. This is Ash's work in
 # progress, not the project's source — an unpublished draft has no business in
 # a public repo, and leaving it untracked next to code is how it ends up there.
-# docs/ keeps the project documents (SPEC, VISION, ROADMAP, CONTENT-ROUTINE);
+# docs/ keeps the project documents (SPEC, VISION, ROADMAP);
 # everything about a specific program or post stays local.
 docs/posts/
 docs/diagrams/
@@ -44,6 +44,8 @@ skills-lock.json
 .claude/skills/simple-english
 
 # Ash's private working instructions for Claude: the routine, the drafting
-# rules, the triage/brief/draft-post skills. They live on his machine only.
+# rules, the triage/brief/draft-post skills, the morning content routine. They
+# live on his machine only.
 CLAUDE.md
 .claude/skills/
+docs/CONTENT-ROUTINE.md
