@@ -43,6 +43,18 @@ export function b58encode(bytes: Uint8Array): string {
   return out;
 }
 
+/** Decode a base58 address to its 32 bytes. Call isAddress first. */
+export function b58decode(s: string): Uint8Array {
+  let n = 0n;
+  for (const c of s) n = n * 58n + BigInt(ALPHABET.indexOf(c));
+  const out = new Uint8Array(32);
+  for (let i = 31; i >= 0 && n > 0n; i--) {
+    out[i] = Number(n & 0xffn);
+    n >>= 8n;
+  }
+  return out;
+}
+
 /** A Solana address decodes to exactly 32 bytes. */
 export function isAddress(s: string): boolean {
   if (!/^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(s)) return false;

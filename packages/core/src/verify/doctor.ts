@@ -9,6 +9,7 @@ import {
   type Upload,
 } from "./chain.js";
 import { checkSource, osecStatus, osecStatusAll, parseGithub, type OsecRecord, type SourceCheck } from "./remote.js";
+import { identifyAuthority, type AuthorityKind } from "./authority.js";
 
 // ---------------------------------------------------------------------------
 // Why isn't this program verified? — answered without building anything.
@@ -73,6 +74,8 @@ export interface Report {
   cluster: "mainnet" | "other";
   rpcUrl: string;
   program: ProgramFacts | null;
+  /** Who controls the upgrade authority; decides how the fixes are signed. */
+  authorityKind: AuthorityKind | null;
   status: Status;
   osec: OsecRecord | null;
   /** Every per-uploader build OtterSec holds (/status-all), including ones
@@ -104,6 +107,7 @@ export async function diagnose(programId: string, opts: DoctorOptions): Promise<
     cluster: mainnet ? "mainnet" : "other",
     rpcUrl: opts.rpcUrl,
     program: null,
+    authorityKind: null,
     status: "unreadable",
     osec: null,
     records: null,
@@ -122,13 +126,15 @@ export async function diagnose(programId: string, opts: DoctorOptions): Promise<
   const p = read.program;
   report.program = p;
 
-  const [uploads, status, records] = await Promise.all([
+  const [uploads, status, records, auth] = await Promise.all([
     readUploads(rpc, programId),
     mainnet ? osecStatus(programId) : Promise.resolve(null),
     mainnet ? osecStatusAll(programId) : Promise.resolve(null),
+    identifyAuthority(rpc, p.authority, p.programData),
   ]);
   report.osec = status;
   report.records = records;
+  report.authorityKind = auth;
   if (!mainnet) {
     report.notes.push(
       "OtterSec's remote verifier, the source of explorer badges, only covers mainnet. On this cluster you can still compare a local build with `solana-verify verify-from-repo`.",
@@ -137,7 +143,7 @@ export async function diagnose(programId: string, opts: DoctorOptions): Promise<
     report.notes.push("OtterSec's API could not be reached, so build results are unknown.");
   }
 
-  const cmd = commands(programId, printableRpc(opts.rpcUrl, mainnet));
+  const cmd = commands(programId, printableRpc(opts.rpcUrl, mainnet), p.authority, auth);
 
   // -- already verified ------------------------------------------------------
   if (status?.is_verified && status.on_chain_hash === p.hash) {
@@ -161,6 +167,9 @@ export async function diagnose(programId: string, opts: DoctorOptions): Promise<
     );
   }
 
+  const authNote = authorityNote(auth, p.authority);
+  if (authNote) report.notes.push(authNote);
+
   // -- nothing uploaded ------------------------------------------------------
   if (uploads.length === 0) {
     report.status = report.status === "verified-older-build" ? report.status : "never-submitted";
@@ -171,6 +180,7 @@ export async function diagnose(programId: string, opts: DoctorOptions): Promise<
     const source = p.securityTxt?.sourceCode;
     if (source) report.notes.push(`The program's own security.txt names its source: ${source}`);
     report.fixes = mainnetOnly(report, firstTimeFixes(cmd, source ?? closed[0]?.repo_url ?? null, p.authority));
+    if (cmd.proposals) report.notes.push(SQUADS_CLI_NOTE);
     return report;
   }
 
@@ -304,10 +314,10 @@ function mainnetOnly(report: Report, fixes: Fix[]): Fix[] {
 function explain(report: Report, r: UploadReport, p: ProgramFacts, cmd: Commands): void {
   const u = r.upload;
   const repo = repoLabel(u.gitUrl);
-  const reupload = (commit: string, text: string): Fix => ({ text, command: cmd.verifyFromRepo(u, commit) });
   // a re-uploaded recipe is signed by the authority, so that's the uploader to queue
   const submit: Fix = { text: "Then queue OtterSec's rebuild:", command: cmd.submitJob(p.authority ?? u.signer) };
-  const signedBy = p.authority ? "signed by the upgrade authority" : "the program is immutable, so there's no upgrade authority to sign it";
+  const auth = report.authorityKind;
+  const member = auth?.kind === "squads" && auth.members.includes(u.signer);
 
   switch (r.problem) {
     case "stale":
@@ -317,13 +327,9 @@ function explain(report: Report, r: UploadReport, p: ProgramFacts, cmd: Commands
         report.diagnosis += ` The repo it points at (${repo}) is gone too, so the new recipe needs a public source.`;
       else if (r.source?.commit === "missing")
         report.diagnosis += ` Its commit (${sha(u.commit)}) is also missing from ${repo}.`;
-      report.fixes = [
-        reupload(
-          "<commit you deployed>",
-          `From the commit you deployed at slot ${slot(p.deploySlot)}, rebuild, compare and re-upload the recipe (${signedBy}):`,
-        ),
-        submit,
-      ];
+      report.fixes = [...cmd.upload(u, "<commit you deployed>", `From the commit you deployed at slot ${slot(p.deploySlot)}`), submit];
+      if (member)
+        report.diagnosis += ` It was also signed by ${addr(u.signer)}, a member of the multisig, not the vault that holds the upgrade authority, so the new one has to come from the vault.`;
       if (!p.authority)
         report.notes.push(
           "The verified-builds docs ask for the upgrade authority to sign the recipe. This program no longer has one, and the docs don't say what OtterSec accepts instead.",
@@ -339,10 +345,7 @@ function explain(report: Report, r: UploadReport, p: ProgramFacts, cmd: Commands
     case "commit-missing":
       report.diagnosis = `The recipe points at commit ${sha(u.commit)}, which isn't in ${repo}. It was never pushed, or a force-push removed it.`;
       report.fixes = [
-        reupload(
-          "<commit you deployed>",
-          `Push commit ${sha(u.commit)}, or re-upload the recipe with the commit you actually deployed:`,
-        ),
+        ...cmd.upload(u, "<commit you deployed>", `Push commit ${sha(u.commit)}, or use the commit you actually deployed`),
         submit,
       ];
       break;
@@ -357,9 +360,12 @@ function explain(report: Report, r: UploadReport, p: ProgramFacts, cmd: Commands
       report.fixes = [
         { text: "Reproduce the mismatch locally (needs Docker; it asks before uploading anything):", command: cmd.verifyFromRepo(u, u.commit) },
         {
-          text: "If the program on chain wasn't built with `solana-verify build`, redeploy a verifiable build, then re-upload the recipe and submit it.",
+          text: cmd.proposals
+            ? "If the program on chain wasn't built with `solana-verify build`, redeploy a verifiable build through an upgrade proposal, then re-upload the recipe and submit it."
+            : "If the program on chain wasn't built with `solana-verify build`, redeploy a verifiable build, then re-upload the recipe and submit it.",
         },
       ];
+      if (auth?.kind === "squads") report.notes.push(SQUADS_CLI_NOTE);
       report.notes.push(
         "Common causes, per the verified-builds docs (the doctor can't tell which one yet): the Solana version isn't pinned (`[workspace.metadata.cli] solana = \"x.y.z\"`, needed when you don't depend on solana-program); no Cargo.lock at the repo root; the wrong `--library-name` (the lib name, not the package name) or `--mount-path`; the deployed .so came from `anchor build` or `cargo build-sbf` instead of `solana-verify build`.",
       );
@@ -373,12 +379,17 @@ function explain(report: Report, r: UploadReport, p: ProgramFacts, cmd: Commands
       // while /status says not verified, whenever the uploader isn't the
       // current authority. Consistent with the docs' rule; not documented as
       // the mechanism, so the wording stays with what the records show.
-      report.diagnosis =
-        r.record?.executable_hash === p.hash
-          ? `OtterSec built this recipe and it matches the chain byte for byte, yet the status explorers read still says not verified. The upload was signed by ${addr(u.signer)}, not the current upgrade authority, and the docs require the authority to sign it.`
-          : `Nothing else fails, but the recipe was signed by ${addr(u.signer)} and the docs require the program's upgrade authority to sign it. If the authority changed after the upload, re-upload from the current one.`;
+      {
+        const who = member
+          ? `${addr(u.signer)}, one of the multisig's members, not the vault ${addr(p.authority!)} that holds the upgrade authority`
+          : `${addr(u.signer)}, not the current upgrade authority`;
+        report.diagnosis =
+          r.record?.executable_hash === p.hash
+            ? `OtterSec built this recipe and it matches the chain byte for byte, yet the status explorers read still says not verified. The upload was signed by ${who}, and the docs require the authority to sign it.`
+            : `Nothing else fails, but the recipe was signed by ${who}, and the docs require the upgrade authority to sign it.${member ? "" : " If the authority changed after the upload, re-upload from the current one."}`;
+      }
       report.fixes = [
-        reupload(u.commit, "Re-upload the recipe signed by the upgrade authority (for a multisig, export it with `solana-verify export-pda-tx` and run it through Squads):"),
+        ...cmd.upload(u, u.commit, `For the same commit (${sha(u.commit)})`),
         { text: "Then queue OtterSec's rebuild:", command: cmd.submitJob(p.authority ?? "<upgrade authority>") },
       ];
       break;
@@ -392,22 +403,75 @@ function explain(report: Report, r: UploadReport, p: ProgramFacts, cmd: Commands
 }
 
 interface Commands {
+  /** The upgrade authority only signs through proposals (a multisig or program). */
+  proposals: boolean;
   verifyFromRepo(u: Upload, commit: string): string;
   submitJob(uploader: string): string;
+  /** Put a recipe on chain, signed the way this program's authority signs.
+   *  `lead` names the commit, e.g. "From the commit you deployed at slot N". */
+  upload(u: Upload, commit: string, lead: string): Fix[];
+  /** Deploy a verifiable build, the way this program's authority upgrades. */
+  deploy(library: string): Fix[];
 }
 
-function commands(programId: string, rpcUrl: string): Commands {
+function commands(programId: string, rpcUrl: string, authority: string | null, auth: AuthorityKind): Commands {
+  const proposals = auth.kind === "squads" || auth.kind === "program";
+  const verifyFromRepo = (u: Upload, commit: string) =>
+    ["solana-verify verify-from-repo", `-u ${rpcUrl}`, `--program-id ${programId}`, repoUrl(u.gitUrl), `--commit-hash ${commit}`, ...u.args].join(" ");
+  const approve: Fix =
+    auth.kind === "squads"
+      ? {
+          text: `Import the printed transaction in the Squads app (Transaction Builder, then Import), approve it with ${
+            auth.threshold ? `${auth.threshold} of the ${auth.members.length} members` : "enough members"
+          }, and execute it.`,
+        }
+      : { text: `Execute that transaction through the program that controls ${authority ? addr(authority) : "the upgrade authority"}.` };
   return {
-    verifyFromRepo: (u, commit) =>
-      [
-        "solana-verify verify-from-repo",
-        `-u ${rpcUrl}`,
-        `--program-id ${programId}`,
-        repoUrl(u.gitUrl),
-        `--commit-hash ${commit}`,
-        ...u.args,
-      ].join(" "),
+    proposals,
+    verifyFromRepo,
     submitJob: (uploader) => `solana-verify remote submit-job --program-id ${programId} --uploader ${uploader}`,
+    upload: (u, commit, lead) => {
+      if (!proposals) {
+        const signer = authority ? "signed by the upgrade authority" : "the program is immutable, so there's no upgrade authority to sign it";
+        return [{ text: `${lead}, rebuild, compare and upload the recipe (${signer}):`, command: verifyFromRepo(u, commit) }];
+      }
+      return [
+        {
+          text: `${lead}, export the recipe upload as a transaction for ${auth.kind === "squads" ? "the vault" : "the upgrade authority"} to sign. It builds nothing; OtterSec's build afterwards is the check:`,
+          command: [
+            "solana-verify export-pda-tx",
+            `-u ${rpcUrl}`,
+            repoUrl(u.gitUrl),
+            `--program-id ${programId}`,
+            `--uploader ${authority}`,
+            `--commit-hash ${commit}`,
+            ...u.args,
+          ].join(" "),
+        },
+        approve,
+      ];
+    },
+    deploy: (library) => {
+      const build: Fix = { text: "Build it in the pinned container:", command: "solana-verify build" };
+      if (!proposals)
+        return [
+          {
+            text: "Build it in the pinned container and deploy exactly that .so. A program built any other way can't be verified without redeploying.",
+            command: "solana-verify build",
+          },
+        ];
+      return [
+        build,
+        { text: "Write the build to a buffer:", command: `solana program write-buffer -u ${rpcUrl} target/deploy/${library}.so` },
+        {
+          text: "Hand the buffer to the vault:",
+          command: `solana program set-buffer-authority -u ${rpcUrl} <BUFFER> --new-buffer-authority ${authority}`,
+        },
+        auth.kind === "squads"
+          ? { text: "In the Squads app, create a program upgrade from that buffer (Developers, then Programs, then Upgrade), approve it and execute it." }
+          : { text: "Upgrade the program from that buffer through the program that controls the upgrade authority." },
+      ];
+    },
   };
 }
 
@@ -429,16 +493,24 @@ function firstTimeFixes(cmd: Commands, source: string | null, authority: string 
   const fake: Upload = { pda: "", signer: "", cliVersion: "", gitUrl: repo, commit: "", args: [], deployedSlot: null, lastWriteSlot: null };
   return [
     { text: "Put the program's source in a public repo, with Cargo.lock committed at the root." },
-    {
-      text: "Build it in the pinned container and deploy exactly that .so. A program built any other way can't be verified without redeploying.",
-      command: "solana-verify build",
-    },
-    {
-      text: "Rebuild from the repo, compare with the chain and upload the recipe (signed by the upgrade authority):",
-      command: cmd.verifyFromRepo(fake, "<commit you deployed>"),
-    },
+    ...cmd.deploy("<library>"),
+    ...cmd.upload(fake, "<commit you deployed>", "From the commit you deployed"),
     { text: "Queue OtterSec's rebuild, which is what explorers show:", command: cmd.submitJob(authority ?? "<upgrade authority>") },
   ];
+}
+
+const SQUADS_CLI_NOTE =
+  "`squads-multisig-cli` 0.1.7 can't create program upgrade proposals: `initiate-program-upgrade` fails in simulation (fix proposed in Squads-Protocol/v4#202). Use the Squads app for the upgrade.";
+
+function authorityNote(auth: AuthorityKind, authority: string | null): string | null {
+  if (!authority) return null;
+  if (auth.kind === "squads") {
+    const rule = auth.threshold ? `, ${auth.threshold} of ${auth.members.length}` : "";
+    return `The upgrade authority ${addr(authority)} is vault ${auth.vaultIndex} of a Squads ${auth.version} multisig (${addr(auth.multisig)}${rule}). Upgrades and the recipe upload are proposals its members approve.`;
+  }
+  if (auth.kind === "program")
+    return `The upgrade authority ${addr(authority)} is controlled by a program, not a wallet (usually a multisig or governance program), so the recipe has to be signed through it.`;
+  return null;
 }
 
 function role(signer: string, authority: string | null): UploadReport["signerRole"] {
