@@ -72,6 +72,7 @@ export interface Fix {
 export interface Report {
   programId: string;
   cluster: "mainnet" | "other";
+  /** Origin only: the URL the doctor reads through can carry an API key. */
   rpcUrl: string;
   program: ProgramFacts | null;
   /** Who controls the upgrade authority; decides how the fixes are signed. */
@@ -105,7 +106,7 @@ export async function diagnose(programId: string, opts: DoctorOptions): Promise<
   const report: Report = {
     programId,
     cluster: mainnet ? "mainnet" : "other",
-    rpcUrl: opts.rpcUrl,
+    rpcUrl: rpcOrigin(opts.rpcUrl),
     program: null,
     authorityKind: null,
     status: "unreadable",
@@ -480,7 +481,10 @@ function commands(programId: string, rpcUrl: string, authority: string | null, a
  *  public pages, so mainnet prints the public endpoint and anything else keeps
  *  only its origin. */
 function printableRpc(rpcUrl: string, mainnet: boolean): string {
-  if (mainnet) return PUBLIC_MAINNET_RPC;
+  return mainnet ? PUBLIC_MAINNET_RPC : rpcOrigin(rpcUrl);
+}
+
+function rpcOrigin(rpcUrl: string): string {
   try {
     return new URL(rpcUrl).origin;
   } catch {

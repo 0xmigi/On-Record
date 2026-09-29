@@ -1,0 +1,26 @@
+{
+  "name": "onrecord",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Explains why a Solana program isn't verified, and prints the commands that fix it.",
+  "type": "module",
+  "bin": {
+    "onrecord": "./dist/cli.js"
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "dev": "node src/cli.ts"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.5",
+    "typescript": "^5.9.3"
+  },
+  "license": "MIT"
+}
