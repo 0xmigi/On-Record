@@ -177,7 +177,16 @@ export function ProgramRow({
             </span>
           ) : null}
           {program.hasSecurityTxt ? (
-            <span className="sec-badge" title="Embeds a security.txt in its binary">
+            <span
+              className="sec-badge"
+              title={
+                program.securityTxtSource === "pmp"
+                  ? "Publishes a security.txt in a Program Metadata account"
+                  : program.securityTxtSource === "both"
+                    ? "Publishes a security.txt in its binary and in a Program Metadata account"
+                    : "Embeds a security.txt in its binary"
+              }
+            >
               security.txt
             </span>
           ) : null}

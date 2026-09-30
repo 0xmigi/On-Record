@@ -9,6 +9,7 @@ import type { NearestWeakness } from "./lineage.js";
 // ---------------------------------------------------------------------------
 
 import type { AnchorBuild, Framework, ProgramProfile } from "./profile.js";
+import type { PmpSecurityTxt, SecurityTxtSource } from "./pmp-security.js";
 
 export type Network = "mainnet" | "devnet";
 
@@ -355,7 +356,11 @@ export interface ApiProgram {
   repoUrlDeclared: string | null;
   social: string | null;
   website: string | null;
+  /** a security.txt in the binary, or a PMP security account carrying a
+   *  contact or a policy (pmp-security.ts) */
   hasSecurityTxt: boolean;
+  /** where that security.txt was found; null when there is none */
+  securityTxtSource: SecurityTxtSource | null;
   // --- lifecycle: closed = ProgramData deallocated, rent reclaimed ---
   /** ISO detection time when the program's ProgramData was found gone (closed).
    *  We detect absence, not the close tx — an honest "detected closed". */
@@ -505,6 +510,9 @@ export interface ApiProgramDetail extends ApiProgram {
   instructionSource: "idl" | "anchor-log" | "debug-enum" | null;
   /** the developer's embedded security.txt, verbatim fields */
   securityTxt: SecurityTxt | null;
+  /** the canonical PMP security account, read as a security.txt. Present even
+   *  when it does not count (no contact, no policy) — `counts` says which. */
+  pmpSecurityTxt: PmpSecurityTxt | null;
   /** repo found by searching public code for the program id — an inference,
    *  shown apart from `repoUrl`, which somebody declared */
   repoLink: RepoLink | null;

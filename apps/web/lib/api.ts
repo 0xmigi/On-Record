@@ -81,7 +81,11 @@ export interface ApiProgram {
   repoUrlDeclared: string | null;
   social: string | null; // x.com / twitter
   website: string | null;
+  /** a security.txt in the binary, or a PMP security account with a contact
+   *  or a policy in it */
   hasSecurityTxt: boolean;
+  /** where it was found — older API builds omit this */
+  securityTxtSource?: "binary" | "pmp" | "both" | null;
   // lifecycle — closed = ProgramData deallocated (rent reclaimed). Detected by
   // absence, not the close tx, so it's an honest "detected closed".
   closedAt: string | null;
@@ -197,6 +201,15 @@ export interface SecurityTxt {
   expiry?: string;
 }
 
+/** The same declaration published in a Program Metadata account (seed
+ *  "security") instead of the binary. Free JSON upstream — the API folds it
+ *  onto the security.txt field names and keeps the rest as `extra`. */
+export interface PmpSecurityTxt {
+  fields: SecurityTxt;
+  extra: { key: string; value: string }[];
+  counts: boolean;
+}
+
 /** A source repo recovered by searching public code for the program id. */
 export interface RepoLink {
   repo: string; // owner/name
@@ -225,6 +238,9 @@ export interface ApiProgramDetail extends ApiProgram {
   instructionNames?: string[];
   instructionSource?: "idl" | "anchor-log" | "debug-enum" | null;
   securityTxt: SecurityTxt | null; // embedded security.txt, verbatim
+  /** the canonical PMP security account, folded onto the security.txt fields.
+   *  `counts` is false when it holds no contact and no policy. */
+  pmpSecurityTxt?: PmpSecurityTxt | null;
   /** repo found by searching public code for the program id. An inference —
    *  kept apart from repoUrl, which somebody declared. */
   repoLink?: RepoLink | null;

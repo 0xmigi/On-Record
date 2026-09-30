@@ -42,6 +42,7 @@ import {
   type ApiProgramDetail,
   type ApiRawEvent,
   type ApiVerification,
+  type SecurityTxt,
 } from "@/lib/api";
 import {
   dayStamp,
@@ -148,6 +149,114 @@ function SecTxtParts({ parts }: { parts: SecTxtPart[] }) {
         </span>
       ))}
     </span>
+  );
+}
+
+/** A value that may be a URL: http(s) becomes a link, anything else stays
+ *  text — these strings came out of a binary or an account anyone can write. */
+function UrlOrText({ value }: { value: string }) {
+  return /^https?:\/\/\S+$/i.test(value) ? <Ext href={value} text={shortUrl(value)} /> : <>{value}</>;
+}
+
+/** A declared repo the liveness sweep found gone is shown once, as text,
+ *  under the binary panel — never as a working link in any panel. */
+function withoutDeadRepo(fields: SecurityTxt, dead: string | null): SecurityTxt {
+  if (!dead || !fields.source_code || fields.source_code.trim() !== dead) return fields;
+  const { source_code: _gone, ...rest } = fields;
+  return rest;
+}
+
+const SECTXT_ROWS: [keyof SecurityTxt, string][] = [
+  ["project_url", "Project URL"],
+  ["contacts", "Contacts"],
+  ["auditors", "Auditors"],
+  ["policy", "Policy"],
+  ["source_code", "Source code"],
+  ["source_release", "Source release"],
+  ["source_revision", "Source revision"],
+  ["preferred_languages", "Languages"],
+  ["encryption", "Encryption"],
+  ["acknowledgements", "Acknowledgements"],
+  ["expiry", "Expiry"],
+];
+
+/** One security.txt, from one place. The first row says where it was found;
+ *  the rest are the developer's fields, and — for a PMP account, which is free
+ *  JSON — whatever else they wrote, under their own key names. */
+function SecurityTxtPanel({
+  fields,
+  extra = [],
+  source,
+  children,
+}: {
+  fields: SecurityTxt;
+  extra?: { key: string; value: string }[];
+  source: "binary" | "pmp";
+  children?: ReactNode;
+}) {
+  return (
+    <div className="facts-panel">
+      <Row
+        label="Found"
+        explain={
+          source === "binary" ? (
+            <>
+              <p className="explainer-read">
+                A block of contact info a developer embeds directly in the program
+                binary — the Neodyme convention — so whitehats know how to report a
+                vulnerability.
+              </p>
+              <p>
+                It carries contacts, a disclosure policy, auditors, and a source
+                link. It&apos;s self-declared, so treat it as a claim, not proof —
+                but its presence signals a team that expects scrutiny and wants to
+                be reachable.
+              </p>
+            </>
+          ) : (
+            <>
+              <p className="explainer-read">
+                The same kind of contact block, published in an account next to the
+                program instead of inside the binary. The Program Metadata Program
+                keeps one per program under the seed &ldquo;security&rdquo;.
+              </p>
+              <p>
+                On Record only reads the canonical account — the one written by
+                whoever holds the program&apos;s upgrade authority, so it speaks for
+                the same people the binary does. It can be changed without
+                redeploying the program, and it is still self-declared: a claim,
+                not proof.
+              </p>
+            </>
+          )
+        }
+      >
+        {source === "binary" ? "in the binary" : "in a PMP account"}
+      </Row>
+      {SECTXT_ROWS.map(([key, label]) => {
+        const value = fields[key];
+        if (!value) return null;
+        return (
+          <Row key={key} label={label}>
+            {key === "contacts" ? (
+              <SecTxtParts parts={parseContacts(value)} />
+            ) : key === "auditors" ? (
+              <SecTxtParts parts={parseAuditors(value)} />
+            ) : key === "source_revision" ? (
+              <span className="cell-dim">{value}</span>
+            ) : (
+              <UrlOrText value={value} />
+            )}
+          </Row>
+        );
+      })}
+      {extra.map((e) => (
+        <Row key={e.key} label={e.key}>
+          <UrlOrText value={e.value} />
+        </Row>
+      ))}
+      {children}
+    </div>
   );
 }
 
@@ -495,81 +604,35 @@ export default async function ProgramDossierPage({
           </div>
         </>
       ) : null}
-      {program.securityTxt ? (
+      {program.securityTxt || program.pmpSecurityTxt?.counts ? (
         <>
           <SectionHeader
             title="Security.txt"
-            info="Embedded in the binary by the developer — their own declaration, verbatim."
+            info="The developer's own contact block — embedded in the binary, published in a Program Metadata account, or both. Their words, verbatim."
           />
-          <div className="facts-panel">
-            {program.securityTxt.project_url ? (
-              <Row label="Project URL">
-                {/^https?:\/\//.test(program.securityTxt.project_url) ? (
-                  <Ext
-                    href={program.securityTxt.project_url}
-                    text={shortUrl(program.securityTxt.project_url)}
-                  />
-                ) : (
-                  program.securityTxt.project_url
-                )}
-              </Row>
-            ) : null}
-            {program.securityTxt.contacts ? (
-              <Row label="Contacts">
-                <SecTxtParts parts={parseContacts(program.securityTxt.contacts)} />
-              </Row>
-            ) : null}
-            {program.securityTxt.auditors ? (
-              <Row label="Auditors">
-                <SecTxtParts parts={parseAuditors(program.securityTxt.auditors)} />
-              </Row>
-            ) : null}
-            {program.securityTxt.policy ? (
-              <Row label="Policy">
-                {/^https?:\/\//.test(program.securityTxt.policy) ? (
-                  <Ext href={program.securityTxt.policy} text={shortUrl(program.securityTxt.policy)} />
-                ) : (
-                  program.securityTxt.policy
-                )}
-              </Row>
-            ) : null}
-            {program.securityTxt.source_revision ? (
-              <Row label="Source revision">
-                <span className="cell-dim">{program.securityTxt.source_revision}</span>
-              </Row>
-            ) : null}
-            {/* Declared source that doesn't resolve. Shown, because a broken
-                on-chain pointer is a fact about the disclosure — but as text,
-                never a link, and it is not counted as a repo anywhere else. */}
-            {program.repoUrlDeclared ? (
-              <Row label="Source code">
-                <span className="cell-dim">{shortUrl(program.repoUrlDeclared)}</span>{" "}
-                <span className="cell-dim">· declared, but the URL 404s</span>
-              </Row>
-            ) : null}
-            <Row
-              label="About"
-              explain={
-                <>
-                  <p className="explainer-read">
-                    A block of contact info a developer embeds directly in the program
-                    binary — the Neodyme convention — so whitehats know how to report a
-                    vulnerability.
-                  </p>
-                  <p>
-                    It carries contacts, a disclosure policy, auditors, and a source
-                    link. It&apos;s self-declared, so treat it as a claim, not proof —
-                    but its presence signals a team that expects scrutiny and wants to
-                    be reachable.
-                  </p>
-                </>
-              }
-            >
-              <span className="cell-dim">the developer&apos;s own declaration, read verbatim from the binary</span>
-            </Row>
-          </div>
+          {program.securityTxt ? (
+            <SecurityTxtPanel fields={withoutDeadRepo(program.securityTxt, program.repoUrlDeclared)} source="binary">
+              {/* Declared source that doesn't resolve. Shown, because a broken
+                  on-chain pointer is a fact about the disclosure — but as text,
+                  never a link, and it is not counted as a repo anywhere else. */}
+              {program.repoUrlDeclared ? (
+                <Row label="Source code">
+                  <span className="cell-dim">{shortUrl(program.repoUrlDeclared)}</span>{" "}
+                  <span className="cell-dim">· declared, but the URL 404s</span>
+                </Row>
+              ) : null}
+            </SecurityTxtPanel>
+          ) : null}
+          {program.pmpSecurityTxt?.counts ? (
+            <SecurityTxtPanel
+              fields={withoutDeadRepo(program.pmpSecurityTxt.fields, program.repoUrlDeclared)}
+              extra={program.pmpSecurityTxt.extra}
+              source="pmp"
+            />
+          ) : null}
         </>
       ) : null}
+
       <SectionHeader title="Conviction" info="Skin in the game — who funded the deployer and how." />
       <div className="facts-panel">
         <Row label="Deployer funded by">

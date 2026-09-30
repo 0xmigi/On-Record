@@ -21,6 +21,7 @@ import {
   db,
   schema,
   buildSearchText,
+  readPmpSecurity,
   stageLogger,
   type EventEnrichment,
   type SecurityTxt,
@@ -87,6 +88,7 @@ for (const s of subjects) {
     website?: string | null;
     social?: string | null;
     securityTxt?: SecurityTxt | null;
+    pmpSecurity?: unknown;
   };
 
   const searchText = buildSearchText({
@@ -95,6 +97,7 @@ for (const s of subjects) {
     website: facts.website ?? bi?.website ?? null,
     social: facts.social ?? bi?.social ?? null,
     securityTxt: facts.securityTxt ?? bi?.securityTxt ?? null,
+    pmpSecurityTxt: readPmpSecurity(facts.pmpSecurity)?.fields ?? null,
     framework: s.profile?.framework ?? null,
     integrations: s.profile?.integrations ?? null,
     capabilities: s.profile?.capabilities ?? null,

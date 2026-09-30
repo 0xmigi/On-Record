@@ -1,7 +1,9 @@
 import {
   httpUrl,
   nearestWeakness,
+  readPmpSecurity,
   schema,
+  securityTxtSource,
   type ApiNearest,
   type ApiProgram,
   type ApiProgramDetail,
@@ -94,6 +96,8 @@ export function serializeProgram(
     social?: string;
     website?: string;
     hasSecurityTxt?: boolean;
+    securityTxt?: unknown;
+    pmpSecurity?: unknown;
     upgradeCount?: number;
     upgradeCountTruncated?: boolean;
     nearest?: NearestFact;
@@ -113,6 +117,8 @@ export function serializeProgram(
     closedAt?: string;
     interest?: ApiProgram["interest"];
   };
+  // either home counts: the binary, or the PMP security account
+  const secSource = securityTxtSource(facts);
   return {
     id: row.id,
     network: row.network as Network,
@@ -156,7 +162,8 @@ export function serializeProgram(
     repoUrlDeclared: facts.repoUrlDead ? httpUrl(row.repoUrl) : null,
     social: httpUrl(facts.social),
     website: httpUrl(facts.website),
-    hasSecurityTxt: Boolean(facts.hasSecurityTxt),
+    hasSecurityTxt: secSource !== null,
+    securityTxtSource: secSource,
     closedAt: facts.closedAt ?? null,
     closed: Boolean(facts.closedAt),
     deployType: (row.deployType as "deploy" | "upgrade") ?? "deploy",
@@ -204,6 +211,7 @@ export function serializeProgramDetail(
 ): ApiProgramDetail {
   const facts = (row.facts ?? {}) as {
     securityTxt?: SecurityTxt;
+    pmpSecurity?: unknown;
     repoLink?: RepoLink;
     activity?: { t: number; c: number }[];
     rate?: { t: number; r: number }[];
@@ -242,6 +250,9 @@ export function serializeProgramDetail(
     instructionNames: row.profile?.instructionNames ?? [],
     instructionSource: row.profile?.instructionSource ?? null,
     securityTxt: facts.securityTxt ?? null,
+    // raw JSON out of an account anyone with the key can rewrite — normalized
+    // to the security.txt field set, never passed through as-is
+    pmpSecurityTxt: readPmpSecurity(facts.pmpSecurity),
     // the repo URL is a search hit rendered as an href — same scheme guard as
     // every other string that came out of a binary or a third party
     repoLink:

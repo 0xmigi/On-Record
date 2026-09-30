@@ -8,7 +8,7 @@ import type { ApiProgram } from "@/lib/api";
 //   NEW    structural distance to the nearest known program (TLSH)
 //   ACTIVE transactions in the last 24h, log₁₀ scale (10k+ caps the axis)
 //   OPEN   how much the developer disclosed: name, repo, site, IDL,
-//          security.txt, verified build — a count, out of 6
+//          security.txt (binary or PMP account), verified build — a count, out of 6
 //   COST   SOL locked as rent by the deploy, log₁₀ scale (100 SOL caps)
 //   CTRL   who can change it: multisig > frozen > program > hot wallet
 //

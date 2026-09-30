@@ -2,8 +2,9 @@ import { and, desc, eq, ne, sql } from "drizzle-orm";
 import {
   db,
   schema,
-  fetchAnchorIdl,
+  fetchProgramMetadata,
   normalizeIdl,
+  readPmpSecurity,
   primitiveTier,
   readTraffic,
   sampleTrafficNow,
@@ -209,6 +210,7 @@ export async function buildDossier(programId: string, opts: DossierOptions = {})
   const facts = (row.facts ?? {}) as {
     securityTxt?: SecurityTxt;
     hasSecurityTxt?: boolean;
+    pmpSecurity?: unknown;
     website?: string;
     social?: string;
     upgradeCount?: number;
@@ -249,13 +251,24 @@ export async function buildDossier(programId: string, opts: DossierOptions = {})
     }
   }
 
-  const [census, cohort, kin, family, idl] = await Promise.all([
+  const [census, cohort, kin, family, metadata] = await Promise.all([
     syscallCensus(network),
     sizeCohort(network, profile?.framework ?? null, profile?.anchor?.line ?? null, row.sizeBytes),
     sourceKin(row),
     familyFor(row),
-    fetchAnchorIdl(network, row.id).catch(() => null),
+    fetchProgramMetadata(network, row.id).catch(() => null),
   ]);
+  const idl = metadata?.idl ?? null;
+
+  // The PMP security account, read now. Ingest probes it once, at deploy time,
+  // and teams usually publish metadata minutes to days AFTER deploying — so the
+  // stored copy is often missing or stale. Same RPC round-trip as the IDL.
+  const pmpLive = metadata?.security != null;
+  const pmpSec = readPmpSecurity(metadata?.security ?? facts.pmpSecurity);
+  const binarySec = Boolean(facts.hasSecurityTxt || facts.securityTxt);
+  const secWhere = [binarySec ? "in the binary" : null, pmpSec?.counts ? "PMP account" : null]
+    .filter(Boolean)
+    .join(" + ");
 
   // Traffic is read, not re-measured — see sample-sweep.ts for why. `sampledAt`
   // is carried alongside so the section can date its own numbers; a traffic
@@ -425,13 +438,15 @@ export async function buildDossier(programId: string, opts: DossierOptions = {})
     ["repo", Boolean(row.repoUrl) && !facts.repoUrlDead],
     ["site or social", Boolean(facts.website || facts.social)],
     ["IDL", Boolean(row.idlPresent || idl)],
-    ["security.txt", Boolean(facts.hasSecurityTxt || facts.securityTxt)],
+    ["security.txt", Boolean(secWhere)],
     ["verified build", Boolean(row.verified)],
   ] as const;
   out.push(
     fact(
       "Disclosure count",
-      `${disclosures.filter(([, v]) => v).length} of 6 — ${disclosures.map(([k, v]) => `${k}: ${v ? "yes" : "no"}`).join(", ")}`,
+      `${disclosures.filter(([, v]) => v).length} of 6 — ${disclosures
+        .map(([k, v]) => `${k}: ${v ? "yes" : "no"}${k === "security.txt" && v ? ` (${secWhere})` : ""}`)
+        .join(", ")}`,
       "these are six things a sniper never bothers with; all-absent is the 93% baseline",
     ),
   );
@@ -443,13 +458,31 @@ export async function buildDossier(programId: string, opts: DossierOptions = {})
     const s = facts.securityTxt as Record<string, unknown>;
     out.push(
       fact(
-        "security.txt",
+        "security.txt (in the binary)",
         Object.entries(s)
           .filter(([, v]) => typeof v === "string" && v)
           .map(([k, v]) => `${k}: ${v}`)
           .join(" · "),
         "embedded in the binary — self-declared by the deployer, NOT verified by anyone",
       ),
+    );
+  }
+  if (pmpSec) {
+    const body = [
+      ...Object.entries(pmpSec.fields).map(([k, v]) => `${k}: ${v}`),
+      ...pmpSec.extra.map((e) => `${e.key}: ${e.value}`),
+    ].join(" · ");
+    const where =
+      `canonical Program Metadata account (seed "security"), written by the upgrade authority, ` +
+      `${pmpLive ? "read live" : "as stored at ingest"} — self-declared, NOT verified by anyone, and rewritable without a redeploy`;
+    out.push(
+      pmpSec.counts
+        ? fact("security.txt (PMP account)", body, where)
+        : fact(
+            "PMP security account",
+            `${body} — no contact and no policy, so it is NOT counted as a security.txt`,
+            where,
+          ),
     );
   }
   const normIdl = normalizeIdl(idl);
@@ -954,8 +987,8 @@ export async function buildDossier(programId: string, opts: DossierOptions = {})
     gaps.push(
       `Own share rests on the ${compute.selfN} of ${compute.n} sampled transactions that actually executed the program; the other ${compute.n - compute.selfN} named it without calling it. The own-burn and the transaction burn are therefore medians over different sets of calls and cannot be subtracted from one another.`,
     );
-  if (facts.securityTxt)
-    gaps.push("Everything in security.txt is self-declared by whoever deployed the binary. It names an entity; it does not prove one.");
+  if (facts.securityTxt || pmpSec)
+    gaps.push("Everything in security.txt is self-declared by whoever controls the program — in the binary or in its PMP account. It names an entity; it does not prove one.");
   if (!facts.counterpart)
     gaps.push(
       `The other cluster was never probed for this address, so whether the same program id also runs on ${row.network === "mainnet" ? "devnet" : "mainnet"} is unknown — not "no". Everything above describes ${row.network} only.`,

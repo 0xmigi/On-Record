@@ -56,9 +56,10 @@ function split(raw: string): string[] {
 
 export function parseContacts(raw: string): SecTxtPart[] {
   return split(raw).map((entry): SecTxtPart => {
-    const m = entry.match(/^(email|link|discord|telegram|twitter|other):\s*(.+)$/i);
+    // `mailto:` and `x:` are not in the convention, but PMP accounts use them
+    const m = entry.match(/^(email|mailto|link|discord|telegram|twitter|x|other):\s*(.+)$/i);
     if (!m) return linkOrText(entry, null);
-    const type = m[1]!.toLowerCase();
+    const type = m[1]!.toLowerCase().replace(/^mailto$/, "email").replace(/^x$/, "twitter");
     const value = m[2]!.trim();
     switch (type) {
       case "email":

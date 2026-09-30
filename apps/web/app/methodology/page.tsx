@@ -72,7 +72,7 @@ export default function MethodologyPage() {
           <li>a public source repo</li>
           <li>a website or social link</li>
           <li>a published IDL</li>
-          <li>a security.txt in the binary</li>
+          <li>a security.txt, in the binary or in a Program Metadata account</li>
           <li>a verified build</li>
         </ul>
         <p>

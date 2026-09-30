@@ -6,6 +6,7 @@ import {
   pathOverlap,
   sharedPathCount,
   primitiveRarity,
+  securityTxtSource,
 } from "@onrecord/core";
 
 // ---------------------------------------------------------------------------
@@ -19,6 +20,7 @@ import {
 // showing the underlying signals, never this number.
 //
 //   disclosure .30  name/repo/site/IDL/security.txt/verified, of 6
+//                   (security.txt: in the binary or a PMP account, pmp-security.ts)
 //   novelty    .20  structural distance to nearest known code
 //   primitives .15  rarity of the syscalls it imports, on its peak tier
 //   newness    .10  e^(−age in days) — fresh deploys surface, then must earn it
@@ -66,6 +68,7 @@ interface InterestFacts {
   nearest?: { id: string; distance: number };
   hasSecurityTxt?: boolean;
   securityTxt?: unknown;
+  pmpSecurity?: unknown;
   website?: string;
   social?: string;
   deployCostLamports?: number;
@@ -120,7 +123,8 @@ export function computeInterest(row: SubjectRow, family: Family = { size: 1, clo
       row.repoUrl,
       facts.website ?? facts.social,
       row.idlPresent,
-      Boolean(facts.hasSecurityTxt || facts.securityTxt),
+      // in the binary or in a PMP security account — one disclosure either way
+      securityTxtSource(facts) !== null,
       row.verified,
     ].filter(Boolean).length / 6;
 

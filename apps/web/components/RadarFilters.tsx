@@ -267,7 +267,7 @@ export function RadarFilters({ params }: { params: RadarParams }) {
                   active={draft.sectxt}
                   tone="merit"
                   label="security.txt"
-                  title="Embeds a security.txt contact block in its binary"
+                  title="Publishes a security.txt contact block — in its binary or in a Program Metadata account"
                   onClick={() => setDraft((d) => ({ ...d, sectxt: !d.sectxt }))}
                 />
                 <Chip

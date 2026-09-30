@@ -20,6 +20,9 @@ export interface SearchTextParts {
   website?: string | null;
   social?: string | null;
   securityTxt?: SecurityTxt | null;
+  /** the PMP security account's fields (pmp-security.ts) — same declaration,
+   *  published in an account instead of the binary */
+  pmpSecurityTxt?: SecurityTxt | null;
   category?: string | null;
   framework?: string | null;
   integrations?: string[] | null;
@@ -136,8 +139,9 @@ export function buildSearchText(parts: SearchTextParts): string {
   for (const i of parts.idlInstructions ?? []) push(i);
 
   // the developer's own declaration — the highest-trust text we ever get
-  if (parts.securityTxt) {
-    for (const [k, v] of Object.entries(parts.securityTxt) as [string, string][]) {
+  for (const sec of [parts.securityTxt, parts.pmpSecurityTxt]) {
+    if (!sec) continue;
+    for (const [k, v] of Object.entries(sec) as [string, string][]) {
       if (k === "encryption" || k === "expiry") continue; // keys/dates, not words
       push(v);
     }

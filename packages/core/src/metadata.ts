@@ -215,6 +215,21 @@ export interface ProgramMetadata {
   security: PmpSecurityMeta | null;
 }
 
+/** RFC 9116 security.txt text — `Contact: mailto:…` lines — which some teams
+ *  publish in the PMP security account instead of JSON. Keys are lowercased
+ *  as written; a repeated key (several Contact lines) keeps every value.
+ *  pmp-security.ts maps the spellings onto the Solana field names. */
+function parseSecurityTxtLines(text: string): PmpSecurityMeta | null {
+  const out: Record<string, string> = {};
+  for (const line of text.split(/\r?\n/)) {
+    const m = line.match(/^\s*([A-Za-z][A-Za-z0-9_-]*)\s*:\s*(.+?)\s*$/);
+    if (!m || line.trimStart().startsWith("#")) continue;
+    const key = m[1]!.toLowerCase();
+    out[key] = out[key] ? `${out[key]},${m[2]}` : m[2]!;
+  }
+  return Object.keys(out).length ? out : null;
+}
+
 function parseJson<T>(text: string | null): T | null {
   if (!text) return null;
   try {
@@ -238,9 +253,12 @@ export async function fetchProgramMetadata(
     ]);
 
     // Resolve both PMP accounts in parallel — either may follow a URL off-chain.
+    // Each account fails on its own: a corrupt IDL payload must not take the
+    // security record down with it (it did — popi.wtf's security account read
+    // fine and was dropped because its IDL did not decompress).
     const [pmpIdlText, pmpSecText] = await Promise.all([
-      pmpIdlAcc ? resolvePmpContent(pmpIdlAcc) : Promise.resolve(null),
-      pmpSecAcc ? resolvePmpContent(pmpSecAcc) : Promise.resolve(null),
+      pmpIdlAcc ? resolvePmpContent(pmpIdlAcc).catch(() => null) : Promise.resolve(null),
+      pmpSecAcc ? resolvePmpContent(pmpSecAcc).catch(() => null) : Promise.resolve(null),
     ]);
 
     let idl: unknown | null = null;
@@ -250,11 +268,17 @@ export async function fetchProgramMetadata(
       if (idl !== null) idlSource = "pmp";
     }
     if (idl === null && legacyAcc) {
-      idl = parseJson(decodeLegacyIdl(legacyAcc));
+      try {
+        idl = parseJson(decodeLegacyIdl(legacyAcc));
+      } catch {
+        idl = null;
+      }
       if (idl !== null) idlSource = "anchor-legacy";
     }
 
-    const security = pmpSecText ? parseJson<PmpSecurityMeta>(pmpSecText) : null;
+    const security = pmpSecText
+      ? (parseJson<PmpSecurityMeta>(pmpSecText) ?? parseSecurityTxtLines(pmpSecText))
+      : null;
     return { idl, idlSource, security };
   } catch {
     return { idl: null, idlSource: null, security: null };

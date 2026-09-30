@@ -29,6 +29,7 @@ export {
   type IdlProbe,
 } from "./fingerprint.js";
 export * from "./metadata.js";
+export * from "./pmp-security.js";
 export * from "./otter-verify.js";
 // the verify doctor (verify/): why a program isn't verified, without building
 // anything. Prefixed names, since Report / Fix mean nothing at the package root
