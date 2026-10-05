@@ -102,7 +102,11 @@ export async function generateMetadata({
     title: label,
     description,
     // one page per program id; ?network= only steers the banner
-    alternates: { canonical: `/p/${encodeURIComponent(id)}` },
+    // the same dossier as plain text, for AI assistants (./dossier.md/route.ts)
+    alternates: {
+      canonical: `/p/${encodeURIComponent(id)}`,
+      types: { "text/markdown": `/p/${encodeURIComponent(id)}/dossier.md` },
+    },
     robots: program && isIndexable(program) ? undefined : { index: false, follow: true },
     // the file-convention og image is picked up automatically; the twitter
     // card type must be explicit or X falls back to a small summary tile

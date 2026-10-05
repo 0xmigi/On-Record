@@ -29,6 +29,9 @@ export async function POST(req: Request) {
     : [];
   // the page and the data it was built from: revalidatePath also expires the
   // fetches made while rendering that path
-  for (const id of ids) revalidatePath(`/p/${id}`);
+  for (const id of ids) {
+    revalidatePath(`/p/${id}`);
+    revalidatePath(`/p/${id}/dossier.md`);
+  }
   return NextResponse.json({ revalidated: ids.length });
 }

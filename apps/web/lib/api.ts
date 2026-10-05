@@ -661,6 +661,26 @@ export async function fetchFunnel(
   return getJson<ApiFunnel>(`/api/funnel${qs ? `?${qs}` : ""}`);
 }
 
+/** The LLM dossier: one program as markdown, every line with its provenance
+ *  (apps/ingest/src/dossier.ts). Stored traffic only — never a live sample,
+ *  which is metered and would let a crawler spend Helius credits. */
+export async function fetchDossierMarkdown(id: string): Promise<string | null> {
+  const path = `/api/programs/${encodeURIComponent(id)}/dossier.md?sample=stored`;
+  if (API_MISCONFIGURED) throw new ApiUnavailableError(path, "API_URL not configured");
+  let res: Response;
+  try {
+    res = await fetch(`${API_BASE}${path}`, {
+      next: { revalidate: DOSSIER_REVALIDATE },
+      signal: AbortSignal.timeout(API_TIMEOUT_MS),
+    });
+  } catch (err) {
+    throw new ApiUnavailableError(path, err instanceof Error ? err.name : "network error");
+  }
+  if (res.status === 404) return null;
+  if (!res.ok) throw new ApiUnavailableError(path, `HTTP ${res.status}`);
+  return res.text();
+}
+
 /** the dossiers worth a search result — see lib/indexable.ts */
 export async function fetchSitemap(): Promise<{ id: string; lastEventAt: string | null }[]> {
   const res = await getJson<{ items: { id: string; lastEventAt: string | null }[] }>(
