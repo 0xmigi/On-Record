@@ -8,6 +8,7 @@ import { reclassifyRecent } from "./reclassify.js";
 import { sweepRepoLinks, sweepRepoLiveness } from "./repo-link.js";
 import { sweepVerification, sweepVerificationHistory, sweepVerifyPending } from "./verify-sweep.js";
 import { sweepMentions } from "./x-bot.js";
+import { syncPmpSecurity } from "./pmp-security-sync.js";
 
 // ---------------------------------------------------------------------------
 // Scheduled work (SPEC §10): TVL refresh (6h), a live funnel snapshot (15m),
@@ -124,6 +125,15 @@ async function maybeRunDaily(): Promise<void> {
   await expireWatchlist();
   await corpusStats();
   await thresholdDriftReport();
+  // PMP security accounts published after deploy (ingest only looks once).
+  // One getProgramAccounts per cluster, ~25 credits/day all-in — see
+  // pmp-security-sync.ts. Last, and on its own catch, so a failure here never
+  // skips the funnel or the reports above.
+  for (const network of ["mainnet", "devnet"] as const) {
+    await syncPmpSecurity(network).catch((err) =>
+      logger.error({ network, err: String(err) }, "pmp-security sync failed"),
+    );
+  }
 }
 
 async function corpusStats(): Promise<void> {

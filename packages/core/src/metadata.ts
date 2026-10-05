@@ -239,6 +239,17 @@ function parseJson<T>(text: string | null): T | null {
   }
 }
 
+/** Decode a PMP security account's raw bytes to its JSON (or RFC 9116 text)
+ *  content. For callers that already hold the account data — the daily sweep
+ *  lists every security account in one getProgramAccounts call and decodes
+ *  here, rather than spending a read per program. A Url payload is followed
+ *  off-chain (not an RPC call). Never throws. */
+export async function decodePmpSecurityAccount(data: Buffer): Promise<PmpSecurityMeta | null> {
+  const text = await resolvePmpContent(data).catch(() => null);
+  if (!text) return null;
+  return parseJson<PmpSecurityMeta>(text) ?? parseSecurityTxtLines(text);
+}
+
 /** Fetch every on-chain metadata account a program can have — PMP idl, PMP
  *  security, legacy Anchor IDL — in ONE RPC round-trip. PMP wins over legacy. */
 export async function fetchProgramMetadata(
