@@ -10,7 +10,10 @@
 // and ingestion stops — not just search.
 //
 //   # local
-//   ./node_modules/.bin/tsx src/backfill-search.ts [--dry]
+//   ./node_modules/.bin/tsx src/backfill-search.ts [--dry] [--pmp]
+//
+// --pmp limits the rebuild to programs with a stored PMP security account —
+// the full corpus is one UPDATE per row and runs well past ten minutes.
 //   # production — DATABASE_URL from the Railway service, not .env
 //   DATABASE_URL='postgres://…' ./node_modules/.bin/tsx src/backfill-search.ts
 //
@@ -30,6 +33,7 @@ import { requireDatabaseTarget } from "./db-target.js";
 
 const log = stageLogger("backfill-search");
 const dry = process.argv.includes("--dry");
+const onlyPmp = process.argv.includes("--pmp");
 
 // Mirrors packages/core/drizzle/0001_program_search.sql. Kept inline so this
 // script works from dist/ as well as source — the .sql file is the schema
@@ -60,7 +64,11 @@ const subjects = await db
     facts: schema.subjects.facts,
   })
   .from(schema.subjects)
-  .where(eq(schema.subjects.kind, "program"));
+  .where(
+    onlyPmp
+      ? sql`${schema.subjects.kind} = 'program' and ${schema.subjects.facts} ? 'pmpSecurity'`
+      : eq(schema.subjects.kind, "program"),
+  );
 
 log.info({ subjects: subjects.length }, "start");
 
