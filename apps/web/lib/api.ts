@@ -441,6 +441,9 @@ export async function fetchRadar(
     /** filtered in SQL — a page of 50 rows is not a big enough sample to
      *  narrow client-side once categories are this granular */
     category?: Category | null;
+    /** filtered in SQL: "lost" = an upgrade replaced a verified build and no
+     *  build since has been seen verified */
+    verification?: "verified" | "lost" | null;
     /** "interest" = order by the interest score in SQL, so a limited page is
      *  the top N of the window rather than the newest N. Only "recent"
      *  supports the cursor, so paginating callers must stay on the default. */
@@ -458,6 +461,7 @@ export async function fetchRadar(
     params.set("network", opts.network);
   }
   if (opts.category) params.set("category", opts.category);
+  if (opts.verification) params.set("verification", opts.verification);
   params.set("limit", String(opts.limit ?? 50));
   const page = await getJson<ApiCursorPage<ApiProgram>>(
     `/api/radar?${params.toString()}`

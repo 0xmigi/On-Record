@@ -17,9 +17,11 @@ import {
 import {
   buildRadarHref,
   hasActiveFacets,
+  hasClientFacets,
   isView,
   matchesFacets,
   parseAuthority,
+  parseVerification,
   parseCategory,
   parseFramework,
   parseSize,
@@ -285,7 +287,7 @@ export default async function RadarPage({
     window,
     view,
     network,
-    verified: sp.verified === "1",
+    verification: parseVerification(sp.verified),
     sectxt: sp.sectxt === "1",
     idl: sp.idl === "1",
     repo: sp.repo === "1",
@@ -298,22 +300,23 @@ export default async function RadarPage({
 
   // narrowed in SQL rather than over a fetched page — see fetchRadar
   const category = params.category;
+  const verification = params.verification;
 
   const EMPTY = { items: [] as ApiProgram[], total: 0, nextCursor: null };
   const [novelPage, variantPage, clonePage, closedPages, upgradePage, funnel] = await Promise.all([
-    isDeploy ? fetchRadar({ type, window, band: "novel", limit: 100, network, category, sort: "interest" }) : Promise.resolve(EMPTY),
-    isDeploy ? fetchRadar({ type, window, band: "variant", limit: 100, network, category, sort: "interest" }) : Promise.resolve(EMPTY),
-    isDeploy ? fetchRadar({ type, window, band: "clone", limit: 100, network, category, sort: "interest" }) : Promise.resolve(EMPTY),
+    isDeploy ? fetchRadar({ type, window, band: "novel", limit: 100, network, category, verification, sort: "interest" }) : Promise.resolve(EMPTY),
+    isDeploy ? fetchRadar({ type, window, band: "variant", limit: 100, network, category, verification, sort: "interest" }) : Promise.resolve(EMPTY),
+    isDeploy ? fetchRadar({ type, window, band: "clone", limit: 100, network, category, verification, sort: "interest" }) : Promise.resolve(EMPTY),
     // the graveyard: closed programs across all bands (rent reclaimed).
     // Devnet skips it — pre-launch churn there is expected, not a story.
     isDeploy && !isDevnet
       ? Promise.all(
           (["novel", "variant", "clone"] as const).map((band) =>
-            fetchRadar({ type, window, band, closed: "only", limit: 100, category, sort: "interest" }),
+            fetchRadar({ type, window, band, closed: "only", limit: 100, category, verification, sort: "interest" }),
           ),
         )
       : Promise.resolve([]),
-    !isDeploy ? fetchRadar({ type, window, limit: 50, network, category, sort: "interest" }) : Promise.resolve(EMPTY),
+    !isDeploy ? fetchRadar({ type, window, limit: 50, network, category, verification, sort: "interest" }) : Promise.resolve(EMPTY),
     // funnel is per-cluster now — devnet gets its own live-computed stats
     fetchFunnel(FUNNEL_WINDOW[window], network === "all" ? "mainnet" : network),
   ]);
@@ -407,8 +410,9 @@ export default async function RadarPage({
 
   // tier counts come from the API's true row count — items cap at the page
   // limit (100), and "novel 100 · variant 100" quietly lied on wide windows.
-  // Facets filter client-side over the capped page, so they keep items.length.
-  const facetsActive = hasActiveFacets(params);
+  // Facets filtered client-side over the capped page keep items.length;
+  // verification and category are narrowed in SQL, so their totals hold.
+  const facetsActive = hasClientFacets(params);
   const counts = isDeploy
     ? {
         novel: facetsActive ? novelPage.items.length : (novelPage.total ?? novelPage.items.length),

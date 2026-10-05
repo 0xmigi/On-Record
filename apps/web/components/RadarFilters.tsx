@@ -23,11 +23,11 @@ import {
 // The mutable slice of RadarParams the modal edits.
 type Draft = Pick<
   RadarParams,
-  "verified" | "sectxt" | "idl" | "repo" | "active" | "authority" | "category" | "framework" | "size"
+  "verification" | "sectxt" | "idl" | "repo" | "active" | "authority" | "category" | "framework" | "size"
 >;
 
 const EMPTY_DRAFT: Draft = {
-  verified: false,
+  verification: null,
   sectxt: false,
   idl: false,
   repo: false,
@@ -40,7 +40,7 @@ const EMPTY_DRAFT: Draft = {
 
 function draftFrom(p: RadarParams): Draft {
   return {
-    verified: p.verified,
+    verification: p.verification,
     sectxt: p.sectxt,
     idl: p.idl,
     repo: p.repo,
@@ -54,7 +54,7 @@ function draftFrom(p: RadarParams): Draft {
 
 function activeCount(d: Draft): number {
   return (
-    (d.verified ? 1 : 0) +
+    (d.verification ? 1 : 0) +
     (d.sectxt ? 1 : 0) +
     (d.idl ? 1 : 0) +
     (d.repo ? 1 : 0) +
@@ -250,11 +250,22 @@ export function RadarFilters({ params }: { params: RadarParams }) {
             <div className="filters-modal-body">
               <Group icon={ic.status} label="quality">
                 <Chip
-                  active={draft.verified}
+                  active={draft.verification === "verified"}
                   tone="merit"
                   label="verified"
                   title="Verified build — reproduces from public source (OtterSec)"
-                  onClick={() => setDraft((d) => ({ ...d, verified: !d.verified }))}
+                  onClick={() =>
+                    setDraft((d) => ({ ...d, verification: d.verification === "verified" ? null : "verified" }))
+                  }
+                />
+                <Chip
+                  active={draft.verification === "lost"}
+                  tone="warn"
+                  label="lost verification"
+                  title="An upgrade replaced a verified build, and no build since has been seen verified"
+                  onClick={() =>
+                    setDraft((d) => ({ ...d, verification: d.verification === "lost" ? null : "lost" }))
+                  }
                 />
                 <Chip
                   active={draft.idl}

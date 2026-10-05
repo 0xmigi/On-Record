@@ -220,7 +220,7 @@ async function clusterSizes(bucketIds: (string | null)[]): Promise<Map<string, n
 
 export function registerPublicRoutes(app: FastifyInstance): void {
   // --- the radar: ranked programs -----------------------------------------
-  app.get<{ Querystring: { window?: string; band?: string; type?: string; cursor?: string; limit?: string; closed?: string; sort?: string; network?: string; category?: string } }>(
+  app.get<{ Querystring: { window?: string; band?: string; type?: string; cursor?: string; limit?: string; closed?: string; sort?: string; network?: string; category?: string; verification?: string } }>(
     "/api/radar",
     async (req): Promise<ApiCursorPage<ApiProgram>> => {
       const limit = parseLimit(req.query.limit, 30, 100);
@@ -268,6 +268,17 @@ export function registerPublicRoutes(app: FastifyInstance): void {
       // a single `perps` row, so every narrow chip rendered "the radar is quiet"
       // over a database with 127 of them.
       if (req.query.category) conditions.push(eq(schema.subjects.category, req.query.category));
+      // Verification narrows in SQL for the same reason: verified programs
+      // spread over every band and window are rarely in one fetched page.
+      // "lost" = an upgrade replaced a verified build and no build since has
+      // been seen verified (the summary verification-stamps.ts keeps).
+      if (req.query.verification === "verified") {
+        conditions.push(eq(schema.subjects.verified, true));
+      } else if (req.query.verification === "lost") {
+        conditions.push(
+          sql`${schema.subjects.facts} ? 'verificationBreak' and (${schema.subjects.facts} -> 'verificationBreak' ->> 'restoredSeenAt') is null`,
+        );
+      }
       // The deploy stream tiers by novelty (novel/variant/clone) and always
       // passes an explicit band. The upgrade stream spans all bands — an
       // upgrade's lineage band is orthogonal to the fact that it was upgraded,

@@ -104,6 +104,10 @@ export const CATEGORY_FILTER_LABEL: Record<Category, string> = {
   unknown: "Unknown",
 };
 
+/** Verification state. Filtered in SQL across the whole window — "lost" needs
+ *  the break history, which list rows don't carry. */
+export type VerificationFacet = "verified" | "lost";
+
 /** The full radar query state, parsed and validated. */
 export interface RadarParams {
   type: RadarType;
@@ -111,8 +115,8 @@ export interface RadarParams {
   view?: View;
   network: NetworkFilter;
   // attribute facets — compose with everything above (and each other)
+  verification: VerificationFacet | null;
   // status (multi-select toggles)
-  verified: boolean;
   sectxt: boolean;
   idl: boolean;
   repo: boolean;
@@ -134,6 +138,11 @@ export function parseFramework(v: string | undefined): Framework | null {
 
 export function parseSize(v: string | undefined): SizeBand | null {
   return v && (SIZE_BANDS as string[]).includes(v) ? (v as SizeBand) : null;
+}
+
+/** ?verified=1 (the original toggle) or ?verified=lost */
+export function parseVerification(v: string | undefined): VerificationFacet | null {
+  return v === "1" ? "verified" : v === "lost" ? "lost" : null;
 }
 
 export function parseAuthority(v: string | undefined): AuthorityFacet | null {
@@ -174,7 +183,7 @@ export function programIsActive(program: ApiProgram): boolean {
 /** True when at least one attribute facet narrows the list. */
 export function hasActiveFacets(p: RadarParams): boolean {
   return (
-    p.verified ||
+    p.verification != null ||
     p.sectxt ||
     p.idl ||
     p.repo ||
@@ -186,9 +195,16 @@ export function hasActiveFacets(p: RadarParams): boolean {
   );
 }
 
+/** True when a facet is applied over the fetched page rather than in SQL, so
+ *  the API's totals no longer describe what is shown. Verification and
+ *  category are narrowed in SQL. */
+export function hasClientFacets(p: RadarParams): boolean {
+  return hasActiveFacets({ ...p, verification: null, category: null });
+}
+
 /** Does a program pass every active attribute facet? */
 export function matchesFacets(program: ApiProgram, p: RadarParams): boolean {
-  if (p.verified && !program.verified) return false;
+  if (p.verification === "verified" && !program.verified) return false;
   if (p.sectxt && !program.hasSecurityTxt) return false;
   if (p.idl && !program.idlPresent) return false;
   if (p.repo && !program.repoUrl) return false;
@@ -210,7 +226,7 @@ export function buildRadarHref(p: RadarParams): string {
   // always emit a narrowed cluster, so a persisted cookie can't hijack an
   // explicit view. "all" is the default and stays out of the URL.
   if (p.network !== "all") params.set("network", p.network);
-  if (p.verified) params.set("verified", "1");
+  if (p.verification) params.set("verified", p.verification === "verified" ? "1" : "lost");
   if (p.sectxt) params.set("sectxt", "1");
   if (p.idl) params.set("idl", "1");
   if (p.repo) params.set("repo", "1");
