@@ -1,3 +1,4 @@
+import Link from "next/link";
 import type { ApiVerification } from "@/lib/api";
 import { dayStamp, groupNum, relativeTime } from "@/lib/format";
 
@@ -29,6 +30,9 @@ export function VerifyNote({ current, broke }: { current: Current; broke?: Broke
       <p className="vfy-note-head">
         <span className={`vfy vfy-${tone}`}>{HEAD[current.status]}</span>
         <span className="vfy-note-why">{current.diagnosis}</span>
+        <Link className="vfy-note-more" href="/verification">
+          why it matters
+        </Link>
       </p>
       {broke && current.status !== "verified" ? (
         <p className="vfy-note-broke">

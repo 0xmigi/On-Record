@@ -27,6 +27,7 @@ Most programs on Solana are opaque: no name, no source repo, no IDL. On Record r
 
 ## Pages
 
+- [Where are the verified builds on Solana?](${SITE}/verification): why only 1 in 40 live Solana programs has a verified build, why verification lapses on upgrade, and how to keep it. Figures from 28 Sep 2026.
 - [Radar](${SITE}/): programs deployed and upgraded recently, ranked.
 - [Methodology](${SITE}/methodology): how programs are scored and ranked, and the syscall rarity tiers.
 - [Stats](${SITE}/funnel): stats on every program deployed to Solana, over a time window.
