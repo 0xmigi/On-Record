@@ -41,6 +41,24 @@ type SubjectLite = {
   facts: Record<string, unknown> | null;
 };
 
+/** The framework a program is counted under on the stats page. Two of them
+ *  the bare profile hides: Anchor v2 (a rewrite on Pinocchio — its own line
+ *  in profile.anchor, but still `anchor` in profile.framework) and Quasar,
+ *  which the binary reads as Pinocchio and only its source can name
+ *  (source-framework.ts). Same precedence as the serializer: never relabel
+ *  an Anchor binary from source. */
+function frameworkKey(s: SubjectLite): string {
+  const fw = s.profile?.framework ?? "unknown";
+  const source = (s.facts?.sourceFramework as { framework?: string | null } | undefined)?.framework;
+  if (source && fw !== "anchor") return source;
+  if (fw === "anchor" && s.profile?.anchor?.line === "2.x") return "anchor v2";
+  return fw;
+}
+
+/** Shown even at zero, so the panel says "none this window" rather than
+ *  leaving it unclear whether these are tracked at all. */
+const ALWAYS_LISTED = ["anchor v2", "quasar"];
+
 /** The rich funnel for a trailing window. */
 export async function computeWindowFunnel(
   windowHours: number,
@@ -138,7 +156,7 @@ export async function computeWindowFunnel(
   let variants = 0;
   let clones = 0;
   const byCategory: Record<string, number> = {};
-  const byFramework: Record<string, number> = {};
+  const byFramework: Record<string, number> = Object.fromEntries(ALWAYS_LISTED.map((k) => [k, 0]));
   const byIntegration: Record<string, number> = {};
   const byCapability: Record<string, number> = {};
   const identity = { named: 0, withRepo: 0, opaque: 0 };
@@ -172,7 +190,7 @@ export async function computeWindowFunnel(
     const cat = s.category ?? "unknown";
     byCategory[cat] = (byCategory[cat] ?? 0) + 1;
 
-    const fw = s.profile?.framework ?? "unknown";
+    const fw = frameworkKey(s);
     byFramework[fw] = (byFramework[fw] ?? 0) + 1;
     for (const cap of s.profile?.capabilities ?? []) byCapability[cap] = (byCapability[cap] ?? 0) + 1;
     // Integrations count DISTINCT BINARIES, not deploys. A sniper bot redeployed

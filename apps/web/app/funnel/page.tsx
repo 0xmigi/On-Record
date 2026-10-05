@@ -178,7 +178,7 @@ export default async function FunnelPage({
         <section className="stat-card">
           <SectionHeader
             title="Frameworks"
-            info="Framework each program was built with. Arrow = share change, first half vs second half of the window."
+            info="Framework each program was built with. Anchor v2 is counted apart from earlier Anchor; Quasar is named from the program's source, since its binary reads as Pinocchio. Arrow = share change, first half vs second half of the window."
           />
           {funnel.frameworkTrend && funnel.frameworkTrend.length > 0 ? (
             <div className="trend-list">
