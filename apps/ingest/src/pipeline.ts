@@ -45,6 +45,7 @@ import {
   watchDevnetNovel,
 } from "@onrecord/enrich";
 import { refreshInterest } from "./interest.js";
+import { refreshDossier } from "./revalidate.js";
 import { breakSummary, stampVerified } from "./verification-stamps.js";
 import { tryExtractReferences } from "./refs.js";
 import { linkIncubation } from "./incubation.js";
@@ -715,6 +716,8 @@ export async function scoreStage(eventId: string): Promise<void> {
   await refreshInterest(event.programId);
 
   await saveEnrichment(eventId, enrichment, "scored");
+  // every event type ends here — deploy, upgrade, authority change, close
+  refreshDossier(event.programId);
   log.info(
     { eventId, ms: Date.now() - start, band, score: score.toFixed(3), category, outcome: "ok" },
     "done",

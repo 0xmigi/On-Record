@@ -1,5 +1,6 @@
 import { and, desc, eq, isNull, lte, sql } from "drizzle-orm";
 import { db, schema, logger, type Network, type VerificationBreak } from "@onrecord/core";
+import { refreshDossier } from "./revalidate.js";
 
 // ---------------------------------------------------------------------------
 // What On Record remembers about verification, per version.
@@ -53,6 +54,7 @@ export async function recordBreak(
     })
     .where(eq(schema.events.id, event.id));
   await mergeBreakSummary(event.programId, event.network, breakSummary(brk, event.slot, event.blockTime));
+  refreshDossier(event.programId);
   logger.info({ programId: event.programId, slot: event.slot, evidence: brk.evidence }, "verification break recorded");
 }
 
@@ -113,6 +115,7 @@ export async function stampVerified(
     // a stamp from the upgrade path is the OLD version being preserved as the
     // break is recorded; it can't close that same break
     if (via !== "upgrade") await closeBreak(programId, network, Math.max(...stamped.map((r) => r.slot)), stamp.seenAt);
+    refreshDossier(programId);
   }
   return stamped.length;
 }

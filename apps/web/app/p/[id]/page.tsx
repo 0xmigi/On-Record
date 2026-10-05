@@ -1,10 +1,12 @@
 import type { Metadata } from "next";
-import type { ReactNode } from "react";
+import { Suspense, type ReactNode } from "react";
 import { Chevron } from "@/components/Chevron";
 import { parseAuditors, parseContacts, type SecTxtPart } from "@/lib/securitytxt";
 import Link from "next/link";
-import { notFound, redirect } from "next/navigation";
+import { notFound } from "next/navigation";
 import { BackToRadar } from "@/components/BackToRadar";
+import { ClusterUrlSync } from "@/components/ClusterUrlSync";
+import { isIndexable } from "@/lib/indexable";
 import { CopyAddress } from "@/components/CopyAddress";
 import { ProgramAvatar } from "@/components/ProgramAvatar";
 import { VerifiedBadge } from "@/components/VerifiedBadge";
@@ -71,6 +73,15 @@ function sizeFillPct(bytes: number): number {
   return Math.max(3, Math.min(100, p * 100));
 }
 
+// Cached, rendered at most once per window per program. Every dossier used to
+// be a fresh server render, which is what let crawlers burn the Vercel CPU
+// allowance (see app/robots.ts). An empty list still opts the route into ISR:
+// pages render on first visit, then serve from cache.
+export const revalidate = 900;
+export async function generateStaticParams() {
+  return [];
+}
+
 export async function generateMetadata({
   params,
 }: {
@@ -90,6 +101,9 @@ export async function generateMetadata({
   return {
     title: label,
     description,
+    // one page per program id; ?network= only steers the banner
+    alternates: { canonical: `/p/${encodeURIComponent(id)}` },
+    robots: program && isIndexable(program) ? undefined : { index: false, follow: true },
     // the file-convention og image is picked up automatically; the twitter
     // card type must be explicit or X falls back to a small summary tile
     twitter: { card: "summary_large_image" },
@@ -397,28 +411,12 @@ const CalendarIcon = () => (
 
 export default async function ProgramDossierPage({
   params,
-  searchParams,
 }: {
   params: Promise<{ id: string }>;
-  searchParams: Promise<{ network?: string }>;
 }) {
   const { id } = await params;
   const program = await fetchProgram(id);
   if (!program) notFound();
-
-  // Make the url tell the truth about the cluster, then let the one banner in
-  // the root layout read it. Rendering a second banner from inside the page
-  // was the obvious fix and the wrong one: .page is a centred, padded column,
-  // so that instance came out inset and pushed down while every other route's
-  // sat flush and full-bleed. One banner, in one place, fed a URL that cannot
-  // disagree with the subject.
-  const urlNet = (await searchParams).network;
-  if (program.network === "devnet" && urlNet !== "devnet") {
-    redirect(`/p/${encodeURIComponent(id)}?network=devnet`);
-  }
-  if (program.network === "mainnet" && urlNet === "devnet") {
-    redirect(`/p/${encodeURIComponent(id)}?network=mainnet`);
-  }
 
   // The interface (IDL) + its real usage. Always ask rather than trusting
   // idlPresent: that flag is a snapshot taken once at ingest, and teams often
@@ -1103,6 +1101,15 @@ export default async function ProgramDossierPage({
 
   return (
     <>
+      {/* Make the url tell the truth about the cluster, then let the one banner
+          in the root layout read it. Rendering a second banner from inside the
+          page was the obvious fix and the wrong one: .page is a centred, padded
+          column, so that instance came out inset and pushed down while every
+          other route's sat flush and full-bleed. One banner, in one place, fed
+          a URL that cannot disagree with the subject. */}
+      <Suspense fallback={null}>
+        <ClusterUrlSync network={program.network} />
+      </Suspense>
       <BackToRadar fallbackHref={program.network === "devnet" ? "/?network=devnet" : "/"} />
 
       <div className="dossier-head">

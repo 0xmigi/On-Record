@@ -1,6 +1,7 @@
 import { and, eq, gte, isNotNull, sql } from "drizzle-orm";
 import { db, schema, logger, programDataAliveMany, type Network } from "@onrecord/core";
 import { refreshInterest } from "./interest.js";
+import { refreshDossier } from "./revalidate.js";
 
 // ---------------------------------------------------------------------------
 // Closed-program sweep. The loader's Close instruction deallocates a program's
@@ -86,6 +87,7 @@ export async function sweepClosed(network: Network = "mainnet"): Promise<void> {
       if (!alive) {
         closed++;
         await refreshInterest(t.id); // closed penalty applies immediately
+        refreshDossier(t.id);
       }
     } catch (err) {
       logger.warn({ id: t.id, err: String(err) }, "closed sweep: subject failed");

@@ -3,6 +3,7 @@ import { db, schema, logger, fetchVerifyRequests, osecStatusAll, type Network } 
 import { checkVerification } from "@onrecord/enrich";
 import { fetchVerifiedProgramIds } from "./backfill-verified.js";
 import { recordBreak, stampVerified } from "./verification-stamps.js";
+import { refreshDossier } from "./revalidate.js";
 
 // ---------------------------------------------------------------------------
 // Verified-build sweep.
@@ -131,6 +132,7 @@ export async function sweepVerification(network: Network = "mainnet"): Promise<V
     }
 
     if (flipped) {
+      refreshDossier(row.id);
       logger.info(
         { programId: row.id, verified: v.verified, repoUrl: v.repoUrl, commit: v.commit },
         v.verified ? "verified build gained" : "verified build lost",
@@ -252,6 +254,7 @@ export async function sweepVerifyPending(network: Network = "mainnet"): Promise<
     }
 
     if (v.verified) {
+      refreshDossier(row.id);
       logger.info(
         { programId: row.id, repoUrl: v.repoUrl, commit: v.commit, attempt: attempt + 1 },
         "verified build gained (fast path)",

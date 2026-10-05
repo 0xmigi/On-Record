@@ -384,12 +384,17 @@ export class ApiUnavailableError extends Error {
   }
 }
 
-async function getJson<T>(path: string): Promise<T | null> {
+/** Dossier data is cached as long as the dossier page itself (app/p/[id]):
+ *  Next.js revalidates a route at its shortest fetch window, so a 30s fetch
+ *  here would quietly undo the page's cache. */
+export const DOSSIER_REVALIDATE = 900;
+
+async function getJson<T>(path: string, revalidate = 30): Promise<T | null> {
   if (API_MISCONFIGURED) throw new ApiUnavailableError(path, "API_URL not configured");
   let res: Response;
   try {
     res = await fetch(`${API_BASE}${path}`, {
-      next: { revalidate: 30 },
+      next: { revalidate },
       // a hung backend must not pin the render until the platform 504s it
       signal: AbortSignal.timeout(API_TIMEOUT_MS),
     });
@@ -446,7 +451,10 @@ export async function fetchRadar(
 export async function fetchProgram(
   id: string
 ): Promise<ApiProgramDetail | null> {
-  return getJson<ApiProgramDetail>(`/api/programs/${encodeURIComponent(id)}`);
+  return getJson<ApiProgramDetail>(
+    `/api/programs/${encodeURIComponent(id)}`,
+    DOSSIER_REVALIDATE
+  );
 }
 
 // --- search: by name, crate, repo, or what a program talks to --------------
@@ -521,7 +529,8 @@ export interface AnchorIdl {
 
 export async function fetchIdl(id: string): Promise<AnchorIdl | null> {
   const res = await getJson<{ idl: AnchorIdl | null }>(
-    `/api/programs/${encodeURIComponent(id)}/idl`
+    `/api/programs/${encodeURIComponent(id)}/idl`,
+    DOSSIER_REVALIDATE
   );
   return res?.idl ?? null;
 }
@@ -551,7 +560,8 @@ export interface StoredUsage {
 
 export async function fetchUsage(id: string): Promise<StoredUsage> {
   const res = await getJson<{ usage: InstructionUsage | null; sampledAt: string | null }>(
-    `/api/programs/${encodeURIComponent(id)}/usage`
+    `/api/programs/${encodeURIComponent(id)}/usage`,
+    DOSSIER_REVALIDATE
   );
   return { usage: res?.usage ?? null, sampledAt: res?.sampledAt ?? null };
 }
@@ -614,7 +624,10 @@ export interface ApiVerification {
  *  error, or a cold check still running, renders the record without them. */
 export async function fetchVerification(id: string): Promise<ApiVerification | null> {
   try {
-    return await getJson<ApiVerification>(`/api/programs/${encodeURIComponent(id)}/verification`);
+    return await getJson<ApiVerification>(
+      `/api/programs/${encodeURIComponent(id)}/verification`,
+      DOSSIER_REVALIDATE
+    );
   } catch {
     return null;
   }
@@ -631,7 +644,8 @@ export function versionsBySlot(versions: ApiVersionDiff[]): VersionTrail {
 
 export async function fetchVersions(id: string): Promise<ApiVersionDiff[]> {
   const res = await getJson<{ versions: ApiVersionDiff[] }>(
-    `/api/programs/${encodeURIComponent(id)}/versions`
+    `/api/programs/${encodeURIComponent(id)}/versions`,
+    DOSSIER_REVALIDATE
   );
   return res?.versions ?? [];
 }
@@ -647,8 +661,17 @@ export async function fetchFunnel(
   return getJson<ApiFunnel>(`/api/funnel${qs ? `?${qs}` : ""}`);
 }
 
+/** the dossiers worth a search result — see lib/indexable.ts */
+export async function fetchSitemap(): Promise<{ id: string; lastEventAt: string | null }[]> {
+  const res = await getJson<{ items: { id: string; lastEventAt: string | null }[] }>(
+    "/api/sitemap",
+    3600
+  );
+  return res?.items ?? [];
+}
+
 export async function fetchCluster(id: string): Promise<ApiCluster | null> {
-  return getJson<ApiCluster>(`/api/clusters/${encodeURIComponent(id)}`);
+  return getJson<ApiCluster>(`/api/clusters/${encodeURIComponent(id)}`, DOSSIER_REVALIDATE);
 }
 
 export async function fetchRawEvents(

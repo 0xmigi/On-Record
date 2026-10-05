@@ -909,6 +909,34 @@ export function registerPublicRoutes(app: FastifyInstance): void {
     },
   );
 
+  // --- sitemap: the dossiers worth a search result -------------------------
+  //
+  // Open mainnet programs with some identity. Must match isIndexable() in
+  // apps/web/lib/indexable.ts, which marks every other dossier noindex.
+  app.get("/api/sitemap", async () => {
+    const rows = await db
+      .select({ id: schema.subjects.id, lastEventAt: schema.subjects.lastEventAt })
+      .from(schema.subjects)
+      .where(
+        and(
+          eq(schema.subjects.network, "mainnet"),
+          eq(schema.subjects.kind, "program"),
+          sql`${schema.subjects.facts}->>'closedAt' is null`,
+          or(
+            sql`${schema.subjects.name} is not null`,
+            eq(schema.subjects.verified, true),
+            eq(schema.subjects.idlPresent, true),
+            sql`coalesce(${schema.subjects.repoUrl}, '') <> ''`,
+          ),
+        ),
+      )
+      .orderBy(desc(schema.subjects.lastEventAt))
+      .limit(45_000); // one sitemap file holds 50k
+    return {
+      items: rows.map((r) => ({ id: r.id, lastEventAt: r.lastEventAt?.toISOString() ?? null })),
+    };
+  });
+
   // --- radar as RSS: novel programs, newest first --------------------------
   app.get("/rss.xml", async (_req, reply) => {
     const rows = await db
