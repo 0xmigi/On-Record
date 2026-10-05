@@ -390,6 +390,25 @@ export async function searchRepoByProgramId(
   return value;
 }
 
+/** Files in ONE repo that mention this program id — for reading a repo we
+ *  already know (declared, or linked earlier) rather than finding one. Shares
+ *  the code-search budget with searchRepoByProgramId. null = never asked
+ *  (no token, no slot, throttled); [] = GitHub answered with nothing. */
+export async function searchProgramIdInRepo(
+  programId: string,
+  repo: string,
+  maxWaitMs = GH_MAX_WAIT_MS,
+): Promise<string[] | null> {
+  if (!env.GITHUB_TOKEN) return null;
+  if (!BASE58_ADDRESS.test(programId) || !/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(repo)) return null;
+  const items = await runSearch(programId, `"${programId}" repo:${repo}`, maxWaitMs);
+  if (!items) return null;
+  return items
+    .filter((i) => i.repository?.full_name?.toLowerCase() === repo.toLowerCase())
+    .map((i) => i.path ?? "")
+    .filter(Boolean);
+}
+
 /** One code-search request against the rate-limit budget. Never throws: a
  *  missing repo link must not fail an event. `[]` means GitHub answered and had
  *  nothing; `null` means we never got to ask (no slot, throttled, transient

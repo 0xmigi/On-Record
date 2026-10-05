@@ -8,7 +8,9 @@ import type { AnchorBuild, AnchorLine, Framework } from "@/lib/api";
 // about its labels, so detectability is a first-class field, not a footnote.
 // ---------------------------------------------------------------------------
 
-export type Confidence = "confirmed" | "inferred";
+/** confirmed = provable on-chain · inferred = binary shape · source = the
+ *  program's own repo says so, where the binary can't */
+export type Confidence = "confirmed" | "inferred" | "source";
 
 export interface FrameworkInfo {
   key: Framework;
@@ -39,6 +41,7 @@ export const DETECTION_RELIABLE: Record<Framework, boolean> = {
   anchor: true,
   pinocchio: false,
   native: false,
+  quasar: false,
   unknown: false,
 };
 
@@ -99,7 +102,7 @@ export const FRAMEWORK_INFO: Record<Framework, FrameworkInfo> = {
     tradeoff:
       "Tiny binary and low compute-unit cost, at the price of manual safety and no self-description. The choice for a hot path — routing, MEV, high-frequency — where every CU and lamport of rent is optimized.",
     detection:
-      "Inferred — the program invokes the C ABI (sol_invoke_signed_c) and ships no framework markers, which fits Pinocchio. But native and Steel programs can look the same; treat this as a strong hint, not proof.",
+      "Inferred — the program invokes the C ABI (sol_invoke_signed_c) and ships no framework markers, which fits Pinocchio. But native, Steel and Quasar programs can look the same; treat this as a strong hint, not proof. A Quasar program is only labelled Quasar when its source says so.",
     explainer: {
       author: "Built by Anza (the Agave client team).",
       whatIs:
@@ -131,6 +134,26 @@ export const FRAMEWORK_INFO: Record<Framework, FrameworkInfo> = {
       docsUrl: "https://docs.rs/solana-program",
     },
   },
+  quasar: {
+    key: "quasar",
+    label: "Quasar",
+    positioning: "performance · Anchor-style macros · beta",
+    read: "Zero-copy, no_std framework with Anchor-style macros (#[program], #[account], #[derive(Accounts)]). Accounts are read straight out of the input buffer — no deserialization, no heap allocation.",
+    tradeoff:
+      "Close to hand-written compute cost without hand-writing account parsing. The price: it's in beta and unaudited, and the binary can't prove what built it.",
+    detection:
+      "From source. A Quasar binary reads as Pinocchio — no framework strings or panic paths survive the build. On Record calls a program Quasar only when the crate in its repo that declares its address depends on quasar-lang.",
+    explainer: {
+      author: "Built by Blueshift (blueshift-gg).",
+      whatIs:
+        "A no_std program framework that keeps Anchor's way of writing programs — macros for instructions, accounts and validation — but compiles to near hand-written efficiency. Accounts are pointer-cast directly from the SVM input buffer, so nothing is deserialized or copied. Discriminators are numbers you choose (#[instruction(discriminator = 0)]) rather than Anchor's 8-byte hashes, and framework errors start at 3000. It ships a CLI (init, build, test, deploy) and a static compute-unit profiler.",
+      whenToPick:
+        "When you want Pinocchio-level compute cost with Anchor-style ergonomics, and can accept a framework that is still in beta and has not been audited.",
+      onChain:
+        "Indistinguishable from Pinocchio in the binary: the same C-ABI calls, and PDAs hashed in-program (sol_sha256 + sol_curve_validate_point) the way Pinocchio's address crate also does. Its short, developer-chosen discriminators don't prove anything either. That's why the label has to come from the source.",
+      docsUrl: "https://quasar-lang.com",
+    },
+  },
   unknown: {
     key: "unknown",
     label: "Unknown",
@@ -155,4 +178,4 @@ export const FRAMEWORK_INFO: Record<Framework, FrameworkInfo> = {
 // Frameworks we don't classify yet — surfaced in the explainer so the page
 // reads as a complete learning resource, and so the detection limits are honest.
 export const OTHER_FRAMEWORKS_NOTE =
-  "Others in the wild: Steel (Ore team — near-native performance on solana-program), Seahorse (Python → Anchor), and Poseidon & Quasar (TypeScript → Rust). Transpilers inherit their lowering target's fingerprint: a Quasar or Poseidon program that compiles down to Anchor will look like Anchor on-chain — discriminators and all.";
+  "Others in the wild: Steel (Ore team — near-native performance on solana-program), Seahorse (Python → Anchor) and Poseidon (TypeScript → Anchor). Transpilers inherit their target's fingerprint: a Seahorse or Poseidon program compiles to Anchor, so it looks like Anchor on-chain — discriminators and all.";

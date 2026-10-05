@@ -28,7 +28,7 @@ export type AuthorityFacet = "frozen" | "multisig" | "hot";
 
 // Frameworks we let users filter by — "unknown" is the absence of a label, not
 // a thing to select.
-export const FILTER_FRAMEWORKS: Framework[] = ["anchor", "pinocchio", "native"];
+export const FILTER_FRAMEWORKS: Framework[] = ["anchor", "pinocchio", "quasar", "native"];
 export const SIZE_BANDS: SizeBand[] = ["lean", "moderate", "heavy"];
 export const AUTHORITY_FACETS: AuthorityFacet[] = ["frozen", "multisig", "hot"];
 // "unknown" is the absence of a category, not a selectable facet. Ordered by
@@ -65,6 +65,7 @@ export const FRAMEWORK_LABEL: Record<Framework, string> = {
   anchor: "Anchor",
   pinocchio: "Pinocchio",
   native: "Native",
+  quasar: "Quasar",
   unknown: "Unknown",
 };
 

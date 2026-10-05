@@ -165,6 +165,19 @@ export interface ScoreResult {
   components: Record<string, number>;
 }
 
+/** Framework read from a program's source repo (apps/ingest/src/source-framework.ts). */
+export interface SourceFrameworkFact {
+  framework: "quasar" | null;
+  /** quasar = every framework crate declaring the id uses quasar-lang · mixed =
+   *  it and another framework both do · none = something else · no-hits =
+   *  nothing in the repo mentions the id */
+  verdict: "quasar" | "mixed" | "none" | "no-hits";
+  repo: string;
+  repoFrom: "declared" | "linked" | "pmp-security";
+  crates: { manifest: string; framework: string }[];
+  checkedAt: string;
+}
+
 /** The developer's own security.txt declaration, embedded in the binary
  *  (Neodyme standard). Every value is the developer's words — zero inference. */
 export interface SecurityTxt {
@@ -339,6 +352,9 @@ export interface ApiProgram {
   clusterSize: number | null;
   // --- program profile (docs/GRADING.md §5): from the SBF bytecode ---
   framework: Framework | null;
+  /** where `framework` came from: the binary, or the program's own source
+   *  repo when the binary cannot tell (Quasar reads as Pinocchio) */
+  frameworkSource: "binary" | "source" | null;
   /** which Anchor line built it, with the markers behind the verdict — null
    *  when not Anchor, or when the stored profile predates the classifier */
   anchor: AnchorBuild | null;
@@ -510,6 +526,9 @@ export interface ApiProgramDetail extends ApiProgram {
   instructionSource: "idl" | "anchor-log" | "debug-enum" | null;
   /** the developer's embedded security.txt, verbatim fields */
   securityTxt: SecurityTxt | null;
+  /** the source check behind a framework the binary cannot name — which repo,
+   *  which crate declares this program id, and what that crate builds with */
+  sourceFramework: SourceFrameworkFact | null;
   /** the canonical PMP security account, read as a security.txt. Present even
    *  when it does not count (no contact, no policy) — `counts` says which. */
   pmpSecurityTxt: PmpSecurityTxt | null;

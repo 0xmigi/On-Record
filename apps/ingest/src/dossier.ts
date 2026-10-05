@@ -16,6 +16,7 @@ import {
   type EventEnrichment,
   type Network,
   type SecurityTxt,
+  type SourceFrameworkFact,
   type TrafficSample,
 } from "@onrecord/core";
 import { familyFor } from "./interest.js";
@@ -211,6 +212,7 @@ export async function buildDossier(programId: string, opts: DossierOptions = {})
     securityTxt?: SecurityTxt;
     hasSecurityTxt?: boolean;
     pmpSecurity?: unknown;
+    sourceFramework?: SourceFrameworkFact;
     website?: string;
     social?: string;
     upgradeCount?: number;
@@ -304,11 +306,20 @@ export async function buildDossier(programId: string, opts: DossierOptions = {})
   const out: string[] = [];
   const h = (t: string) => out.push("", `## ${t}`, "");
 
+  // a framework the binary cannot name, confirmed from the program's own repo
+  const src = facts.sourceFramework;
+  const fromSource = src?.framework && profile?.framework !== "anchor" ? src : null;
+  const fwLabel = fromSource
+    ? `${fromSource.framework} (from source)`
+    : profile?.framework === "anchor" && profile.anchor
+      ? `anchor ${profile.anchor.line}`
+      : (profile?.framework ?? "framework unknown");
+
   // --- header ---------------------------------------------------------------
   out.push(`# ${row.name ?? "(unnamed)"} — \`${row.id}\``);
   out.push("");
   out.push(
-    `${network} · ${profile?.framework === "anchor" && profile.anchor ? `anchor ${profile.anchor.line}` : (profile?.framework ?? "framework unknown")} · ${fmtBytes(row.sizeBytes)} · ` +
+    `${network} · ${fwLabel} · ${fmtBytes(row.sizeBytes)} · ` +
       `first deployed ${iso(row.firstDeployAt ?? row.firstSeenAt)}` +
       (facts.closedAt ? ` · **CLOSED ${facts.closedAt}** (rent reclaimed)` : ""),
   );
@@ -507,6 +518,16 @@ export async function buildDossier(programId: string, opts: DossierOptions = {})
       "of anonymous programs are still legible._",
   );
   out.push("");
+  if (fromSource) {
+    const declaring = fromSource.crates.filter((c) => c.framework === fromSource.framework).map((c) => c.manifest);
+    out.push(
+      fact(
+        "Framework",
+        `${fromSource.framework} — ${fromSource.repo}: ${declaring.join(", ")} declares this program id and depends on ${fromSource.framework}-lang. The binary alone reads as ${profile?.framework ?? "unknown"}.`,
+        `read from the source repo (${fromSource.repoFrom === "linked" ? "found by searching for the address — an inference" : fromSource.repoFrom === "pmp-security" ? "named in its PMP security account" : "declared"}), checked ${fromSource.checkedAt.slice(0, 10)}; nobody rebuilt it to prove these bytes came from that crate`,
+      ),
+    );
+  }
   out.push(fact("Crate", row.crate, "dominant crate name in leaked panic paths"));
   const paths = row.sourcePaths ?? [];
   if (paths.length) {

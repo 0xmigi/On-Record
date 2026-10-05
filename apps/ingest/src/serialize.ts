@@ -15,6 +15,7 @@ import {
   type NoveltyBand,
   type RepoLink,
   type SecurityTxt,
+  type SourceFrameworkFact,
 } from "@onrecord/core";
 
 type SubjectRow = typeof schema.subjects.$inferSelect;
@@ -116,7 +117,14 @@ export function serializeProgram(
     momentum?: { txns24h: number; growth: number | null; txns24hTruncated?: boolean };
     closedAt?: string;
     interest?: ApiProgram["interest"];
+    sourceFramework?: SourceFrameworkFact;
   };
+  // A framework the binary cannot name, confirmed from the program's own repo.
+  // Never over an Anchor reading: the bytes prove Anchor, a repo only claims.
+  const fromSource =
+    facts.sourceFramework?.framework && profile?.framework !== "anchor"
+      ? facts.sourceFramework.framework
+      : null;
   // either home counts: the binary, or the PMP security account
   const secSource = securityTxtSource(facts);
   return {
@@ -144,7 +152,8 @@ export function serializeProgram(
     // needs it to collapse a family into one card
     crate: row.crate,
     clusterSize,
-    framework: profile?.framework ?? null,
+    framework: fromSource ?? profile?.framework ?? null,
+    frameworkSource: fromSource ? "source" : profile?.framework ? "binary" : null,
     anchor: profile?.anchor ?? null,
     capabilities: profile?.capabilities ?? [],
     integrations: profile?.integrations ?? [],
@@ -213,6 +222,7 @@ export function serializeProgramDetail(
     securityTxt?: SecurityTxt;
     pmpSecurity?: unknown;
     repoLink?: RepoLink;
+    sourceFramework?: SourceFrameworkFact;
     activity?: { t: number; c: number }[];
     rate?: { t: number; r: number }[];
     compute?: {
@@ -253,6 +263,8 @@ export function serializeProgramDetail(
     // raw JSON out of an account anyone with the key can rewrite — normalized
     // to the security.txt field set, never passed through as-is
     pmpSecurityTxt: readPmpSecurity(facts.pmpSecurity),
+    // only a positive verdict is evidence for the page; a miss is bookkeeping
+    sourceFramework: facts.sourceFramework?.framework ? facts.sourceFramework : null,
     // the repo URL is a search hit rendered as an href — same scheme guard as
     // every other string that came out of a binary or a third party
     repoLink:

@@ -693,7 +693,7 @@ export default async function ProgramDossierPage({
 
       <SectionHeader
         title="Framework"
-        info="Read off the ELF — the syscall ABI and marker strings. Confidence: 'confirmed' = provable on-chain (Anchor); 'inferred' = read from binary shape. New to a framework? Expand the explainer at the bottom of this tab."
+        info="Read off the ELF — the syscall ABI and marker strings. Confidence: 'confirmed' = provable on-chain (Anchor); 'inferred' = read from binary shape; 'from source' = the program's own repo names it, where the binary can't. New to a framework? Expand the explainer at the bottom of this tab."
       />
       <SectionExplainer
         title={`What's ${comp.framework.label}?`}
@@ -704,7 +704,7 @@ export default async function ProgramDossierPage({
               className={`fw-conf fw-conf-${comp.confidence}`}
               title={comp.framework.detection}
             >
-              {comp.confidence}
+              {comp.confidence === "source" ? "from source" : comp.confidence}
             </span>
             {comp.publishesIdl ? (
               <span className="fw-tag" title="Ships an on-chain Anchor IDL — the program describes itself">
@@ -720,6 +720,44 @@ export default async function ProgramDossierPage({
           </div>
         }
       >
+        {/* A label from source carries its evidence the same way: which repo,
+            which crate declares this address, and what it depends on. */}
+        {program.frameworkSource === "source" && program.sourceFramework ? (
+          <div className="fw-line-detail">
+            <h4 className="explainer-h">Why {comp.framework.label}</h4>
+            <p>
+              The binary reads as Pinocchio. The program&apos;s repo says otherwise: the crate
+              that declares this address depends on quasar-lang.
+            </p>
+            <ul className="fw-evidence">
+              <li>
+                <Ext
+                  href={`https://github.com/${program.sourceFramework.repo}`}
+                  text={program.sourceFramework.repo}
+                />{" "}
+                <span className="cell-dim">
+                  ·{" "}
+                  {program.sourceFramework.repoFrom === "linked"
+                    ? "found by searching for the address"
+                    : program.sourceFramework.repoFrom === "pmp-security"
+                      ? "named in its PMP security account"
+                      : "declared by the program"}
+                </span>
+              </li>
+              {program.sourceFramework.crates
+                .filter((c) => c.framework === program.sourceFramework!.framework)
+                .map((c) => (
+                  <li key={c.manifest}>
+                    {c.manifest} <span className="cell-dim">· depends on quasar-lang</span>
+                  </li>
+                ))}
+            </ul>
+            <p className="cell-dim">
+              Nobody rebuilt the source to prove these bytes came from it — treat it as strong
+              evidence, not a verified build.
+            </p>
+          </div>
+        ) : null}
         {/* The line is a verdict, so the markers it rests on travel with it —
             anyone pressing on "v2" can check each one against the binary. */}
         {program.anchor ? (

@@ -9,6 +9,7 @@ import { sweepRepoLinks, sweepRepoLiveness } from "./repo-link.js";
 import { sweepVerification, sweepVerificationHistory, sweepVerifyPending } from "./verify-sweep.js";
 import { sweepMentions } from "./x-bot.js";
 import { syncPmpSecurity } from "./pmp-security-sync.js";
+import { sweepSourceFramework } from "./source-framework.js";
 
 // ---------------------------------------------------------------------------
 // Scheduled work (SPEC §10): TVL refresh (6h), a live funnel snapshot (15m),
@@ -60,6 +61,15 @@ export function startCron(): void {
   // mention — no chain reads, so strangers cannot move the Helius bill.
   every(Number(process.env.X_BOT_INTERVAL_MS ?? 5 * 60_000), "x-bot", async () => {
     await sweepMentions();
+  });
+
+  // a framework the binary cannot name (Quasar reads as Pinocchio), read from
+  // the program's own repo. Shares the code-search budget with the repo-link
+  // sweep, so a small batch on a slow cycle; most reads need no search at all
+  // (a repo link already knows which files hold the address). No-ops without
+  // GITHUB_TOKEN. Costs no RPC.
+  every(Number(process.env.SOURCE_FRAMEWORK_INTERVAL_MS ?? 6 * 3_600_000), "source-framework-sweep", async () => {
+    await sweepSourceFramework();
   });
 
   // fast path: programs that just deployed AND have an on-chain verification

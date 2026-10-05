@@ -184,7 +184,8 @@ export function deriveComposition(p: ApiProgramDetail): Composition {
   const detectionReliable = DETECTION_RELIABLE[key];
   // Anchor is the only framework we can prove from the chain; everything else
   // is inference from binary shape, so we say so.
-  const confidence: Confidence = detectionReliable ? "confirmed" : "inferred";
+  const confidence: Confidence =
+    p.frameworkSource === "source" ? "source" : detectionReliable ? "confirmed" : "inferred";
   const strings = p.strings ?? [];
 
   const { crate, paths } = recoverModules(strings);

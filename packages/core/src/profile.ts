@@ -21,7 +21,9 @@
 
 import { createHash } from "node:crypto";
 
-export type Framework = "anchor" | "pinocchio" | "native" | "unknown";
+/** "quasar" is never read off the bytes — its builds look like Pinocchio. It
+ *  is assigned from source only (apps/ingest/src/source-framework.ts). */
+export type Framework = "anchor" | "pinocchio" | "native" | "quasar" | "unknown";
 
 /**
  * Which line of Anchor built the binary — only as finely as the bytes prove it.

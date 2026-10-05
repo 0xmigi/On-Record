@@ -4024,6 +4024,12 @@ a.copy-addr-text:hover {
   border-color: var(--border);
   background: var(--bg);
 }
+/* source = the program's repo names the framework, where the binary can't */
+.fw-conf-source {
+  color: var(--ink);
+  border-color: var(--border);
+  background: var(--bg);
+}
 .fw-pos {
   margin-left: auto;
   font-family: var(--font-mono);

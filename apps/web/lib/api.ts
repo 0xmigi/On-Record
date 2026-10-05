@@ -27,7 +27,8 @@ export type Category =
   | "defi"
   | "unknown";
 export type AuthorityClass = "none" | "squads" | "program" | "hot_wallet" | null;
-export type Framework = "anchor" | "pinocchio" | "native" | "unknown";
+/** "quasar" only ever comes from source — its binary reads as Pinocchio. */
+export type Framework = "anchor" | "pinocchio" | "native" | "quasar" | "unknown";
 
 /** Which Anchor line built the binary — only as finely as the bytes prove it
  *  (packages/core/src/profile.ts). */
@@ -92,6 +93,9 @@ export interface ApiProgram {
   closed: boolean;
   // structured program profile (ELF-parsed)
   framework: Framework | null;
+  /** binary = read off the ELF · source = the program's repo says so, because
+   *  the binary cannot (older API builds omit this) */
+  frameworkSource?: "binary" | "source" | null;
   anchor: AnchorBuild | null;
   capabilities: string[];
   integrations: string[];
@@ -210,6 +214,17 @@ export interface PmpSecurityTxt {
   counts: boolean;
 }
 
+/** Why a framework was read from source: the crate in the program's repo that
+ *  declares its address, and what that crate depends on. */
+export interface SourceFrameworkFact {
+  framework: "quasar" | null;
+  verdict: "quasar" | "mixed" | "none" | "no-hits";
+  repo: string;
+  repoFrom: "declared" | "linked" | "pmp-security";
+  crates: { manifest: string; framework: string }[];
+  checkedAt: string;
+}
+
 /** A source repo recovered by searching public code for the program id. */
 export interface RepoLink {
   repo: string; // owner/name
@@ -241,6 +256,8 @@ export interface ApiProgramDetail extends ApiProgram {
   /** the canonical PMP security account, folded onto the security.txt fields.
    *  `counts` is false when it holds no contact and no policy. */
   pmpSecurityTxt?: PmpSecurityTxt | null;
+  /** present when `framework` came from source */
+  sourceFramework?: SourceFrameworkFact | null;
   /** repo found by searching public code for the program id. An inference —
    *  kept apart from repoUrl, which somebody declared. */
   repoLink?: RepoLink | null;
