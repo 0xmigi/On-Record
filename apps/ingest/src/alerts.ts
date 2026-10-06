@@ -11,6 +11,7 @@ import {
   diagnoseVerification,
   type VerificationReport,
 } from "@onrecord/core";
+import { sendTelegram } from "./telegram.js";
 
 // ---------------------------------------------------------------------------
 // Verification alerts.
@@ -43,8 +44,8 @@ const RECHECK_MS = 30 * 60_000;
 
 export const ADDRESS_RE = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/;
 
-export type Channel = "webhook";
-export const CHANNELS: readonly Channel[] = ["webhook"];
+export type Channel = "webhook" | "telegram";
+export const CHANNELS: readonly Channel[] = ["webhook", "telegram"];
 
 // --- which programs an address controls ------------------------------------
 
@@ -55,6 +56,12 @@ export interface WatchedProgram {
   /** how the address controls it */
   via: "authority" | "multisig";
   lastEventAt: string | null;
+  /** links the page uses to find an icon; raw as stored */
+  website: string | null;
+  social: string | null;
+  repoUrl: string | null;
+  /** set when a Squads multisig holds the authority */
+  squads: { threshold: number; members: number } | null;
 }
 
 export async function programsControlledBy(addresses: string[]): Promise<Map<string, WatchedProgram[]>> {
@@ -69,6 +76,8 @@ export async function programsControlledBy(addresses: string[]): Promise<Map<str
       authority: schema.subjects.authority,
       multisig: multisigOf,
       lastEventAt: schema.subjects.lastEventAt,
+      repoUrl: schema.subjects.repoUrl,
+      facts: schema.subjects.facts,
     })
     .from(schema.subjects)
     .where(
@@ -81,6 +90,11 @@ export async function programsControlledBy(addresses: string[]): Promise<Map<str
     )
     .orderBy(desc(schema.subjects.lastEventAt));
   for (const r of rows) {
+    const f = r.facts as { website?: string; social?: string; multisig?: { threshold?: number; members?: number } };
+    const squads =
+      f.multisig?.threshold != null && f.multisig.members != null
+        ? { threshold: f.multisig.threshold, members: f.multisig.members }
+        : null;
     for (const [address, via] of [
       [r.authority, "authority"],
       [r.multisig, "multisig"],
@@ -92,6 +106,10 @@ export async function programsControlledBy(addresses: string[]): Promise<Map<str
           verified: r.verified,
           via,
           lastEventAt: r.lastEventAt?.toISOString() ?? null,
+          website: f.website ?? null,
+          social: f.social ?? null,
+          repoUrl: r.repoUrl || null,
+          squads,
         });
       }
     }
@@ -173,6 +191,7 @@ export async function sendWebhook(target: string, msg: AlertMessage): Promise<vo
 
 async function deliver(sub: { channel: string; target: string }, msg: AlertMessage): Promise<void> {
   if (sub.channel === "webhook") return sendWebhook(sub.target, msg);
+  if (sub.channel === "telegram") return sendTelegram(sub.target, msg.text);
   throw new Error(`channel ${sub.channel} not available yet`);
 }
 

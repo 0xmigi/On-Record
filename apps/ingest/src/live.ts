@@ -2,6 +2,7 @@ import { assertTlshAvailable, env, logger } from "@onrecord/core";
 import { createApp } from "./server.js";
 import { startPolling } from "./poller.js";
 import { startCron } from "./cron.js";
+import { startTelegramBot } from "./telegram.js";
 
 // ---------------------------------------------------------------------------
 // Single-process live deployment (Railway). Runs the public read API, the live
@@ -58,4 +59,5 @@ if (process.env.DEVNET_POLL_ENABLED === "1") {
 }
 
 startCron();
+startTelegramBot();
 logger.info("onrecord live: running");

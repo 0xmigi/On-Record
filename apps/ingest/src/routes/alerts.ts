@@ -11,6 +11,7 @@ import {
   testText,
   type Channel,
 } from "../alerts.js";
+import { sendTelegram, verifyTelegramLogin } from "../telegram.js";
 
 // ---------------------------------------------------------------------------
 // Verification alert sign-up. See alerts.ts for what gets watched and when a
@@ -43,28 +44,38 @@ export function registerAlertRoutes(app: FastifyInstance): void {
     return { address, programs };
   });
 
-  app.post<{ Body: { address?: unknown; channel?: unknown; target?: unknown } }>(
+  app.post<{ Body: { address?: unknown; channel?: unknown; target?: unknown; telegram?: unknown } }>(
     "/api/alerts/subscribe",
     async (req, reply) => {
       const address = typeof req.body?.address === "string" ? req.body.address.trim() : "";
       const channel = req.body?.channel as Channel;
-      const target = typeof req.body?.target === "string" ? req.body.target.trim() : "";
       if (!ADDRESS_RE.test(address)) return reply.code(400).send({ error: "not a Solana address" });
       if (!CHANNELS.includes(channel)) return reply.code(400).send({ error: "channel not available" });
-      if (!target || target.length > 500) return reply.code(400).send({ error: "missing target" });
+
+      // where the pings go, proven before anything is stored
+      let target: string;
+      let who: string | null = null;
+      try {
+        if (channel === "telegram") {
+          const login = verifyTelegramLogin(req.body?.telegram);
+          target = String(login.id);
+          who = login.username ? `@${login.username}` : (login.first_name ?? null);
+        } else {
+          target = typeof req.body?.target === "string" ? req.body.target.trim() : "";
+          if (!target || target.length > 500) throw new Error("missing webhook URL");
+          await assertPublicHttpsUrl(target);
+        }
+      } catch (err) {
+        return reply.code(400).send({ error: (err as Error).message });
+      }
 
       const caller = String(req.headers["x-forwarded-for"] ?? req.ip).split(",")[0]!.trim();
       if (limited(`ip:${caller}`) || limited(`target:${target}`)) {
         return reply.code(429).send({ error: "too many sign-ups, try again later" });
       }
-      try {
-        await assertPublicHttpsUrl(target);
-      } catch (err) {
-        return reply.code(400).send({ error: (err as Error).message });
-      }
 
       const existing = await db
-        .select({ id: schema.alertSubscriptions.id })
+        .select({ manageToken: schema.alertSubscriptions.manageToken })
         .from(schema.alertSubscriptions)
         .where(
           and(
@@ -73,15 +84,20 @@ export function registerAlertRoutes(app: FastifyInstance): void {
             isNull(schema.alertSubscriptions.revokedAt),
           ),
         );
-      if (existing.length) return reply.code(409).send({ error: "this address already pings that webhook" });
-
       const programs = (await programsControlledBy([address])).get(address) ?? [];
+      // signing up twice is a no-op, not an error: the page just says you're set
+      if (existing.length) return { manageToken: existing[0]!.manageToken, programs, who, already: true };
+
       const manageToken = randomBytes(24).toString("base64url");
-      // the webhook proves itself by accepting the test ping; nothing is stored otherwise
+      const text = testText(address, programs, manageToken);
       try {
-        await sendWebhook(target, { kind: "test", text: testText(address, programs, manageToken) });
+        if (channel === "telegram") await sendTelegram(target, text);
+        else await sendWebhook(target, { kind: "test", text });
       } catch (err) {
-        return reply.code(400).send({ error: `couldn't reach the webhook: ${(err as Error).message}` });
+        const why = (err as Error).message;
+        return reply.code(400).send({
+          error: channel === "telegram" ? `couldn't message you on Telegram: ${why}` : `couldn't reach the webhook: ${why}`,
+        });
       }
       await db.insert(schema.alertSubscriptions).values({
         id: newId("asub"),
@@ -92,7 +108,7 @@ export function registerAlertRoutes(app: FastifyInstance): void {
         confirmedAt: new Date(),
       });
       logger.info({ address, channel, programs: programs.length }, "alerts: subscribed");
-      return { manageToken, programs };
+      return { manageToken, programs, who, already: false };
     },
   );
 
@@ -110,7 +126,7 @@ export function registerAlertRoutes(app: FastifyInstance): void {
       address: sub.address,
       channel: sub.channel,
       // the full URL is a secret for most webhook services; show where it goes, not the key
-      target: sub.channel === "webhook" ? new URL(sub.target).host : sub.target,
+      target: sub.channel === "webhook" ? new URL(sub.target).host : "Telegram",
       createdAt: sub.createdAt.toISOString(),
       active: !sub.revokedAt,
       programs,
