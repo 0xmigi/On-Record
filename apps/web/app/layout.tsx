@@ -4,6 +4,7 @@ import { IBM_Plex_Mono, IBM_Plex_Sans } from "next/font/google";
 import Link from "next/link";
 import { Analytics } from "@vercel/analytics/next";
 import { ClusterBanner } from "@/components/ClusterBanner";
+import { Footer } from "@/components/Footer";
 import { Mark } from "@/components/Mark";
 import { NavMenu } from "@/components/NavMenu";
 import { NetworkToggle } from "@/components/NetworkToggle";
@@ -77,27 +78,7 @@ export default function RootLayout({
           {children}
         </main>
 
-        <footer className="footer">
-          <p className="footer-motto">
-            Every deploy and upgrade on Solana mainnet.
-          </p>
-          <a
-            className="footer-credit"
-            href="https://www.helius.dev"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Powered by
-            {/* the real mark + wordmark from the Helius brand kit, not ours */}
-            <img
-              className="footer-helius"
-              src="/brand/helius-horizontal.svg"
-              alt="Helius"
-              width={72}
-              height={15}
-            />
-          </a>
-        </footer>
+        <Footer />
 
         <Analytics />
       </body>

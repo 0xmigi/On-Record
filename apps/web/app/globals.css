@@ -461,20 +461,66 @@ a {
 .footer {
   border-top: 1px solid var(--border);
   background: var(--card);
-  padding: 24px 20px 36px;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 12px;
+  padding: 36px 20px 30px;
 }
-
+.footer-inner {
+  max-width: var(--measure);
+  margin: 0 auto;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 40px;
+}
 .footer-motto {
+  margin: 8px 0 0;
   font-family: var(--font-mono);
   font-size: 11px;
-  letter-spacing: 0.08em;
+  line-height: 1.6;
+  color: var(--ink-faint);
+}
+.footer-cols {
+  display: grid;
+  grid-template-columns: repeat(4, auto);
+  gap: 44px;
+}
+.footer-col-title {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.14em;
   text-transform: uppercase;
   color: var(--ink-faint);
-  text-align: center;
+}
+.footer-cols ul {
+  list-style: none;
+  margin: 10px 0 0;
+  padding: 0;
+}
+.footer-cols li {
+  margin: 0 0 7px;
+}
+.footer-cols a {
+  font-size: 13px;
+  color: var(--ink-soft);
+  text-decoration: none;
+}
+.footer-cols a:hover {
+  color: var(--ink);
+}
+.footer-base {
+  max-width: var(--measure);
+  margin: 30px auto 0;
+  padding-top: 18px;
+  border-top: 1px solid var(--border);
+}
+@media (max-width: 760px) {
+  .footer-inner {
+    grid-template-columns: 1fr;
+    gap: 26px;
+  }
+  .footer-cols {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 22px 28px;
+  }
 }
 
 /* "POWERED BY [helius]" pill, as on orb — the logo is Helius's own artwork */
