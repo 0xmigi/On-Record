@@ -1,3 +1,13 @@
+---
+title: Where are the verified builds on Solana?
+date: 2026-10-02
+description: 1 in 40 live Solana programs has a verified build. Why that is, using on-chain data, and how to verify your builds reliably when you deploy and upgrade.
+topic: verification
+image: /verification/grid.png
+x: https://x.com/0xmigi/status/2106074745976603016
+note: figures from 28 Sep
+---
+
 In Solana program development there is an ability where you can verify your program builds. This means you generate a deterministic proof that the program on chain was built from your publicly committed code (a byte code replica). This is important because without it programs on chain can differ from what they claim to be or what an audit stamp may back.
 
 > Verified builds ensure that your deployed program matches exactly with your public source code, promoting transparency and security in the Solana ecosystem.

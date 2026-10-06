@@ -30,7 +30,7 @@ export function VerifyNote({ current, broke }: { current: Current; broke?: Broke
       <p className="vfy-note-head">
         <span className={`vfy vfy-${tone}`}>{HEAD[current.status]}</span>
         <span className="vfy-note-why">{current.diagnosis}</span>
-        <Link className="vfy-note-more" href="/verification">
+        <Link className="vfy-note-more" href="/writing/verified-builds">
           why it matters
         </Link>
       </p>
