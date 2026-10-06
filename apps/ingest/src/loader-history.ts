@@ -23,13 +23,9 @@ import {
 // instruction for the program, across 25 of the 150. Those are counted, not
 // stored.
 //
-// Shared by the backfill and, later, the incremental sweep: pass `until` to read
+// Shared by the backfill and, later, the incremental sweep: pass `from` to read
 // only what landed after the last walk.
 // ---------------------------------------------------------------------------
-
-/** Pages of 1000 signatures before a walk is called truncated. The calibration
- *  sample's largest history was 1,402. */
-const PAGE_CAP = 20;
 
 const LOADER_KEY = bs58.decode(LOADER_PROGRAM_ID);
 
@@ -169,16 +165,28 @@ export function loaderRows(
 export interface Walk {
   walk: typeof schema.loaderWalks.$inferInsert;
   rows: LoaderRow[];
-  /** getTransaction calls spent */
-  calls: number;
+  /** Helius credits spent */
+  credits: number;
+}
+
+/** Where a previous walk stopped, for reading only what landed since. */
+export interface WalkFrom {
+  signature: string;
+  slot: number;
 }
 
 /** Read one program's loader record. Never throws: a failed listing comes back
- *  as an 'error' walk so the coverage table says so. */
+ *  as an 'error' walk so the coverage table says so.
+ *
+ *  Two paths, chosen by the first page of signatures. A history that fits in
+ *  one page (all but a few dozen programs) is read one getTransaction at a time,
+ *  1 credit each. A longer one is read in bulk, oldest first: the first full
+ *  run spent 140k of its 270k credits on 7 programs whose ProgramData is passed
+ *  into every call, for 4 loader rows between them. */
 export async function walkLoaderHistory(
   network: Network,
   programId: string,
-  opts: { until?: string } = {},
+  opts: { from?: WalkFrom } = {},
 ): Promise<Walk> {
   const programData = programDataOf(programId);
   const walk: Walk["walk"] = {
@@ -197,30 +205,24 @@ export async function walkLoaderHistory(
     walkedAt: new Date(),
   };
 
-  const sigs: { signature: string; slot: number }[] = [];
+  let sigs: { signature: string; slot: number }[];
   try {
-    let before: string | undefined;
-    for (let page = 0; page < PAGE_CAP; page++) {
-      const batch = await getSignaturesForAddress(network, programData, { limit: 1000, before, until: opts.until });
-      sigs.push(...batch);
-      if (batch.length < 1000) break;
-      before = batch[batch.length - 1]!.signature;
-      if (page === PAGE_CAP - 1) walk.status = "truncated";
-    }
+    sigs = await getSignaturesForAddress(network, programData, { limit: 1000, until: opts.from?.signature });
   } catch (err) {
-    return { walk: { ...walk, status: "error", error: String(err).slice(0, 500) }, rows: [], calls: 0 };
+    return { walk: { ...walk, status: "error", error: String(err).slice(0, 500) }, rows: [], credits: 1 };
   }
+  if (sigs.length === 1000) return walkBulk(network, programId, programData, walk, opts.from);
 
   walk.signatures = sigs.length;
-  if (!sigs.length) return { walk: { ...walk, status: opts.until ? "complete" : "empty" }, rows: [], calls: 0 };
+  if (!sigs.length) return { walk: { ...walk, status: opts.from ? "complete" : "empty" }, rows: [], credits: 1 };
   walk.newestSignature = sigs[0]!.signature;
   walk.newestSlot = sigs[0]!.slot;
   walk.oldestSlot = sigs[sigs.length - 1]!.slot;
 
   const rows: LoaderRow[] = [];
-  let calls = 0;
+  let credits = 1;
   for (const { signature } of sigs) {
-    calls++;
+    credits++;
     let tx: ParsedTx | null = null;
     try {
       tx = await rpc<ParsedTx | null>(network, "getTransaction", [
@@ -239,8 +241,69 @@ export async function walkLoaderHistory(
     rows.push(...found);
   }
   walk.loaderRows = rows.length;
-  if (walk.unread > 0 && walk.status === "complete") walk.status = "partial";
-  return { walk, rows, calls };
+  if (walk.unread > 0) walk.status = "partial";
+  return { walk, rows, credits };
+}
+
+/** Helius getTransactionsForAddress: 100 full transactions per call, 10 credits
+ *  (Developer plan and up). */
+const BULK_PAGE = 100;
+const BULK_CREDITS = 10;
+/** Bulk calls per program before the walk is called truncated: 200,000
+ *  transactions, 20,000 credits. Oldest first, so a truncated bulk walk is
+ *  missing its NEWEST history, never its genesis. */
+const BULK_CAP = 2_000;
+
+async function walkBulk(
+  network: Network,
+  programId: string,
+  programData: string,
+  walk: Walk["walk"],
+  from: WalkFrom | undefined,
+): Promise<Walk> {
+  const rows: LoaderRow[] = [];
+  let credits = 1; // the signature page that sent us here
+  let token: string | null = null;
+  try {
+    for (let call = 0; ; call++) {
+      if (call === BULK_CAP) {
+        walk.status = "truncated";
+        break;
+      }
+      const page: { data: (ParsedTx & { transaction: { signatures: string[] } })[]; paginationToken: string | null } =
+        await rpc(network, "getTransactionsForAddress", [
+          programData,
+          {
+            transactionDetails: "full",
+            encoding: "jsonParsed",
+            maxSupportedTransactionVersion: MAX_TX_VERSION,
+            sortOrder: "asc",
+            limit: BULK_PAGE,
+            ...(token ? { paginationToken: token } : {}),
+            ...(from ? { filters: { slot: { gt: from.slot } } } : {}),
+          },
+        ]);
+      credits += BULK_CREDITS;
+      for (const tx of page.data) {
+        const signature = tx.transaction.signatures[0]!;
+        walk.signatures!++;
+        walk.oldestSlot ??= tx.slot;
+        walk.newestSlot = tx.slot;
+        walk.newestSignature = signature;
+        const found = loaderRows(network, programId, programData, signature, tx);
+        if (!found.length) walk.nonLoader!++;
+        rows.push(...found);
+      }
+      token = page.paginationToken;
+      if (!token || page.data.length === 0) break;
+    }
+  } catch (err) {
+    // a bulk walk that dies halfway keeps nothing: the rows would be real, but
+    // the coverage row could not say what was missed
+    return { walk: { ...walk, status: "error", error: String(err).slice(0, 500) }, rows: [], credits };
+  }
+  walk.loaderRows = rows.length;
+  return { walk, rows, credits };
 }
 
 /** Write a walk: rows are append-only (a re-read collapses onto the same key),

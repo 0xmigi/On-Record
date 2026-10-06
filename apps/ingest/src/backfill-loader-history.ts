@@ -8,14 +8,14 @@ import { storeWalk, walkLoaderHistory, type LoaderRow } from "./loader-history.j
 //
 // Walks every tracked program's ProgramData history into loader_txns, and what
 // each walk covered into loader_walks. Resumable: programs already walked are
-// skipped unless --refresh. Metered: stops starting new programs once --budget
-// getTransaction calls are spent (1 credit each on Helius; the calibration
-// sample put the whole mainnet corpus near 210k).
+// skipped unless --refresh, except truncated ones, which are re-walked. Metered:
+// stops starting new programs once --budget Helius credits are spent.
 //
 //   ./node_modules/.bin/tsx src/backfill-loader-history.ts [flags]
 //     --network mainnet|devnet   default mainnet
 //     --sample N                 N random programs instead of all
-//     --budget N                 getTransaction calls to spend, default 300000
+//     --programs a,b,c           exactly these programs (implies --refresh)
+//     --budget N                 Helius credits to spend, default 300000
 //     --concurrency N            programs walked at once, default 8
 //     --dry                      read and summarise, write nothing
 //     --refresh                  re-walk programs already walked
@@ -31,6 +31,7 @@ const has = (name: string) => process.argv.includes(`--${name}`);
 
 const network = (flag("network") ?? "mainnet") as Network;
 const sample = flag("sample") ? Number(flag("sample")) : null;
+const only = flag("programs")?.split(",").filter(Boolean) ?? null;
 const budget = Number(flag("budget") ?? 300_000);
 const concurrency = Number(flag("concurrency") ?? 8);
 const dry = has("dry");
@@ -43,9 +44,9 @@ async function run(): Promise<void> {
 
   const skip = refresh || dry
     ? sql``
-    : sql`and not exists (select 1 from loader_walks w where w.network = s.network and w.program_id = s.id and w.status <> 'error')`;
+    : sql`and not exists (select 1 from loader_walks w where w.network = s.network and w.program_id = s.id and w.status not in ('error', 'truncated'))`;
   const order = sample ? sql`order by random() limit ${sample}` : sql`order by s.id`;
-  const programs = (await db.execute(sql`
+  const programs = only ?? (await db.execute(sql`
     select s.id from subjects s
     where s.kind = 'program' and s.network = ${network} ${skip}
     ${order}
@@ -72,7 +73,7 @@ async function run(): Promise<void> {
       }
       const programId = programs[next++]!;
       const w = await walkLoaderHistory(network, programId);
-      spent += w.calls;
+      spent += w.credits;
       if (!dry) {
         try {
           await storeWalk(w);
@@ -109,7 +110,7 @@ async function run(): Promise<void> {
     walked: done,
     of: programs.length,
     stoppedOnBudget,
-    getTransactionCalls: spent,
+    credits: spent,
     status,
     signatures,
     nonLoader,
