@@ -405,3 +405,70 @@ export const botReplies = pgTable(
     index("bot_replies_status_idx").on(t.status, t.createdAt),
   ],
 );
+
+// ---------------------------------------------------------------------------
+// alert_subscriptions — verification alerts, signed up for by wallet.
+//
+// No accounts. A developer gives an address (an upgrade authority, or the
+// Squads multisig behind one) and somewhere to be pinged. Every mainnet program
+// that address controls is watched, including ones it deploys later, so there
+// is no program list to keep up to date. `manageToken` is the capability that
+// unsubscribes, like a saved list's key.
+//
+// A subscription is live once `confirmedAt` is set: a webhook confirms by
+// accepting a test ping; email will confirm by link, so nobody can point
+// alerts at someone else's inbox.
+// ---------------------------------------------------------------------------
+export const alertSubscriptions = pgTable(
+  "alert_subscriptions",
+  {
+    id: text("id").primaryKey(),
+    /** the wallet as entered: an upgrade authority or a Squads multisig */
+    address: text("address").notNull(),
+    /** 'webhook' | 'email' | 'telegram' */
+    channel: text("channel").notNull(),
+    /** a webhook URL, an email address or a Telegram chat id */
+    target: text("target").notNull(),
+    confirmToken: text("confirm_token"),
+    confirmedAt: timestamp("confirmed_at", { withTimezone: true }),
+    manageToken: text("manage_token").notNull(),
+    revokedAt: timestamp("revoked_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (t) => [
+    index("alert_subs_address_idx").on(t.address),
+    uniqueIndex("alert_subs_manage_idx").on(t.manageToken),
+  ],
+);
+
+// ---------------------------------------------------------------------------
+// alert_deliveries — every verdict the alert sweep reached, sent or not.
+//
+// One row per (subscription, program, version, kind). The unique index is what
+// makes the sweep safe to re-run: a version is judged once, and a ping is sent
+// at most once. kind:
+//   'unverified'  the version was still unverified after the grace window — pinged
+//   'ok'          it was verified in time — recorded, nothing sent
+//   'restored'    a pinged version became verified later — pinged
+// ---------------------------------------------------------------------------
+export const alertDeliveries = pgTable(
+  "alert_deliveries",
+  {
+    id: text("id").primaryKey(),
+    subscriptionId: text("subscription_id").notNull(),
+    programId: text("program_id").notNull(),
+    /** the deploy/upgrade slot the verdict is about */
+    slot: bigint("slot", { mode: "number" }).notNull(),
+    kind: text("kind").notNull(),
+    /** 'sent' | 'failed' | 'silent' */
+    status: text("status").notNull(),
+    /** the diagnosis the ping carried, verbatim */
+    detail: text("detail"),
+    error: text("error"),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (t) => [
+    uniqueIndex("alert_deliveries_once_idx").on(t.subscriptionId, t.programId, t.slot, t.kind),
+    index("alert_deliveries_program_idx").on(t.programId, t.slot),
+  ],
+);

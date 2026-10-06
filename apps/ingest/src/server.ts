@@ -3,6 +3,7 @@ import { env, logger } from "@onrecord/core";
 import { registerWebhookRoutes } from "./routes/webhook.js";
 import { registerPublicRoutes } from "./routes/public.js";
 import { registerAdminRoutes } from "./routes/admin.js";
+import { registerAlertRoutes } from "./routes/alerts.js";
 
 // Build the API with every route registered but not yet listening. Shared by
 // the standalone API entry (below) and the single-process live entry (live.ts),
@@ -31,6 +32,7 @@ export async function createApp(): Promise<FastifyInstance> {
 
   registerWebhookRoutes(app);
   registerPublicRoutes(app);
+  registerAlertRoutes(app);
   await registerAdminRoutes(app);
   return app;
 }

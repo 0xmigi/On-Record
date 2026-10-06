@@ -10,6 +10,7 @@ import { sweepVerification, sweepVerificationHistory, sweepVerifyPending } from 
 import { sweepMentions } from "./x-bot.js";
 import { syncPmpSecurity } from "./pmp-security-sync.js";
 import { sweepSourceFramework } from "./source-framework.js";
+import { sweepAlerts } from "./alerts.js";
 
 // ---------------------------------------------------------------------------
 // Scheduled work (SPEC §10): TVL refresh (6h), a live funnel snapshot (15m),
@@ -78,6 +79,10 @@ export function startCron(): void {
   every(Number(process.env.VERIFY_FAST_INTERVAL_MS ?? 10 * 60_000), "verify-fast-path", async () => {
     await sweepVerifyPending("mainnet");
   });
+
+  // verification alerts: judge each watched program's newest deploy or upgrade
+  // once its grace window has passed, and ping when it isn't verified (alerts.ts)
+  every(Number(process.env.ALERT_SWEEP_INTERVAL_MS ?? 2 * 60_000), "alert-sweep", sweepAlerts);
 }
 
 /** Run `fn` every `ms`, never concurrently with itself.
