@@ -76,11 +76,13 @@ export function Footer() {
         </nav>
       </div>
       <div className="footer-base">
-        <a className="footer-credit" href="https://www.helius.dev" target="_blank" rel="noopener noreferrer">
-          Powered by
-          {/* the real mark + wordmark from the Helius brand kit, not ours */}
-          <img className="footer-helius" src="/brand/helius-horizontal.svg" alt="Helius" width={72} height={15} />
-        </a>
+        <div className="footer-base-rule">
+          <a className="footer-credit" href="https://www.helius.dev" target="_blank" rel="noopener noreferrer">
+            Powered by
+            {/* the real mark + wordmark from the Helius brand kit, not ours */}
+            <img className="footer-helius" src="/brand/helius-horizontal.svg" alt="Helius" width={72} height={15} />
+          </a>
+        </div>
       </div>
     </footer>
   );

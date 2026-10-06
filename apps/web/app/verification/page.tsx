@@ -21,25 +21,37 @@ export const metadata: Metadata = {
 export default function VerificationPage() {
   const related = articlesFor("verification");
   return (
-    <div className="essay">
-      <h1>Verification alerts</h1>
+    <div>
+      <h1 className="funnel-title">Verification alerts</h1>
       <p className="tool-lede">
         Paste your deploy address. Get alerted when an upgrade breaks your verification.
       </p>
-      {/* a fixed-height stage, so the program list growing never moves what's below */}
-      <section className="tool-main">
-        <AlertSignup />
-        <p className="essay-meta">
-          On the radar: <Link href="/?type=upgrade&window=all&verified=lost">lost verification</Link> ·{" "}
-          <Link href="/?type=upgrade&window=all&verified=1">verified</Link>
-        </p>
-      </section>
-      {related.length ? (
-        <section className="related">
-          <h2 className="related-title">Writing on verification</h2>
-          <ArticleList articles={related} />
+      {/* the tool in the main column; reading and radar links beside it, so the
+          program list can grow without moving anything */}
+      <div className="tool-layout">
+        <section className="tool-main">
+          <AlertSignup />
         </section>
-      ) : null}
+        <aside className="tool-aside">
+          <section>
+            <h2 className="related-title">On the radar</h2>
+            <ul className="tool-aside-links">
+              <li>
+                <Link href="/?type=upgrade&window=all&verified=lost">Lost verification</Link>
+              </li>
+              <li>
+                <Link href="/?type=upgrade&window=all&verified=1">Verified programs</Link>
+              </li>
+            </ul>
+          </section>
+          {related.length ? (
+            <section>
+              <h2 className="related-title">Writing on verification</h2>
+              <ArticleList articles={related} />
+            </section>
+          ) : null}
+        </aside>
+      </div>
     </div>
   );
 }
