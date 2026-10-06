@@ -472,3 +472,94 @@ export const alertDeliveries = pgTable(
     index("alert_deliveries_program_idx").on(t.programId, t.slot),
   ],
 );
+
+// ---------------------------------------------------------------------------
+// loader_txns — the raw loader record: one row per upgradeable-loader
+// instruction that acted on a program's ProgramData, read back from that
+// account's signature history (loader-history.ts). Research data for the
+// deployer-behavior questions; nothing on the product reads it yet.
+//
+// Separate from `events` on purpose. `events` drives the timeline, the funnel
+// and the pipeline, and labels every ProgramData signature an upgrade, including
+// SetAuthority and the 12% of signatures that only reference the account
+// (programs that check their own upgrade authority). Here every row is a
+// decoded instruction with the signer, fee payer and authority before/after.
+//
+// Append-only and raw. Failed transactions are kept (failed = true) because a
+// failed upgrade attempt is behaviour too; analysis filters them out.
+// ---------------------------------------------------------------------------
+export const loaderTxns = pgTable(
+  "loader_txns",
+  {
+    network: text("network").notNull(),
+    signature: text("signature").notNull(),
+    programId: text("program_id").notNull(),
+    /** position of the instruction: top-level index, and the index inside its
+     *  inner-instruction group (-1 when it is top-level) */
+    outerIndex: integer("outer_index").notNull(),
+    innerIndex: integer("inner_index").notNull(),
+    programDataAddress: text("program_data_address").notNull(),
+    /** deploy | upgrade | set_authority | set_authority_checked | close |
+     *  extend | extend_checked | migrate | unknown */
+    kind: text("kind").notNull(),
+    slot: bigint("slot", { mode: "number" }).notNull(),
+    blockTime: timestamp("block_time", { withTimezone: true }),
+    failed: boolean("failed").notNull(),
+    /** accountKeys[0] — who paid the fee */
+    feePayer: text("fee_payer").notNull(),
+    /** every signer of the transaction */
+    signers: text("signers").array().notNull(),
+    /** the upgrade authority this instruction was signed under */
+    authorityBefore: text("authority_before"),
+    /** the upgrade authority after it. Null after a set_authority means the
+     *  program was made immutable; null after a close means it is gone. */
+    authorityAfter: text("authority_after"),
+    /** the account that paid rent (deploy, extend) */
+    payer: text("payer"),
+    buffer: text("buffer"),
+    /** the program that invoked the loader by CPI (a Squads vault upgrade, a
+     *  governance program), or null for a top-level instruction */
+    invokedBy: text("invoked_by"),
+    /** 'legacy' | '0' | '1' */
+    txVersion: text("tx_version").notNull(),
+    /** the instruction as the RPC parsed it, verbatim */
+    info: jsonb("info").$type<Record<string, unknown>>().notNull(),
+    fetchedAt: timestamp("fetched_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (t) => [
+    primaryKey({ name: "loader_txns_pk", columns: [t.signature, t.programId, t.outerIndex, t.innerIndex] }),
+    index("loader_txns_program_idx").on(t.network, t.programId, t.slot),
+    index("loader_txns_kind_idx").on(t.network, t.kind),
+    index("loader_txns_fee_payer_idx").on(t.feePayer),
+    index("loader_txns_authority_idx").on(t.authorityAfter),
+  ],
+);
+
+// ---------------------------------------------------------------------------
+// loader_walks — what the loader record covers, one row per program walked.
+// Every finding states its coverage ("measured on Y of Z"), and this is where
+// Y comes from: a program missing here was never read, a truncated walk's
+// first events are unknown rather than absent, and `nonLoader` counts the
+// ProgramData signatures that carried no loader instruction for it.
+// ---------------------------------------------------------------------------
+export const loaderWalks = pgTable("loader_walks", {
+  network: text("network").notNull(),
+  programId: text("program_id").notNull(),
+  programDataAddress: text("program_data_address").notNull(),
+  /** 'complete' | 'partial' (some transactions unreadable) | 'truncated'
+   *  (page cap hit, oldest history unread) | 'empty' | 'error' */
+  status: text("status").notNull(),
+  /** signatures on the ProgramData account we listed */
+  signatures: integer("signatures").notNull(),
+  /** of those, transactions with no loader instruction for this program */
+  nonLoader: integer("non_loader").notNull(),
+  /** getTransaction returned null or kept failing — not read */
+  unread: integer("unread").notNull(),
+  loaderRows: integer("loader_rows").notNull(),
+  /** newest signature walked: the `until` for the next incremental read */
+  newestSignature: text("newest_signature"),
+  newestSlot: bigint("newest_slot", { mode: "number" }),
+  oldestSlot: bigint("oldest_slot", { mode: "number" }),
+  error: text("error"),
+  walkedAt: timestamp("walked_at", { withTimezone: true }).defaultNow().notNull(),
+}, (t) => [primaryKey({ name: "loader_walks_pk", columns: [t.network, t.programId] })]);
