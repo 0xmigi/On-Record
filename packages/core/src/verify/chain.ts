@@ -16,6 +16,15 @@ export const OTTER_SIGNER = "9VWiUUhgNoRwTH5NVehYJEDwcotwYX3VgW4MChiHPAqU";
 export const MAINNET_GENESIS = "5eykt4UsFv8P8NJdTREpY1vzqKqZKvdpKuc147dw2N9d";
 export const PUBLIC_MAINNET_RPC = "https://api.mainnet-beta.solana.com";
 
+/** `maxSupportedTransactionVersion` for every getTransaction. Transaction v1
+ *  (SIMD-0385) is live on mainnet from slot 447,120,000 (15 Sep 2026) and was
+ *  already a fifth of mainnet blocks by October. Asking with 0 gets error
+ *  -32015 for each one, and the callers here swallow errors, so v1
+ *  transactions were dropped without a trace. It must be the integer 1: a
+ *  string fails validation on every call. Lives here because verify/ takes no
+ *  dependencies. */
+export const MAX_TX_VERSION = 1;
+
 const LOADER_NAMES: Record<string, string> = {
   BPFLoader1111111111111111111111111111111111: "the original BPF loader",
   BPFLoader2111111111111111111111111111111111: "BPF loader v2",

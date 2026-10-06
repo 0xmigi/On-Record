@@ -1,6 +1,6 @@
 import bs58 from "bs58";
 import { and, eq, sql } from "drizzle-orm";
-import { db, schema, logger, rpc, getSignaturesForAddress, type Network } from "@onrecord/core";
+import { db, schema, logger, rpc, getSignaturesForAddress, MAX_TX_VERSION, type Network } from "@onrecord/core";
 
 // ---------------------------------------------------------------------------
 // Compute per transaction — one implementation, two callers.
@@ -26,6 +26,14 @@ import { db, schema, logger, rpc, getSignaturesForAddress, type Network } from "
 /** ComputeBudget program — where a transaction declares what it wants. */
 const COMPUTE_BUDGET = "ComputeBudget111111111111111111111111111111";
 
+/** The part of a getTransaction (jsonParsed) message this reads.
+ *  transactionConfig is present only on v1 transactions; fields it doesn't set
+ *  come back null. */
+interface TxMessage {
+  instructions?: { programId?: string; data?: string }[];
+  transactionConfig?: { computeUnitLimit?: number | null } | null;
+}
+
 /**
  * The compute a transaction ASKED FOR, from its SetComputeUnitLimit
  * instruction (tag 0x02, then a u32 little-endian).
@@ -35,11 +43,21 @@ const COMPUTE_BUDGET = "ComputeBudget111111111111111111111111111111";
  * asks for 1.4M and uses 50k would pay for 1.4M. Consumed is what the work
  * cost; requested is what it will cost to ask.
  *
+ * A v1 transaction (SIMD-0385) states its budget in the message's
+ * transactionConfig instead, and a ComputeBudget instruction there is a no-op,
+ * so the config is the only place to read it. Scanning instructions on v1 finds
+ * nothing and would count every one as setting no limit.
+ *
  * Null when the transaction sets no limit — it then runs on the per-instruction
- * default, which is not a number the transaction chose.
+ * default, which is not a number the transaction chose. (v1 has no default: an
+ * unset limit is zero, and such a transaction can't run anything.)
  */
-function requestedFrom(instructions: { programId?: string; data?: string }[] | undefined): number | null {
-  for (const i of instructions ?? []) {
+function requestedFrom(message: TxMessage | undefined): number | null {
+  if (message?.transactionConfig) {
+    const limit = message.transactionConfig.computeUnitLimit;
+    return typeof limit === "number" ? limit : null;
+  }
+  for (const i of message?.instructions ?? []) {
     if (i.programId !== COMPUTE_BUDGET || typeof i.data !== "string") continue;
     try {
       const b = Buffer.from(bs58.decode(i.data));
@@ -211,15 +229,15 @@ export async function computeFromSignatures(
           err?: unknown;
           logMessages?: string[] | null;
         } | null;
-        transaction?: { message?: { instructions?: { programId?: string; data?: string }[] } };
+        transaction?: { message?: TxMessage };
       }>(network, "getTransaction", [
         signature,
-        { maxSupportedTransactionVersion: 0, encoding: "jsonParsed", commitment: "confirmed" },
+        { maxSupportedTransactionVersion: MAX_TX_VERSION, encoding: "jsonParsed", commitment: "confirmed" },
       ]);
       const cu = tx?.meta?.computeUnitsConsumed;
       if (typeof cu === "number") cus.push(cu);
       if (tx?.meta?.err) failed++;
-      const req = requestedFrom(tx?.transaction?.message?.instructions);
+      const req = requestedFrom(tx?.transaction?.message);
       if (req === null) noLimit++;
       else {
         reqs.push(req);

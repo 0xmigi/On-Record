@@ -1,6 +1,7 @@
 import { decompress } from "fzstd";
 import { env } from "./config.js";
 import type { Network } from "./types.js";
+import { MAX_TX_VERSION } from "./verify/chain.js";
 
 // ---------------------------------------------------------------------------
 // Thin Helius RPC client. Everything the pipeline reads from chain goes
@@ -163,7 +164,7 @@ export async function accountExists(network: Network, address: string): Promise<
 export async function transactionExists(network: Network, signature: string): Promise<boolean> {
   const result = await rpc<unknown>(network, "getTransaction", [
     signature,
-    { maxSupportedTransactionVersion: 0, encoding: "json", commitment: "confirmed" },
+    { maxSupportedTransactionVersion: MAX_TX_VERSION, encoding: "json", commitment: "confirmed" },
   ]);
   return result !== null;
 }
@@ -567,7 +568,7 @@ export async function getFundingTrail(
       meta: { preBalances: number[]; postBalances: number[] } | null;
     } | null>(network, "getTransaction", [
       oldest.signature,
-      { maxSupportedTransactionVersion: 0, encoding: "json", commitment: "confirmed" },
+      { maxSupportedTransactionVersion: MAX_TX_VERSION, encoding: "json", commitment: "confirmed" },
     ]);
     if (!tx?.meta) return NO_TRAIL;
     const keys = tx.transaction.message.accountKeys;

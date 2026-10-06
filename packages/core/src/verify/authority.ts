@@ -1,4 +1,4 @@
-import { b58decode, b58encode, type Rpc } from "./chain.js";
+import { b58decode, b58encode, MAX_TX_VERSION, type Rpc } from "./chain.js";
 import { findProgramAddress, isOnCurve } from "./curve.js";
 
 // ---------------------------------------------------------------------------
@@ -65,7 +65,7 @@ async function scan(rpc: Rpc, address: string, authority: string, tried: Set<str
   for (const { signature } of sigs) {
     const tx = await rpc<RpcTx | null>("getTransaction", [
       signature,
-      { encoding: "json", maxSupportedTransactionVersion: 0 },
+      { encoding: "json", maxSupportedTransactionVersion: MAX_TX_VERSION },
     ]).catch(() => null);
     if (!tx) continue;
     const keys = [

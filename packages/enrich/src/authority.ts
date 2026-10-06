@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { getAccountBytes, isOnCurve, rpc, type AuthorityClass, type Network } from "@onrecord/core";
+import { getAccountBytes, isOnCurve, MAX_TX_VERSION, rpc, type AuthorityClass, type Network } from "@onrecord/core";
 import bs58 from "bs58";
 
 // ---------------------------------------------------------------------------
@@ -73,7 +73,7 @@ export async function inspectSquadsAuthority(
       transaction: { message: { accountKeys: string[] } };
     } | null>(network, "getTransaction", [
       deployTxSignature,
-      { maxSupportedTransactionVersion: 0, encoding: "json", commitment: "confirmed" },
+      { maxSupportedTransactionVersion: MAX_TX_VERSION, encoding: "json", commitment: "confirmed" },
     ]);
     const keys = tx?.transaction.message.accountKeys ?? [];
     const hasV4 = keys.includes(SQUADS_V4);

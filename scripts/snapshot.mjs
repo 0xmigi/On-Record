@@ -51,7 +51,7 @@ async function traceFunder(authority) {
     }
     if (!oldest) return { funder: null, label: null, amountSol: null };
     const tx = await withRetry(() =>
-      rpc("getTransaction", [oldest.signature, { maxSupportedTransactionVersion: 0, encoding: "jsonParsed", commitment: "confirmed" }]));
+      rpc("getTransaction", [oldest.signature, { maxSupportedTransactionVersion: 1, encoding: "jsonParsed", commitment: "confirmed" }]));
     if (!tx?.meta) return { funder: null, label: null, amountSol: null };
     const keys = tx.transaction.message.accountKeys.map((k) => (typeof k === "string" ? k : k.pubkey));
     const authIdx = keys.indexOf(authority);
