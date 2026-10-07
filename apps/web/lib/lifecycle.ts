@@ -3,9 +3,10 @@ import type { ApiProgram } from "@/lib/api";
 // ---------------------------------------------------------------------------
 // Lifecycle / churn — the tail of the bot pattern. A program that gets deployed,
 // spammed with failed txns, then closed (rent reclaimed) within minutes, over
-// and over under fresh ids. `closedAt` is a detection time (we see the
-// ProgramData is gone, not the close tx), so the lifespan is an upper bound —
-// "closed within N of deploy", never a false-precise timestamp.
+// and over under fresh ids. `closedAt` is the close transaction's block time
+// when the loader record has it, else a detection time (we saw the ProgramData
+// was gone, not the close tx). Either way the lifespan is an upper bound —
+// "closed within N of deploy", never earlier than the real close.
 // ---------------------------------------------------------------------------
 
 export interface Lifecycle {

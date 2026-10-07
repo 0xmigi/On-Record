@@ -43,3 +43,12 @@ async function flush(): Promise<void> {
     }
   }
 }
+
+/** Send whatever is queued now. A one-shot script calls this before it exits,
+ *  or the batch timer dies with the process and nothing is sent. */
+export async function flushDossiers(): Promise<number> {
+  if (timer) clearTimeout(timer);
+  const n = pending.size;
+  await flush();
+  return n;
+}
