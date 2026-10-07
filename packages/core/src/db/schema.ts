@@ -23,7 +23,7 @@ export const events = pgTable(
   {
     id: text("id").primaryKey(),
     network: text("network").notNull(), // 'mainnet' | 'devnet'
-    type: text("type").notNull(), // 'deploy' | 'upgrade' | 'set_authority' | 'close'
+    type: text("type").notNull(), // 'deploy' | 'upgrade' | 'set_authority' | 'close' | 'extend'
     signature: text("signature").notNull(),
     instructionIndex: integer("instruction_index").notNull(),
     slot: bigint("slot", { mode: "number" }).notNull(),

@@ -13,7 +13,10 @@ import type { PmpSecurityTxt, SecurityTxtSource } from "./pmp-security.js";
 
 export type Network = "mainnet" | "devnet";
 
-export type ChainEventType = "deploy" | "upgrade" | "set_authority" | "close";
+/** "extend" is never a loader instruction we ingest: it is a poller capture
+ *  whose ProgramData header slot moved because the account was extended, not
+ *  because code changed (identifyStage in apps/ingest/src/pipeline.ts). */
+export type ChainEventType = "deploy" | "upgrade" | "set_authority" | "close" | "extend";
 
 export type AuthorityClass = "none" | "squads" | "program" | "hot_wallet";
 

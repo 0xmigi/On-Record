@@ -369,10 +369,12 @@ export function registerPublicRoutes(app: FastifyInstance): void {
     const row = rows[0];
     if (!row) return reply.code(404).send({ error: "program not found" });
 
+    // an 'extend' row is the poller's sighting of an extend, not a code change:
+    // kept for the poller's bookkeeping, left off the timeline
     const events = await db
       .select()
       .from(schema.events)
-      .where(eq(schema.events.programId, row.id))
+      .where(and(eq(schema.events.programId, row.id), ne(schema.events.type, "extend")))
       .orderBy(desc(schema.events.slot))
       .limit(50);
 
@@ -901,7 +903,8 @@ export function registerPublicRoutes(app: FastifyInstance): void {
     "/api/raw/events",
     async (req): Promise<ApiCursorPage<ApiRawEvent>> => {
       const limit = parseLimit(req.query.limit, 50, 200);
-      const conditions = [];
+      // loader events: an 'extend' capture is bookkeeping (see /api/programs/:id)
+      const conditions = [ne(schema.events.type, "extend")];
       if (req.query.network === "mainnet" || req.query.network === "devnet") {
         conditions.push(eq(schema.events.network, req.query.network));
       }
@@ -909,7 +912,7 @@ export function registerPublicRoutes(app: FastifyInstance): void {
       const rows = await db
         .select()
         .from(schema.events)
-        .where(conditions.length ? and(...conditions) : undefined)
+        .where(and(...conditions))
         .orderBy(desc(schema.events.id))
         .limit(limit + 1);
       const page = rows.slice(0, limit);

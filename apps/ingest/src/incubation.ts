@@ -1,4 +1,4 @@
-import { and, asc, eq, sql } from "drizzle-orm";
+import { and, asc, eq, ne, sql } from "drizzle-orm";
 import bs58 from "bs58";
 import {
   db,
@@ -58,7 +58,14 @@ async function devnetTimesFromRecord(programId: string): Promise<number[]> {
   const rows = await db
     .select({ slot: schema.events.slot, blockTime: schema.events.blockTime })
     .from(schema.events)
-    .where(and(eq(schema.events.programId, programId), eq(schema.events.network, "devnet")))
+    // an extend is not an iteration: it moves the header slot, not the code
+    .where(
+      and(
+        eq(schema.events.programId, programId),
+        eq(schema.events.network, "devnet"),
+        ne(schema.events.type, "extend"),
+      ),
+    )
     .orderBy(asc(schema.events.slot));
 
   const bySlot = new Map<number, number>();

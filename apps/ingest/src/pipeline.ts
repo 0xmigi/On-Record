@@ -1,4 +1,5 @@
-import { and, desc, eq, gte, isNotNull, sql } from "drizzle-orm";
+import { and, desc, eq, gte, isNotNull, ne, sql } from "drizzle-orm";
+import type { AnyPgColumn } from "drizzle-orm/pg-core";
 import {
   db,
   schema,
@@ -49,8 +50,8 @@ import { breakSummary, stampVerified } from "./verification-stamps.js";
 import { tryExtractReferences } from "./refs.js";
 import { linkIncubation } from "./incubation.js";
 import { recordCounterpart } from "./counterpart.js";
-import { recordGenesisDeploy } from "./timeline.js";
-import { loaderRecord } from "./loader-history.js";
+import { isSyntheticSignature, recordGenesisDeploy } from "./timeline.js";
+import { extendOnlyAt, loaderRecord } from "./loader-history.js";
 
 /** Bulk calls the live path may spend on one program's first walk: 5,000
  *  transactions, 500 credits. A ProgramData that busy is read oldest first and
@@ -251,14 +252,63 @@ export async function identifyStage(eventId: string): Promise<void> {
   const entityByAuthority =
     !entity && event.authorityAfter ? await findEntityForAuthority(event.authorityAfter) : null;
 
+  const subjectRows = programId
+    ? await db.select().from(schema.subjects).where(eq(schema.subjects.id, programId))
+    : [];
+  const prev = subjectRows[0];
+  const newHash = enrichment.fingerprint?.sha256 ?? null;
+
+  // The loader record, brought up to date: deploy vs upgrade, the upgrade
+  // count, and whether this capture changed any code at all.
+  const rec =
+    event.programDataAddress && programId
+      ? await loaderRecord(network, programId, {
+          authority: event.authorityAfter,
+          maxBulkCalls: LIVE_BULK_CALLS,
+        })
+      : null;
+
+  // An extend, not an upgrade. The poller calls a known program's capture an
+  // upgrade whenever the ProgramData header's slot moves, and ExtendProgram
+  // moves it too without touching the code: 2,167 mainnet "upgrades" were
+  // extends (2026-10-07). Retyped 'extend', the capture stays on record as the
+  // poller's sighting but doesn't date the program (lastEventAt comes from the
+  // loader record's last code change instead), bust the verification cache,
+  // or reach anything that reads deploys and upgrades (alerts, the timeline,
+  // the volume chart). Only where the loader record has read that slot.
+  //
+  // A program first seen on this cluster at an extend is still new to the
+  // radar: if it would be graded as a deploy (no upgrade before it, so it
+  // isn't relabelled below) it stays one. Otherwise a re-sighting must have
+  // the bytes it had before, or something besides the extend changed.
+  const firstOnCluster = prev?.network !== network;
+  const graded =
+    event.type === "deploy" &&
+    !(rec && rec.upgrades > 0 && rec.genesis && rec.genesis.firstDeploySlot < event.slot);
+  // (an event already typed 'extend' was retyped by repair-extend-captures.ts
+  // before reaching this stage)
+  const extendOnly =
+    event.type === "extend" ||
+    (rec !== null &&
+      (event.type === "upgrade" || event.type === "deploy") &&
+      isSyntheticSignature(event.signature) &&
+      !(firstOnCluster && graded) &&
+      (firstOnCluster || !newHash || !prev?.sha256 || newHash === prev.sha256) &&
+      !rec.incomplete &&
+      rec.newestSlot != null &&
+      event.slot <= rec.newestSlot &&
+      (await extendOnlyAt(network, programId!, event.slot)));
+  if (extendOnly && event.type !== "extend") {
+    await db.update(schema.events).set({ type: "extend" }).where(eq(schema.events.id, eventId));
+  }
+
   // verified builds are a mainnet registry concept — skip the API call on devnet
   const verification =
     programId && network !== "devnet"
-      ? await checkVerification(programId, { bustCache: event.type === "upgrade" })
+      ? await checkVerification(programId, { bustCache: event.type === "upgrade" && !extendOnly })
       : { verified: false, repoUrl: null, commit: null, hash: null };
   // OtterSec can still say "verified" in the moments after an upgrade, about
   // the bytes it replaced; its build hash says which bytes it means
-  const newHash = enrichment.fingerprint?.sha256 ?? null;
   const verifiedNow =
     verification.verified && (!verification.hash || !newHash || verification.hash === newHash);
 
@@ -273,16 +323,12 @@ export async function identifyStage(eventId: string): Promise<void> {
     }
   }
 
-  const subjectRows = programId
-    ? await db.select().from(schema.subjects).where(eq(schema.subjects.id, programId))
-    : [];
-  const previousCommit = subjectRows[0]?.repoCommit ?? null;
+  const previousCommit = prev?.repoCommit ?? null;
 
   // Did this upgrade break a verification? The subject row still describes
   // the version before this one: verified, with its bytes' hash. Only the
   // program's newest event can break anything, so a backfill replaying an old
   // upgrade stays quiet.
-  const prev = subjectRows[0];
   if (
     programId &&
     network === "mainnet" &&
@@ -305,11 +351,7 @@ export async function identifyStage(eventId: string): Promise<void> {
   // in to check the admin, and counting them called 959 never-upgraded mainnet
   // programs upgraded (2026-10-06).
   let multisig = null;
-  if (event.programDataAddress && programId) {
-    const rec = await loaderRecord(network, programId, {
-      authority: event.authorityAfter,
-      maxBulkCalls: LIVE_BULK_CALLS,
-    });
+  if (rec && event.programDataAddress && programId) {
     const upgradeCount = rec.upgrades;
     // a walk that stopped short and saw no upgrade is missing evidence, not
     // evidence of a new program: it keeps what the subject already said
@@ -328,7 +370,7 @@ export async function identifyStage(eventId: string): Promise<void> {
     // capture is an upgrade: relabel it and seed a genesis "deploy" row from the
     // first successful deploy, so the dossier shows first + last (deploy → upgrade).
     if (upgradeCount > 0 && rec.genesis && rec.genesis.firstDeploySlot < event.slot) {
-      if (event.type === "deploy") {
+      if (event.type === "deploy" && !extendOnly) {
         await db
           .update(schema.events)
           .set({ type: "upgrade" })
@@ -364,7 +406,9 @@ export async function identifyStage(eventId: string): Promise<void> {
   };
 
   await saveEnrichment(eventId, enrichment, "identified");
-  if (programId) await upsertSubject(event, enrichment);
+  if (programId) {
+    await upsertSubject(event, enrichment, extendOnly ? { lastCodeChangeAt: rec?.lastCodeChangeAt ?? null } : {});
+  }
 
   await enqueue("classify", { eventId });
   log.info({ eventId, ms: Date.now() - start, entity: enrichment.identity.entityName, outcome: "ok" }, "done");
@@ -398,7 +442,14 @@ async function recordVerificationBreak(
   };
 }
 
-async function upsertSubject(event: EventRow, enrichment: EventEnrichment): Promise<void> {
+/** `lastCodeChangeAt` is passed for an event that changed no code (an extend):
+ *  the subject is dated by the loader record's last deploy or upgrade instead,
+ *  else keeps the date it had, so an extend never floats it up the radar. */
+async function upsertSubject(
+  event: EventRow,
+  enrichment: EventEnrichment,
+  opts: { lastCodeChangeAt?: Date | null } = {},
+): Promise<void> {
   // Cross-cluster guard: subjects are keyed by program id alone, and same-
   // keypair reuse across clusters is exactly what the lineage features track —
   // so a devnet echo of a program already tracked on mainnet must not clobber
@@ -426,6 +477,7 @@ async function upsertSubject(event: EventRow, enrichment: EventEnrichment): Prom
   // float it to the top of the radar. Null keeps it out of every dated stream
   // while leaving it searchable and in the lineage corpus.
   const when = enrichment.undated ? null : (event.blockTime ?? new Date());
+  const extend = opts.lastCodeChangeAt !== undefined;
   const values = {
     kind: "program" as const,
     network: event.network,
@@ -465,7 +517,7 @@ async function upsertSubject(event: EventRow, enrichment: EventEnrichment): Prom
       ...(id?.repoLink ? { repoLink: id.repoLink } : {}),
     },
     tvl: id?.tvl ?? null,
-    lastEventAt: when,
+    lastEventAt: extend ? (opts.lastCodeChangeAt ?? when) : when,
     // the fork signal: crate name + own .rs tree, recovered from panic paths.
     // TLSH sees byte similarity; this sees shared source (sourcetree.ts).
     crate: sourceTree.crate,
@@ -494,6 +546,11 @@ async function upsertSubject(event: EventRow, enrichment: EventEnrichment): Prom
       target: schema.subjects.id,
       set: {
         ...values,
+        ...(extend
+          ? {
+              lastEventAt: sql`coalesce(${opts.lastCodeChangeAt ?? null}::timestamptz, ${schema.subjects.lastEventAt}, ${when}::timestamptz)`,
+            }
+          : {}),
         // never un-name a subject the operator or registry already named
         name: sql`coalesce(${schema.subjects.name}, ${values.name})`,
         // …and keep that preserved name searchable: the rebuilt corpus only
@@ -581,7 +638,11 @@ export async function classifyStage(eventId: string): Promise<void> {
             .select({ n: sql<number>`count(*)` })
             .from(schema.events)
             .where(
-              and(eq(schema.events.network, "devnet"), eq(schema.events.programId, wl[0].programId)),
+              and(
+                eq(schema.events.network, "devnet"),
+                eq(schema.events.programId, wl[0].programId),
+                ne(schema.events.type, "extend"),
+              ),
             );
           devnetIterations = Math.max(devnetIterations, Number(n[0]?.n ?? 0));
         }
@@ -699,16 +760,23 @@ export async function scoreStage(eventId: string): Promise<void> {
   };
   enrichment.score = result;
 
+  // An extend changed no code (see identifyStage): it fills what a subject
+  // first seen at one lacks, never overwrites the band, funding and usage
+  // reads of the version it extended (an unclassified capture would reset the
+  // band to the "variant" default), and leaves lastEventAt as identify set it.
+  const extend = event.type === "extend";
+  const keep = <T,>(column: AnyPgColumn, value: T) =>
+    extend ? sql`coalesce(${column}, ${value})` : value;
   await db
     .update(schema.subjects)
     .set({
-      noveltyBand: band,
+      noveltyBand: keep(schema.subjects.noveltyBand, band),
       category,
       instructionCount,
       idlPresent,
-      deployerFundingSource: fundingSource,
-      earlySigners,
-      lastEventAt: event.blockTime ?? new Date(),
+      deployerFundingSource: keep(schema.subjects.deployerFundingSource, fundingSource),
+      earlySigners: keep(schema.subjects.earlySigners, earlySigners),
+      ...(extend ? {} : { lastEventAt: event.blockTime ?? new Date() }),
       updatedAt: new Date(),
     })
     .where(and(eq(schema.subjects.id, event.programId), eq(schema.subjects.network, network)));

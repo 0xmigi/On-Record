@@ -389,6 +389,10 @@ export interface LoaderRecord {
   upgrades: number;
   /** some history is unread (a truncated or partial walk): upgrades is a floor */
   incomplete: boolean;
+  /** the newest slot the record has read; anything above it is unknown */
+  newestSlot: number | null;
+  /** when the code last changed: the newest successful deploy or upgrade */
+  lastCodeChangeAt: Date | null;
   /** the first successful deploy */
   genesis: { firstSignature: string; firstDeploySlot: number; firstDeployAt: Date | null } | null;
   /** the newest successful loader instruction signed by the current authority
@@ -408,6 +412,7 @@ export async function loaderRecord(
   const w = await refreshLoaderRecord(network, programId, { maxBulkCalls: opts.maxBulkCalls });
   if (w.walk.status === "error" && !w.previous) throw new Error(`loader record unreadable: ${w.walk.error}`);
   const status = w.walk.status === "error" ? w.previous!.status : w.walk.status;
+  const newestSlot = w.walk.status === "error" ? w.previous!.newestSlot : w.walk.newestSlot;
 
   const [agg] = (await db.execute(sql`
     select
@@ -415,7 +420,8 @@ export async function loaderRecord(
       (array_agg(signature order by slot, outer_index, inner_index) filter (where kind = 'deploy' and not failed))[1] as genesis_signature,
       min(slot) filter (where kind = 'deploy' and not failed) as genesis_slot,
       (array_agg(block_time order by slot, outer_index, inner_index) filter (where kind = 'deploy' and not failed))[1] as genesis_time,
-      (array_agg(signature order by coalesce(authority_before = ${opts.authority ?? null}, false) desc, slot desc) filter (where not failed))[1] as last_signature
+      (array_agg(signature order by coalesce(authority_before = ${opts.authority ?? null}, false) desc, slot desc) filter (where not failed))[1] as last_signature,
+      max(block_time) filter (where kind in ('deploy', 'upgrade') and not failed) as last_code_change_at
     from loader_txns
     where network = ${network} and program_id = ${programId}
   `)) as unknown as {
@@ -424,10 +430,13 @@ export async function loaderRecord(
     genesis_slot: string | number | null;
     genesis_time: string | Date | null;
     last_signature: string | null;
+    last_code_change_at: string | Date | null;
   }[];
   return {
     upgrades: agg?.upgrades ?? 0,
     incomplete: status === "truncated" || status === "partial",
+    newestSlot: newestSlot ?? null,
+    lastCodeChangeAt: agg?.last_code_change_at ? new Date(agg.last_code_change_at) : null,
     genesis:
       agg?.genesis_signature && agg.genesis_slot != null
         ? {
@@ -438,4 +447,24 @@ export async function loaderRecord(
         : null,
     lastSignature: agg?.last_signature ?? null,
   };
+}
+
+/** True when the only successful loader instruction at `slot` is an extend.
+ *
+ *  The ProgramData header's slot is what the poller diffs, and ExtendProgram
+ *  rewrites it to the current slot without touching the code: measured on
+ *  mainnet 2026-10-07, 2,167 poller "upgrades" sat on a slot whose only loader
+ *  instruction was an extend. A slot with an extend AND an upgrade (the CLI
+ *  extends before an upgrade that needs the room) is a code change.
+ *
+ *  Only meaningful where the record covers the slot: the caller checks that. */
+export async function extendOnlyAt(network: Network, programId: string, slot: number): Promise<boolean> {
+  const [row] = (await db.execute(sql`
+    select
+      bool_or(kind in ('extend', 'extend_checked')) as extended,
+      bool_or(kind in ('deploy', 'upgrade')) as code
+    from loader_txns
+    where network = ${network} and program_id = ${programId} and slot = ${slot} and not failed
+  `)) as unknown as { extended: boolean | null; code: boolean | null }[];
+  return row?.extended === true && row.code !== true;
 }

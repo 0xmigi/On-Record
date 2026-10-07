@@ -25,7 +25,9 @@ import { fingerprintStage, identifyStage, classifyStage, scoreStage } from "./pi
 // Deploy vs upgrade: ProgramData only stores the LAST deploy slot, so a freshly
 // bumped program looks identical to a new one from chain state. We split on
 // whether the programId is already a known subject (upgrade) or not (deploy) —
-// the same heuristic the rest of the pipeline uses.
+// the same heuristic the rest of the pipeline uses. ExtendProgram moves the
+// header slot too, without a code change; identifyStage retypes those captures
+// 'extend' once the loader record shows nothing else landed at that slot.
 // ---------------------------------------------------------------------------
 
 const SLOTS_PER_SECOND = 2.5; // ~400ms/slot; block time is approximate from slot delta
@@ -87,7 +89,9 @@ export async function pollDeploys(opts: PollOptions): Promise<PollResult> {
       .where(
         and(
           eq(schema.events.network, network),
-          inArray(schema.events.type, ["deploy", "upgrade"]),
+          // 'extend' is a capture the identify stage retyped: still a header
+          // this poller recorded, so still part of its high-water mark
+          inArray(schema.events.type, ["deploy", "upgrade", "extend"]),
         ),
       );
     const lastSlot = Number(hw[0]?.maxSlot ?? 0);
