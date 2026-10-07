@@ -1,6 +1,5 @@
 import bs58 from "bs58";
-import { env } from "./config.js";
-import { getSignaturesForAddress } from "./helius.js";
+import { getSignaturesForAddress, parseEvents, type ParsedEventIx, type ParsedEventTx } from "./helius.js";
 import type { Network } from "./types.js";
 
 // ---------------------------------------------------------------------------
@@ -92,28 +91,6 @@ export interface TrafficSample {
   topFeePayers: { address: string; count: number; pct: number }[];
 }
 
-interface EnhancedIx {
-  programId?: string;
-  data?: string; // base58
-  accounts?: string[];
-  innerInstructions?: EnhancedIx[];
-}
-interface EnhancedTx {
-  timestamp?: number;
-  feePayer?: string;
-  instructions?: EnhancedIx[];
-}
-
-async function parseTransactions(signatures: string[]): Promise<EnhancedTx[]> {
-  const res = await fetch(`https://api.helius.xyz/v0/transactions?api-key=${env.HELIUS_API_KEY}`, {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({ transactions: signatures }),
-  });
-  if (!res.ok) throw new Error(`enhanced transactions: HTTP ${res.status}`);
-  return (await res.json()) as EnhancedTx[];
-}
-
 function median(sorted: number[]): number | null {
   if (!sorted.length) return null;
   const mid = Math.floor(sorted.length / 2);
@@ -157,7 +134,7 @@ function cadenceOf(times: number[]): {
  * Sample a program's recent transactions and describe their shape.
  *
  * `signatures` bounds the cheap half (one RPC page per 1000) and `parse` bounds
- * the metered half (one Helius Enhanced call per 100). Parsing every signature
+ * the metered half (one Helius Parsed Events call per 100). Parsing every signature
  * of a busy program is pointless — shape converges long before volume does — so
  * the default parses a 200-transaction slice of a 1000-signature window.
  */
@@ -203,12 +180,12 @@ export async function sampleProgramTraffic(
   let parsed = 0;
   let invocations = 0;
 
-  const visit = (ix: EnhancedIx): boolean => {
+  const visit = (ix: ParsedEventIx): boolean => {
     if (ix.programId !== programId) return false;
-    if (ix.accounts) accountCounts.push(ix.accounts.length);
-    if (!ix.data) return true; // ran, but carried no payload
+    accountCounts.push(ix.rawAccounts.length);
+    if (!ix.rawData) return true; // ran, but carried no payload
     try {
-      const bytes = bs58.decode(ix.data);
+      const bytes = bs58.decode(ix.rawData);
       payloadSizes.push(bytes.length);
       if (bytes.length >= 1) {
         const b = Buffer.from(bytes.subarray(0, 1)).toString("hex");
@@ -225,26 +202,24 @@ export async function sampleProgramTraffic(
   };
 
   for (let i = 0; i < sampled.length; i += 100) {
-    let txs: EnhancedTx[];
+    let txs: ParsedEventTx[];
     try {
-      txs = await parseTransactions(sampled.slice(i, i + 100).map((s) => s.signature));
+      txs = await parseEvents(network, sampled.slice(i, i + 100).map((s) => s.signature));
     } catch {
       continue; // a dropped batch shrinks the sample; it must not fail the call
     }
     for (const tx of txs) {
       parsed++;
       let ran = false;
-      for (const ix of tx.instructions ?? []) {
-        if (visit(ix)) ran = true;
-        for (const inner of ix.innerInstructions ?? []) if (visit(inner)) ran = true;
-      }
+      // top-level and inner instructions arrive as one flat list
+      for (const ix of tx.instructions) if (visit(ix)) ran = true;
       if (ran) {
         invocations++;
         if (tx.feePayer) {
           payerCounts.set(tx.feePayer, (payerCounts.get(tx.feePayer) ?? 0) + 1);
-          if (tx.timestamp) {
+          if (tx.blockTime) {
             const seen = payerTimes.get(tx.feePayer) ?? [];
-            seen.push(tx.timestamp);
+            seen.push(tx.blockTime);
             payerTimes.set(tx.feePayer, seen);
           }
         }

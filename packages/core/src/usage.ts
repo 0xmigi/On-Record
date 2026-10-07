@@ -1,8 +1,7 @@
 import { createHash } from "node:crypto";
 import bs58 from "bs58";
-import { env } from "./config.js";
 import { fetchAnchorIdl, normalizeIdl } from "./metadata.js";
-import { getSignaturesForAddress } from "./helius.js";
+import { getSignaturesForAddress, parseEvents, type ParsedEventIx, type ParsedEventTx } from "./helius.js";
 import type { Network } from "./types.js";
 
 /** camelCase / PascalCase → snake_case (the name Anchor hashes for the discriminator). */
@@ -105,28 +104,6 @@ export interface InstructionUsage {
   unknownDisc: number; // calls whose discriminator matched no IDL instruction
 }
 
-interface EnhancedIx {
-  programId?: string;
-  data?: string; // base58
-  innerInstructions?: EnhancedIx[];
-}
-interface EnhancedTx {
-  timestamp?: number;
-  instructions?: EnhancedIx[];
-}
-
-/** Helius Enhanced Transactions API — parses up to 100 signatures per call and
- *  returns each instruction's raw base58 `data` (which carries the discriminator). */
-async function parseTransactions(signatures: string[]): Promise<EnhancedTx[]> {
-  const res = await fetch(`https://api.helius.xyz/v0/transactions?api-key=${env.HELIUS_API_KEY}`, {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({ transactions: signatures }),
-  });
-  if (!res.ok) throw new Error(`enhanced transactions: HTTP ${res.status}`);
-  return (await res.json()) as EnhancedTx[];
-}
-
 /** Decode which instructions of `programId` got called across its recent txns. */
 export async function decodeInstructionUsage(
   network: Network,
@@ -197,10 +174,10 @@ export async function decodeInstructionUsage(
   let newest: number | null = null;
   let oldest: number | null = null;
 
-  const tally = (ix: EnhancedIx): boolean => {
-    if (ix.programId !== programId || !ix.data) return false;
+  const tally = (ix: ParsedEventIx): boolean => {
+    if (ix.programId !== programId || !ix.rawData) return false;
     try {
-      const bytes = Buffer.from(bs58.decode(ix.data));
+      const bytes = Buffer.from(bs58.decode(ix.rawData));
       // an event emission, not a call — neither counted nor held against us
       if (bytes.subarray(0, 8).toString("hex") === ANCHOR_EVENT_CPI_DISC) return false;
       let name: string | undefined;
@@ -218,22 +195,20 @@ export async function decodeInstructionUsage(
   };
 
   for (let i = 0; i < sampled.length; i += 100) {
-    let txs: EnhancedTx[];
+    let txs: ParsedEventTx[];
     try {
-      txs = await parseTransactions(sampled.slice(i, i + 100));
+      txs = await parseEvents(network, sampled.slice(i, i + 100));
     } catch {
       continue;
     }
     for (const tx of txs) {
-      if (tx.timestamp) {
-        newest = newest ? Math.max(newest, tx.timestamp) : tx.timestamp;
-        oldest = oldest ? Math.min(oldest, tx.timestamp) : tx.timestamp;
+      if (tx.blockTime) {
+        newest = newest ? Math.max(newest, tx.blockTime) : tx.blockTime;
+        oldest = oldest ? Math.min(oldest, tx.blockTime) : tx.blockTime;
       }
       let touched = false;
-      for (const ix of tx.instructions ?? []) {
-        if (tally(ix)) touched = true;
-        for (const inner of ix.innerInstructions ?? []) if (tally(inner)) touched = true;
-      }
+      // top-level and inner instructions arrive as one flat list
+      for (const ix of tx.instructions) if (tally(ix)) touched = true;
       if (touched) txnsWithProgram++;
     }
   }

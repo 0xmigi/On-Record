@@ -78,6 +78,52 @@ export async function rpc<T>(network: Network, method: string, params: unknown[]
   throw lastErr instanceof Error ? lastErr : new Error(`helius rpc ${method}: exhausted retries`);
 }
 
+/** One instruction from Parsed Events: top-level and inner alike, in execution
+ *  order. stackHeight 1 is top-level, deeper is a CPI. */
+export interface ParsedEventIx {
+  programId: string;
+  rawData: string; // base58
+  rawAccounts: string[];
+  stackHeight: number | null;
+}
+
+export interface ParsedEventTx {
+  signature: string;
+  blockTime: number | null;
+  feePayer: string | null;
+  instructions: ParsedEventIx[];
+}
+
+/** Helius Parsed Events: up to 100 signatures per call, 10 credits. Replaced
+ *  the Enhanced Transactions API (100 credits, maintenance mode) 2026-10-07;
+ *  the fields read here matched it on every transaction compared. Mainnet only
+ *  — devnet returns 404, so devnet throws here rather than sending its
+ *  signatures to the mainnet API (which the old code did, silently). Items the
+ *  parser could not read are dropped, so the caller's count stays honest. */
+export async function parseEvents(network: Network, signatures: string[]): Promise<ParsedEventTx[]> {
+  if (network !== "mainnet") throw new Error(`parsed events: ${network} is not supported`);
+  const res = await fetch(`https://mainnet.helius-rpc.com/v1/parsed-events/transactions?api-key=${env.HELIUS_API_KEY}`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ transactions: signatures }),
+    signal: AbortSignal.timeout(RPC_TIMEOUT_MS),
+  });
+  if (!res.ok) throw new Error(`parsed events: HTTP ${res.status}`);
+  const items = (await res.json()) as {
+    signature: string;
+    parserStatus: "OK" | "ERROR";
+    parsed?: { blockTime: number | null; feePayer: string | null; instructions?: ParsedEventIx[] };
+  }[];
+  return items
+    .filter((i) => i.parserStatus === "OK" && i.parsed)
+    .map((i) => ({
+      signature: i.signature,
+      blockTime: i.parsed!.blockTime,
+      feePayer: i.parsed!.feePayer,
+      instructions: i.parsed!.instructions ?? [],
+    }));
+}
+
 interface AccountInfo {
   data: [string, string]; // [payload, encoding]
   owner: string;
