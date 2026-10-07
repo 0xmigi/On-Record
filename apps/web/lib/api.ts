@@ -72,8 +72,8 @@ export interface ApiProgram {
   clusterSize: number | null; // members in its clone cluster, if any
   deployType: RadarType; // "deploy" = new program id, "upgrade" = existing program changed
   firstDeployAt: string | null; // ISO — the ORIGINAL deploy (deployedAt is the latest)
-  upgradeCount: number; // times re-deployed after the original
-  /** upgradeCount is a floor (deploy-history page cap hit) — render as "N+" */
+  upgradeCount: number; // successful upgrade instructions after the original deploy
+  /** upgradeCount is a floor (loader record not fully read) — render as "N+" */
   upgradeCountTruncated?: boolean;
   // identity recovered from the program binary (the de-opaquer)
   /** a declared repo that answered when the API last checked it */

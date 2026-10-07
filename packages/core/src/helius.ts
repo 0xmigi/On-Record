@@ -416,7 +416,10 @@ export interface DeployHistory {
   lastDeploySlot: number | null;
   /** newest deploy/upgrade transaction — the tx that shipped the current code */
   lastSignature: string | null;
-  /** deploy + upgrade + set-authority txns on the ProgramData; upgrades ≈ count-1 */
+  /** every transaction that touched the ProgramData. NOT deploys + upgrades:
+   *  extends, authority changes, closes, failed attempts and calls that pass the
+   *  account in to check the admin are all here. Upgrade counts come from the
+   *  loader record (apps/ingest/src/loader-history.ts). */
   txCount: number;
   /** true when the page cap was hit — txCount is a FLOOR, not the real total.
    *  Bx7T8… reported 5000 here against a true 5576. Anything rendering txCount
@@ -424,16 +427,15 @@ export interface DeployHistory {
   truncated: boolean;
 }
 
-/** A program's ProgramData account only appears in deploy / upgrade / set-authority
- *  / close transactions — never in program invocations — so its signature history
- *  IS the program's deploy history. Oldest signature = the original deploy; a count
- *  above 1 means the program has been upgraded. Cheap and exact, unlike walking the
- *  program id's (usage-flooded) history. */
 /** Every signature that has touched a ProgramData account, newest first.
  *
- *  ProgramData is only written by deploy/upgrade/set-authority instructions, so
- *  this list IS the program's deploy history — one entry per code change, with
- *  a real, citable transaction behind each.
+ *  This is NOT one entry per code change. The loader writes ProgramData on
+ *  deploy, upgrade, extend, set-authority and close, failed attempts leave a
+ *  signature too, and programs that check their own upgrade authority (Anchor's
+ *  `ProgramData` constraint) pass it into every admin call. Measured on mainnet
+ *  2026-10-06, counting these as upgrades overstated 5,079 of 5,767 programs.
+ *  The oldest is still almost always the genesis deploy. To know what each one
+ *  did, decode them: apps/ingest/src/loader-history.ts.
  *
  *  getDeployHistory has always walked exactly this list and then kept only the
  *  first, the last and the count. Exposing it is what lets the record show a

@@ -244,7 +244,7 @@ export interface EventEnrichment {
     firstDeployAt: string | null;
     deployType: "deploy" | "upgrade";
     upgradeCount: number;
-    /** upgradeCount hit the history page cap — it is a floor, render "N+" */
+    /** the loader record is truncated or partial — upgradeCount is a floor, render "N+" */
     upgradeCountTruncated?: boolean;
   };
   identity?: Identity;
@@ -382,11 +382,11 @@ export interface ApiProgram {
    *  We detect absence, not the close tx — an honest "detected closed". */
   closedAt: string | null;
   closed: boolean;
-  // --- deploy vs upgrade (from ProgramData history) ---
+  // --- deploy vs upgrade (from the loader record) ---
   deployType: "deploy" | "upgrade";
   firstDeployAt: string | null; // ISO — the ORIGINAL deploy (deployedAt is the latest)
-  upgradeCount: number; // times re-deployed after the original
-  /** upgradeCount is a floor (history page cap hit) — render as "N+" */
+  upgradeCount: number; // successful upgrade instructions after the original deploy
+  /** upgradeCount is a floor (loader record not fully read) — render as "N+" */
   upgradeCountTruncated: boolean;
   // --- conviction: the traced funding of the deploy authority ---
   funderAddress: string | null;

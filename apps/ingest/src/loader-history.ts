@@ -1,4 +1,5 @@
 import bs58 from "bs58";
+import { and, eq, sql } from "drizzle-orm";
 import {
   db,
   schema,
@@ -23,8 +24,9 @@ import {
 // instruction for the program, across 25 of the 150. Those are counted, not
 // stored.
 //
-// Shared by the backfill and, later, the incremental sweep: pass `from` to read
-// only what landed after the last walk.
+// Shared by the backfill and the pipeline: `refreshLoaderRecord` reads only what
+// landed after the last walk, and `loaderRecord` is what deploy-vs-upgrade and
+// the upgrade count are read from.
 // ---------------------------------------------------------------------------
 
 const LOADER_KEY = bs58.decode(LOADER_PROGRAM_ID);
@@ -178,15 +180,16 @@ export interface WalkFrom {
 /** Read one program's loader record. Never throws: a failed listing comes back
  *  as an 'error' walk so the coverage table says so.
  *
- *  Two paths, chosen by the first page of signatures. A history that fits in
- *  one page (all but a few dozen programs) is read one getTransaction at a time,
- *  1 credit each. A longer one is read in bulk, oldest first: the first full
- *  run spent 140k of its 270k credits on 7 programs whose ProgramData is passed
- *  into every call, for 4 loader rows between them. */
+ *  Two paths, chosen by the first page of signatures. A short history (BULK_OVER
+ *  signatures or fewer) is read one getTransaction at a time, 1 credit each. A
+ *  longer one is read in bulk, oldest first: the first full run spent 140k of
+ *  its 270k credits on 7 programs whose ProgramData is passed into every call,
+ *  for 4 loader rows between them. `maxBulkCalls` caps a bulk read below
+ *  BULK_CAP; a walk that hits it is 'truncated'. */
 export async function walkLoaderHistory(
   network: Network,
   programId: string,
-  opts: { from?: WalkFrom } = {},
+  opts: { from?: WalkFrom; maxBulkCalls?: number } = {},
 ): Promise<Walk> {
   const programData = programDataOf(programId);
   const walk: Walk["walk"] = {
@@ -211,7 +214,7 @@ export async function walkLoaderHistory(
   } catch (err) {
     return { walk: { ...walk, status: "error", error: String(err).slice(0, 500) }, rows: [], credits: 1 };
   }
-  if (sigs.length === 1000) return walkBulk(network, programId, programData, walk, opts.from);
+  if (sigs.length > BULK_OVER) return walkBulk(network, programId, programData, walk, opts.from, opts.maxBulkCalls);
 
   walk.signatures = sigs.length;
   if (!sigs.length) return { walk: { ...walk, status: opts.from ? "complete" : "empty" }, rows: [], credits: 1 };
@@ -249,6 +252,13 @@ export async function walkLoaderHistory(
  *  (Developer plan and up). */
 const BULK_PAGE = 100;
 const BULK_CREDITS = 10;
+/** Above this many signatures one bulk call is no dearer than reading them one
+ *  at a time, and it is one round trip instead of dozens. Was 1000 (only the
+ *  histories that overflow a signature page); the bulk read was checked against
+ *  the stored per-transaction walks of 3 random 157–331-signature programs on
+ *  2026-10-07 and produced the same rows, failed transactions included; so did
+ *  incremental reads (`from`) on both paths for 2 more. */
+const BULK_OVER = 10;
 /** Bulk calls per program before the walk is called truncated: 200,000
  *  transactions, 20,000 credits. Oldest first, so a truncated bulk walk is
  *  missing its NEWEST history, never its genesis. */
@@ -260,13 +270,14 @@ async function walkBulk(
   programData: string,
   walk: Walk["walk"],
   from: WalkFrom | undefined,
+  maxCalls = BULK_CAP,
 ): Promise<Walk> {
   const rows: LoaderRow[] = [];
   let credits = 1; // the signature page that sent us here
   let token: string | null = null;
   try {
     for (let call = 0; ; call++) {
-      if (call === BULK_CAP) {
+      if (call === maxCalls) {
         walk.status = "truncated";
         break;
       }
@@ -316,4 +327,115 @@ export async function storeWalk({ walk, rows }: Walk): Promise<void> {
     .insert(schema.loaderWalks)
     .values(walk)
     .onConflictDoUpdate({ target: [schema.loaderWalks.network, schema.loaderWalks.programId], set: walk });
+}
+
+type WalkRow = typeof schema.loaderWalks.$inferSelect;
+
+/** Bring a program's loader record up to date. Reads only what landed after the
+ *  stored walk, and merges the coverage row rather than replacing it. With
+ *  `store: false` nothing is written and the caller gets the new rows to count.
+ *
+ *  A truncated walk is left alone: it stopped BULK_CAP calls in, and resuming
+ *  it can cost that much again. Its counts stay a floor and say so.
+ *  An error walk never overwrites a good coverage row. */
+export async function refreshLoaderRecord(
+  network: Network,
+  programId: string,
+  opts: { store?: boolean; maxBulkCalls?: number } = {},
+): Promise<Walk & { previous: WalkRow | null }> {
+  const [previous = null] = await db
+    .select()
+    .from(schema.loaderWalks)
+    .where(and(eq(schema.loaderWalks.network, network), eq(schema.loaderWalks.programId, programId)));
+  if (previous?.status === "truncated") return { walk: previous, rows: [], credits: 0, previous };
+
+  const from =
+    previous && previous.status !== "error" && previous.newestSignature && previous.newestSlot != null
+      ? { signature: previous.newestSignature, slot: previous.newestSlot }
+      : undefined;
+  const w = await walkLoaderHistory(network, programId, { from, maxBulkCalls: opts.maxBulkCalls });
+  if (w.walk.status === "error") {
+    if (!previous && opts.store !== false) await storeWalk(w);
+    return { ...w, previous };
+  }
+  if (from && previous) {
+    const status =
+      w.walk.status === "truncated"
+        ? "truncated"
+        : previous.status === "partial" || w.walk.status === "partial"
+          ? "partial"
+          : "complete";
+    w.walk = {
+      ...w.walk,
+      status,
+      signatures: previous.signatures + (w.walk.signatures ?? 0),
+      nonLoader: previous.nonLoader + (w.walk.nonLoader ?? 0),
+      unread: previous.unread + (w.walk.unread ?? 0),
+      loaderRows: previous.loaderRows + (w.walk.loaderRows ?? 0),
+      newestSignature: w.walk.newestSignature ?? previous.newestSignature,
+      newestSlot: w.walk.newestSlot ?? previous.newestSlot,
+      oldestSlot: previous.oldestSlot ?? w.walk.oldestSlot,
+    };
+  }
+  if (opts.store !== false) await storeWalk(w);
+  return { ...w, previous };
+}
+
+/** What the loader record says about a program's code history. */
+export interface LoaderRecord {
+  /** successful `upgrade` instructions. Not ProgramData signatures: those also
+   *  count extends, authority changes, closes, failed attempts and every call
+   *  that passes the account in to check the admin. */
+  upgrades: number;
+  /** some history is unread (a truncated or partial walk): upgrades is a floor */
+  incomplete: boolean;
+  /** the first successful deploy */
+  genesis: { firstSignature: string; firstDeploySlot: number; firstDeployAt: Date | null } | null;
+  /** the newest successful loader instruction signed by the current authority
+   *  (else the newest at all): the transaction that names a multisig, if one
+   *  holds the program */
+  lastSignature: string | null;
+}
+
+/** Refresh the loader record, then read it. Throws when the chain could not be
+ *  read and nothing is stored, so a pipeline stage retries rather than calling
+ *  an upgraded program new. */
+export async function loaderRecord(
+  network: Network,
+  programId: string,
+  opts: { authority?: string | null; maxBulkCalls?: number } = {},
+): Promise<LoaderRecord> {
+  const w = await refreshLoaderRecord(network, programId, { maxBulkCalls: opts.maxBulkCalls });
+  if (w.walk.status === "error" && !w.previous) throw new Error(`loader record unreadable: ${w.walk.error}`);
+  const status = w.walk.status === "error" ? w.previous!.status : w.walk.status;
+
+  const [agg] = (await db.execute(sql`
+    select
+      count(*) filter (where kind = 'upgrade' and not failed)::int as upgrades,
+      (array_agg(signature order by slot, outer_index, inner_index) filter (where kind = 'deploy' and not failed))[1] as genesis_signature,
+      min(slot) filter (where kind = 'deploy' and not failed) as genesis_slot,
+      (array_agg(block_time order by slot, outer_index, inner_index) filter (where kind = 'deploy' and not failed))[1] as genesis_time,
+      (array_agg(signature order by coalesce(authority_before = ${opts.authority ?? null}, false) desc, slot desc) filter (where not failed))[1] as last_signature
+    from loader_txns
+    where network = ${network} and program_id = ${programId}
+  `)) as unknown as {
+    upgrades: number;
+    genesis_signature: string | null;
+    genesis_slot: string | number | null;
+    genesis_time: string | Date | null;
+    last_signature: string | null;
+  }[];
+  return {
+    upgrades: agg?.upgrades ?? 0,
+    incomplete: status === "truncated" || status === "partial",
+    genesis:
+      agg?.genesis_signature && agg.genesis_slot != null
+        ? {
+            firstSignature: agg.genesis_signature,
+            firstDeploySlot: Number(agg.genesis_slot),
+            firstDeployAt: agg.genesis_time ? new Date(agg.genesis_time) : null,
+          }
+        : null,
+    lastSignature: agg?.last_signature ?? null,
+  };
 }

@@ -17,7 +17,6 @@ import {
   getFundingTrail,
   deployRentLamports,
   getEarlyActivity,
-  getDeployHistory,
   profileProgram,
   deriveBytecodeIdentity,
   buildSearchText,
@@ -51,6 +50,12 @@ import { tryExtractReferences } from "./refs.js";
 import { linkIncubation } from "./incubation.js";
 import { recordCounterpart } from "./counterpart.js";
 import { recordGenesisDeploy } from "./timeline.js";
+import { loaderRecord } from "./loader-history.js";
+
+/** Bulk calls the live path may spend on one program's first walk: 5,000
+ *  transactions, 500 credits. A ProgramData that busy is read oldest first and
+ *  left 'truncated', so its upgrade count is shown as a floor. */
+const LIVE_BULK_CALLS = 50;
 
 type EventRow = typeof schema.events.$inferSelect;
 
@@ -294,45 +299,49 @@ export async function identifyStage(eventId: string): Promise<void> {
 
   let authorityClass = await classifyAuthority(network, event.authorityAfter);
 
-  // deploy vs upgrade: read the ProgramData deploy history (its signatures are
-  // deploy/upgrade txns only). >1 tx ⇒ the program existed and was re-deployed.
+  // deploy vs upgrade: count the successful `upgrade` instructions in the
+  // loader record. Not ProgramData signatures — those also hold extends,
+  // authority changes, failed attempts and every call that passes the account
+  // in to check the admin, and counting them called 959 never-upgraded mainnet
+  // programs upgraded (2026-10-06).
   let multisig = null;
-  if (event.programDataAddress) {
-    const dh = await getDeployHistory(network, event.programDataAddress);
-    const upgradeCount = Math.max(0, dh.txCount - 1);
+  if (event.programDataAddress && programId) {
+    const rec = await loaderRecord(network, programId, {
+      authority: event.authorityAfter,
+      maxBulkCalls: LIVE_BULK_CALLS,
+    });
+    const upgradeCount = rec.upgrades;
+    // a walk that stopped short and saw no upgrade is missing evidence, not
+    // evidence of a new program: it keeps what the subject already said
+    const upgraded = upgradeCount > 0 || (rec.incomplete && prev?.deployType === "upgrade");
     enrichment.deploy = {
-      firstDeployAt: dh.firstDeployAt?.toISOString() ?? null,
-      deployType: upgradeCount > 0 ? "upgrade" : "deploy",
+      firstDeployAt: rec.genesis?.firstDeployAt?.toISOString() ?? null,
+      deployType: upgraded ? "upgrade" : "deploy",
       upgradeCount,
-      upgradeCountTruncated: dh.truncated,
+      upgradeCountTruncated: rec.incomplete,
     };
 
     // Materialize the timeline. THE RECORD renders event rows, but a program
     // first seen mid-life (backfilled, or a poller sighting of an old program)
     // has only its capture event — labelled "deploy" though it's really a later
-    // upgrade. When the ProgramData's oldest signature predates this event, the
+    // upgrade. When the program's first deploy predates this event, the
     // capture is an upgrade: relabel it and seed a genesis "deploy" row from the
-    // oldest signature, so the dossier shows first + last (deploy → upgrade).
-    if (
-      upgradeCount > 0 &&
-      dh.firstDeploySlot != null &&
-      dh.firstSignature &&
-      dh.firstDeploySlot < event.slot
-    ) {
+    // first successful deploy, so the dossier shows first + last (deploy → upgrade).
+    if (upgradeCount > 0 && rec.genesis && rec.genesis.firstDeploySlot < event.slot) {
       if (event.type === "deploy") {
         await db
           .update(schema.events)
           .set({ type: "upgrade" })
           .where(eq(schema.events.id, eventId));
       }
-      await recordGenesisDeploy(network, event.programId, event.programDataAddress, dh);
+      await recordGenesisDeploy(network, event.programId, event.programDataAddress, rec.genesis);
     }
 
     // Squads governance hides behind a vault PDA (classified "program" above);
-    // the deploy tx itself names the multisig — decode its threshold.
-    // Devnet skips it: nobody runs production governance on faucet SOL.
-    if (dh.lastSignature && network !== "devnet" && (authorityClass === "program" || authorityClass === "squads")) {
-      multisig = await inspectSquadsAuthority(network, dh.lastSignature);
+    // a loader instruction the vault signed names the multisig — decode its
+    // threshold. Devnet skips it: nobody runs production governance on faucet SOL.
+    if (rec.lastSignature && network !== "devnet" && (authorityClass === "program" || authorityClass === "squads")) {
+      multisig = await inspectSquadsAuthority(network, rec.lastSignature);
       if (multisig) authorityClass = "squads";
     }
   }
@@ -439,7 +448,7 @@ async function upsertSubject(event: EventRow, enrichment: EventEnrichment): Prom
     facts: {
       ...(bi ? { social: bi.social, website: bi.website, hasSecurityTxt: bi.hasSecurityTxt, anchor: bi.anchor } : {}),
       ...(bi?.securityTxt ? { securityTxt: bi.securityTxt } : {}),
-      ...(dep ? { upgradeCount: dep.upgradeCount } : {}),
+      ...(dep ? { upgradeCount: dep.upgradeCount, upgradeCountTruncated: dep.upgradeCountTruncated ?? false } : {}),
       ...(fp?.programDataBytes ? { deployCostLamports: deployRentLamports(fp.programDataBytes) } : {}),
       ...(md?.idlSource ? { idlSource: md.idlSource } : {}),
       ...(pmpLogo ? { logoUrl: pmpLogo } : {}),

@@ -346,8 +346,8 @@ export async function buildDossier(programId: string, opts: DossierOptions = {})
       "Upgrades",
       facts.upgradeCount === undefined
         ? null
-        : `${facts.upgradeCount}${facts.upgradeCountTruncated ? "+ (page cap hit — this is a floor)" : ""}`,
-      "ProgramData history: it appears only in deploy/upgrade/set-authority txns",
+        : `${facts.upgradeCount}${facts.upgradeCountTruncated ? "+ (history not fully read — this is a floor)" : ""}`,
+      "successful upgrade instructions in the loader record",
     ),
   );
   out.push(fact("Last event", iso(row.lastEventAt), "events table"));

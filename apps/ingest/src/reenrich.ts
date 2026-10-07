@@ -4,7 +4,6 @@ import {
   schema,
   logger,
   getAccountBytes,
-  getDeployHistory,
   parseProgramDataAccount,
   deriveBytecodeIdentity,
   deployRentLamports,
@@ -13,6 +12,7 @@ import {
   newId,
   type Network,
 } from "@onrecord/core";
+import { loaderRecord } from "./loader-history.js";
 
 // ---------------------------------------------------------------------------
 // One-off re-enrichment: backfill recovered identity (name / repo / socials /
@@ -58,9 +58,10 @@ async function run(network: Network): Promise<void> {
       const tlsh = await tlshHash(parsed.bytecode);
       if (tlsh) tlshFilled++;
 
-      // deploy vs upgrade from the ProgramData signature history
-      const dh = await getDeployHistory(s.network as Network, pd);
-      const upgradeCount = Math.max(0, dh.txCount - 1);
+      // deploy vs upgrade from the loader record's successful upgrade
+      // instructions (see pipeline.ts identifyStage)
+      const rec = await loaderRecord(s.network as Network, s.id);
+      const upgradeCount = rec.upgrades;
       const deployType = upgradeCount > 0 ? "upgrade" : "deploy";
 
       const factsPatch = {
@@ -69,7 +70,7 @@ async function run(network: Network): Promise<void> {
         hasSecurityTxt: bi.hasSecurityTxt,
         anchor: bi.anchor,
         upgradeCount,
-        upgradeCountTruncated: dh.truncated,
+        upgradeCountTruncated: rec.incomplete,
         deployCostLamports: deployRentLamports(raw.length),
         ...(bi.securityTxt ? { securityTxt: bi.securityTxt } : {}),
       };
@@ -85,7 +86,7 @@ async function run(network: Network): Promise<void> {
           sha256,
           tlsh,
           sizeBytes: parsed.bytecode.length,
-          firstDeployAt: dh.firstDeployAt,
+          firstDeployAt: rec.genesis?.firstDeployAt ?? null,
           deployType,
           facts: sql`coalesce(${schema.subjects.facts}, '{}'::jsonb) || ${JSON.stringify(factsPatch)}::jsonb`,
           updatedAt: new Date(),

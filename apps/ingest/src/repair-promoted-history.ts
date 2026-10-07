@@ -55,12 +55,7 @@ async function run(): Promise<void> {
         continue;
       }
 
-      const history = await ingestDeployHistory(
-        "mainnet",
-        row.programId,
-        pd,
-        parsed.upgradeAuthority ?? null,
-      );
+      const history = await ingestDeployHistory("mainnet", row.programId, pd);
       if (!history.total) {
         logger.warn({ programId: row.programId }, "repair: empty history — keeping placeholder");
         failed++;

@@ -239,20 +239,13 @@ export async function promoteToMainnet(programId: string): Promise<boolean> {
       log.warn({ programId }, "promote: no mainnet ProgramData — leaving on devnet");
       return false;
     }
-    const dh = await getDeployHistory("mainnet", pd);
-
     // Ingest the program's REAL mainnet history — one row per deploy/upgrade,
     // each with the transaction that proves it. The earlier version of this
     // wrote a single synthetic row standing in for the whole life of the
     // program, which put "upgraded ×25" in the header above a table showing one
     // deploy, and rendered a fabricated signature in the Receipt column.
     const { ingestDeployHistory } = await import("./timeline.js");
-    const history = await ingestDeployHistory(
-      "mainnet",
-      programId,
-      pd,
-      parsed.upgradeAuthority ?? null,
-    );
+    const history = await ingestDeployHistory("mainnet", programId, pd);
     if (!history.total) {
       log.warn({ programId }, "promote: no mainnet deploy history — leaving on devnet");
       return false;
@@ -267,7 +260,7 @@ export async function promoteToMainnet(programId: string): Promise<boolean> {
         and(
           eq(schema.events.network, "mainnet"),
           eq(schema.events.programId, programId),
-          eq(schema.events.signature, dh.lastSignature ?? ""),
+          eq(schema.events.signature, history.newestSignature ?? ""),
         ),
       );
     const evId = newest[0]?.id;
@@ -291,9 +284,9 @@ export async function promoteToMainnet(programId: string): Promise<boolean> {
     // The devnet life becomes history. linkIncubation matches on the program id
     // itself, which is exactly the relationship we just proved by probing.
     const { linkIncubation } = await import("./incubation.js");
-    await linkIncubation(programId, dh.firstDeployAt, { probeChain: true });
+    await linkIncubation(programId, history.firstDeployAt, { probeChain: true });
 
-    log.info({ programId, mainnetFirstDeploy: dh.firstDeployAt }, "promoted to mainnet");
+    log.info({ programId, mainnetFirstDeploy: history.firstDeployAt }, "promoted to mainnet");
     return true;
   } catch (err) {
     log.error({ programId, err: String(err) }, "promote failed — subject left as it was");

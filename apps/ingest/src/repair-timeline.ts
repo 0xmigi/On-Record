@@ -1,8 +1,8 @@
 // Repair THE RECORD for programs captured before the timeline logic existed.
 //
 // The pipeline learned to materialize a genuine timeline on 2026-07-15 (bdfeb31):
-// relabel a mid-life capture as an upgrade and seed the real genesis deploy from
-// the ProgramData's oldest signature. Anything ingested BEFORE that still shows a
+// relabel a mid-life capture as an upgrade and seed the real genesis deploy (now
+// the first successful deploy in the loader record). Anything ingested BEFORE that still shows a
 // phantom "DEPLOY" stamped at whatever slot the ProgramData header happened to
 // carry when we looked — e.g. Phoenix: Eternal (phDEV…) read "deployed 11d ago"
 // when the chain says 18 Nov 2025.
@@ -16,14 +16,16 @@
 //   railway ssh --service on-record-api "node apps/ingest/dist/repair-timeline.js <programId> ..."
 //   railway ssh --service on-record-api "node apps/ingest/dist/repair-timeline.js --dry-run"
 //
-// Each candidate costs a paginated getSignaturesForAddress, so keep batches to a
-// few hundred and re-run until "candidates" reaches 0 — it's idempotent.
+// Each candidate costs a loader-record refresh (one signature page when the
+// program was already walked), so keep batches to a few hundred and re-run
+// until "candidates" reaches 0 — it's idempotent.
 //
 // Idempotent: genesis rows are keyed on the real signature and the relabel only
 // touches synthetic captures, so re-running converges and then does nothing.
 
 import { and, eq, inArray, isNotNull, like, or, sql } from "drizzle-orm";
-import { db, getDeployHistory, logger, schema, type Network } from "@onrecord/core";
+import { db, logger, schema, type Network } from "@onrecord/core";
+import { loaderRecord } from "./loader-history.js";
 import { SYNTHETIC_SIG_PREFIXES, recordGenesisDeploy, relabelPhantomDeploys } from "./timeline.js";
 
 interface Result {
@@ -87,16 +89,19 @@ export async function repairTimelines(
         continue;
       }
 
-      const dh = await getDeployHistory(network, pd);
-      // txCount <= 1 ⇒ never upgraded ⇒ the capture really is the deploy
-      if (dh.txCount <= 1 || dh.firstDeploySlot == null || !dh.firstSignature) {
+      // reads the chain and stores what it read, even on --dry-run: the loader
+      // record is a cache of chain facts, not product state
+      const rec = await loaderRecord(network, s.id);
+      const genesis = rec.genesis;
+      // no successful upgrade ⇒ the capture really is the deploy
+      if (rec.upgrades === 0 || !genesis) {
         res.skipped++;
         continue;
       }
 
       if (opts.dryRun) {
         logger.info(
-          { programId: s.id, genesisSlot: dh.firstDeploySlot, genesisAt: dh.firstDeployAt },
+          { programId: s.id, genesisSlot: genesis.firstDeploySlot, genesisAt: genesis.firstDeployAt },
           "repair-timeline: would seed genesis + relabel phantoms",
         );
         continue;
@@ -104,8 +109,8 @@ export async function repairTimelines(
 
       // order matters: seed genesis first so a failure can't leave a program with
       // its only deploy row relabelled away (which would show no deploy at all)
-      if (await recordGenesisDeploy(network, s.id, pd, dh)) res.genesisAdded++;
-      res.relabelled += await relabelPhantomDeploys(network, s.id, dh.firstDeploySlot);
+      if (await recordGenesisDeploy(network, s.id, pd, genesis)) res.genesisAdded++;
+      res.relabelled += await relabelPhantomDeploys(network, s.id, genesis.firstDeploySlot);
     } catch (err) {
       res.failed++;
       logger.warn({ programId: s.id, err: String(err) }, "repair-timeline: failed, skipping");
