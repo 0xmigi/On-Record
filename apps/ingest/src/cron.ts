@@ -11,6 +11,7 @@ import { sweepMentions } from "./x-bot.js";
 import { syncPmpSecurity } from "./pmp-security-sync.js";
 import { sweepSourceFramework } from "./source-framework.js";
 import { sweepAlerts } from "./alerts.js";
+import { sweepAuthority } from "./authority-sweep.js";
 
 // ---------------------------------------------------------------------------
 // Scheduled work (SPEC §10): TVL refresh (6h), a live funnel snapshot (15m),
@@ -31,6 +32,13 @@ export function startCron(): void {
   // per-program hourly activity buckets — the Momentum signal (VISION §5a)
   every(Number(process.env.MOMENTUM_INTERVAL_MS ?? 3_600_000), "momentum-sample", async () => {
     await sampleMomentum();
+  });
+  // upgrade-authority changes the poller can't see (SetAuthority doesn't move
+  // the deploy slot it diffs): keeps the loader record, the subject's
+  // controller and the wallet alerts that match on it current. ~140
+  // getMultipleAccounts calls per mainnet pass.
+  every(Number(process.env.AUTHORITY_SWEEP_INTERVAL_MS ?? 3_600_000), "authority-sweep", async () => {
+    await sweepAuthority("mainnet");
   });
   // detect programs closed since deploy (rent reclaimed) — the churn tail
   every(Number(process.env.CLOSED_SWEEP_INTERVAL_MS ?? 15 * 60_000), "closed-sweep", async () => {
