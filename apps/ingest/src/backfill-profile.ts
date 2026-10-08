@@ -15,14 +15,13 @@
 // and we do not persist bytecode, so each ProgramData account is re-fetched.
 //
 //   set -a && . ../../.env && set +a
-//   DATABASE_URL='postgres://…' ./node_modules/.bin/tsx src/backfill-profile.ts [--network=devnet] [--only=<programId>] [--limit=N] [--stale-only] [--concurrency=N] [--dry]
+//   DATABASE_URL='postgres://…' ./node_modules/.bin/tsx src/backfill-profile.ts [--network=devnet] [--only=<programId>] [--limit=N] [--stale-only] [--frameworks=native,pinocchio] [--concurrency=N] [--dry]
 import { and, eq, sql } from "drizzle-orm";
 import {
   db,
   schema,
   getAccountBytes,
   parseProgramDataAccount,
-  extractStrings,
   profileProgram,
   sha256Hex,
   stageLogger,
@@ -41,9 +40,12 @@ const limit = Number(arg("limit") ?? 0) || null;
 // up the tail an RPC rate limit skipped without re-fetching thousands of
 // megabyte-sized accounts that already succeeded.
 const staleOnly = process.argv.includes("--stale-only");
+// Only rows currently carrying one of these labels. A profiler fix that can
+// only move programs out of some labels need not re-fetch the rest.
+const frameworks = arg("frameworks")?.split(",").filter(Boolean) ?? null;
 
 const target = requireDatabaseTarget("backfill-profile.ts");
-log.info({ target, network, only, limit, staleOnly, dry }, "target database");
+log.info({ target, network, only, limit, staleOnly, frameworks, dry }, "target database");
 
 // One bulk read: the newest ProgramData address per program, plus whatever IDL
 // instructions the fingerprint stage already stored (an IDL still wins over
@@ -69,6 +71,7 @@ const rows = await db.execute<{
      and e.program_data_address is not null
      ${only ? sql`and e.program_id = ${only}` : sql``}
      ${staleOnly ? sql`and not coalesce(jsonb_exists(s.profile, 'instructionNames'), false)` : sql``}
+     ${frameworks ? sql`and s.profile ->> 'framework' in (${sql.join(frameworks.map((f) => sql`${f}`), sql`, `)})` : sql``}
    order by e.program_id, e.slot desc
    ${limit ? sql`limit ${limit}` : sql``}
 `);
@@ -105,9 +108,7 @@ await Promise.all(
         const parsed = raw ? parseProgramDataAccount(raw) : null;
         if (!parsed) { missing++; continue; }
 
-        const strings = extractStrings(parsed.bytecode);
         const profile = profileProgram(parsed.bytecode, {
-          strings,
           idlInstructions: r.idl_instructions ?? undefined,
         });
         scanned++;

@@ -191,10 +191,7 @@ export async function fingerprintStage(eventId: string): Promise<void> {
   // structured profile from the SBF bytecode: framework, syscalls, capabilities,
   // integrations (docs/GRADING.md §5). Feeds the radar's framework chip + the
   // eventual grading axes.
-  enrichment.profile = profileProgram(bytecode, {
-    strings: fp.strings,
-    idlInstructions: fp.idl?.instructions,
-  });
+  enrichment.profile = profileProgram(bytecode, { idlInstructions: fp.idl?.instructions });
 
   // recovered identity from the binary: name (Rust panic paths / security.txt),
   // repo, socials, website — de-opaques ~half of anonymous programs.

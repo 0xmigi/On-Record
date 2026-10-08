@@ -572,7 +572,7 @@ function classifyAnchor(elf: Buffer, hay: string, handlers: string[]): AnchorBui
 /** Build the structured profile from a program's stripped bytecode. */
 export function profileProgram(
   bytecode: Buffer,
-  opts: { strings?: string[]; idlInstructions?: string[] } = {},
+  opts: { idlInstructions?: string[] } = {},
 ): ProgramProfile {
   const parsed = readElf(bytecode);
   const scan = parsed?.text ? scanText(bytecode, parsed.text) : null;
@@ -624,8 +624,11 @@ export function profileProgram(
     if (syscalls.some(rule.match)) capabilities.push(rule.cap);
   }
 
-  // 3. framework — marker strings + syscall ABI
-  const hay = opts.strings ? opts.strings.join(" ") : bytecode.toString("latin1");
+  // 3. framework — marker strings + syscall ABI. Read the whole image, never
+  //    the stored string sample: that keeps the 100 longest strings, and a
+  //    binary with enough long error messages pushes the short markers
+  //    ("AnchorError") out of it, which labelled Anchor builds native.
+  const hay = bytecode.toString("latin1");
   // Instruction names are needed here as well as in step 5: a handler name whose
   // Anchor discriminator is in the binary is corroborating evidence for v2.
   const idl = (opts.idlInstructions ?? []).filter(Boolean);

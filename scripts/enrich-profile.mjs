@@ -7,7 +7,7 @@ for (const line of readFileSync(new URL("../.env", import.meta.url), "utf8").spl
   if (m) process.env[m[1]] = m[2].trim();
 }
 const core = await import("../packages/core/dist/index.js");
-const { getProgramDataAddress, getAccountBytes, extractStrings, profileProgram } = core;
+const { getProgramDataAddress, getAccountBytes, profileProgram } = core;
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 async function withRetry(fn, t = 4) { let e; for (let i = 0; i < t; i++) { try { return await fn(); } catch (x) { e = x; await sleep(200 * 2 ** i); } } throw e; }
 
@@ -32,8 +32,7 @@ await pool(todo, 5, async (p) => {
   let end = bytes.length;
   while (end > 45 && bytes[end - 1] === 0) end--;
   const body = bytes.subarray(45, end);
-  const strings = extractStrings(body);
-  const prof = profileProgram(body, { strings, idlInstructions: p.idlInstructions });
+  const prof = profileProgram(body, { idlInstructions: p.idlInstructions });
   p.profile = {
     framework: prof.framework,
     capabilities: prof.capabilities,
