@@ -8,7 +8,7 @@
 //
 // No RPC and no re-parsing: the bytes were already read, this only copies the
 // result across. Idempotent — rows whose event already carries the current
-// profile shape are skipped, so it is safe to re-run.
+// profile shape and framework are skipped, so it is safe to re-run.
 //
 //   set -a && . ../../.env && set +a
 //   DATABASE_URL='postgres://…' ./node_modules/.bin/tsx src/backfill-event-profile.ts [--network=devnet] [--dry]
@@ -35,8 +35,16 @@ const latest = sql`
      ${network ? sql`and s.network = ${network}` : sql``}
    order by e.program_id, e.slot desc`;
 
-// Only events that have not already been brought forward.
-const staleFilter = sql`not coalesce(jsonb_exists(e.enrichment -> 'profile', 'instructionNames'), false)`;
+// Events not yet brought forward, plus any still missing an Anchor reading the
+// subject now has: a relabel (native → anchor) leaves the profile's shape
+// alone, and the next scoreStage would copy the stale label back onto the
+// subject. Only toward Anchor, which the binary proves; a subject reading less
+// than its event did needs a look before anything is overwritten.
+const staleFilter = sql`(
+  not coalesce(jsonb_exists(e.enrichment -> 'profile', 'instructionNames'), false)
+  or ((l.sprof ->> 'framework') = 'anchor'
+      and (e.enrichment -> 'profile' ->> 'framework') is distinct from 'anchor')
+)`;
 
 const counted = await db.execute<{ n: number }>(sql`
   with latest as (${latest})
