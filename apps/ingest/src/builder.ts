@@ -1,5 +1,5 @@
 import bs58 from "bs58";
-import { sql } from "drizzle-orm";
+import { and, eq, inArray, sql } from "drizzle-orm";
 import {
   db,
   schema,
@@ -100,20 +100,19 @@ export async function buildBuilderProfile(
 
   // 3. the programs: everything above, plus what it (or a multisig it sits on) controls now
   const msList = JSON.stringify(multisigsAsMember);
-  const idList = JSON.stringify(involvement.map((r) => r.program_id));
-  // one lookup per way in, unioned: as a single OR the planner falls back to
-  // reading every program's facts (7.2s on mainnet); split, each uses its own
-  // index (migration 0012) and the whole thing is under a millisecond
-  const msWithSelf = JSON.stringify([address, ...multisigsAsMember]);
-  const subjects: SubjectRow[] = await db
-    .select()
-    .from(schema.subjects)
-    .where(sql`${schema.subjects.network} = ${network} and ${schema.subjects.kind} = 'program' and ${schema.subjects.id} in (
-      select jsonb_array_elements_text(${idList}::jsonb)
-      union select id from subjects where authority = ${address}
-      union select id from subjects
-        where facts->'multisig'->>'address' in (select jsonb_array_elements_text(${msWithSelf}::jsonb))
-    )`);
+  // three lookups, one per way in, each on its own index (primary key,
+  // subjects_authority_idx, subjects_multisig_address_idx), merged here. As one
+  // query (OR, or IN over a union) the planner read every program row in full:
+  // 7–8s on mainnet, past the web's 10s API timeout.
+  const scope = and(eq(schema.subjects.network, network), eq(schema.subjects.kind, "program"));
+  const multisigAddress = sql<string>`(${schema.subjects.facts}->'multisig'->>'address')`;
+  const ids = involvement.map((r) => r.program_id);
+  const found = await Promise.all([
+    ids.length ? db.select().from(schema.subjects).where(and(scope, inArray(schema.subjects.id, ids))) : [],
+    db.select().from(schema.subjects).where(and(scope, eq(schema.subjects.authority, address))),
+    db.select().from(schema.subjects).where(and(scope, inArray(multisigAddress, [address, ...multisigsAsMember]))),
+  ]);
+  const subjects: SubjectRow[] = [...new Map(found.flat().map((r) => [r.id, r])).values()];
 
   const [funded] = (await db.execute(sql`
     select funder, lamports, funded_at, busy from funding_trails where network = ${network} and address = ${address}
@@ -252,8 +251,9 @@ export async function buildBuilderProfile(
     union all
     select 'fees-paid-by', fee_payer, count(distinct program_id)::int
     from loader_txns
-    where network = ${network} and not failed and kind in ('deploy', 'upgrade')
-      and (case when kind = 'deploy' then authority_after else authority_before end) = ${address} and fee_payer <> ${address}
+    where network = ${network} and not failed and fee_payer <> ${address}
+      -- spelled per kind, not as a CASE, so each side can use its authority index
+      and ((kind = 'deploy' and authority_after = ${address}) or (kind = 'upgrade' and authority_before = ${address}))
     group by 2
     union all
     select 'paid-fees-for', case when kind = 'deploy' then authority_after else authority_before end, count(distinct program_id)::int
