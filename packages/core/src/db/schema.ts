@@ -115,6 +115,12 @@ export const subjects = pgTable(
     ),
     // lineage-by-crate: the lookup is "who else compiled from this crate"
     index("subjects_crate_idx").on(t.network, t.crate),
+    // builder profiles and wallet alerts look programs up by who controls them
+    // (migration 0012; partial, so only rows that carry the value are indexed)
+    index("subjects_authority_idx").on(t.authority).where(sql`${t.authority} is not null`),
+    index("subjects_multisig_address_idx")
+      .on(sql`(${t.facts}->'multisig'->>'address')`)
+      .where(sql`(${t.facts}->'multisig'->>'address') is not null`),
   ],
 );
 

@@ -101,14 +101,18 @@ export async function buildBuilderProfile(
   // 3. the programs: everything above, plus what it (or a multisig it sits on) controls now
   const msList = JSON.stringify(multisigsAsMember);
   const idList = JSON.stringify(involvement.map((r) => r.program_id));
+  // one lookup per way in, unioned: as a single OR the planner falls back to
+  // reading every program's facts (7.2s on mainnet); split, each uses its own
+  // index (migration 0012) and the whole thing is under a millisecond
+  const msWithSelf = JSON.stringify([address, ...multisigsAsMember]);
   const subjects: SubjectRow[] = await db
     .select()
     .from(schema.subjects)
-    .where(sql`${schema.subjects.network} = ${network} and ${schema.subjects.kind} = 'program' and (
-      ${schema.subjects.id} in (select jsonb_array_elements_text(${idList}::jsonb))
-      or ${schema.subjects.authority} = ${address}
-      or ${schema.subjects.facts}->'multisig'->>'address' = ${address}
-      or ${schema.subjects.facts}->'multisig'->>'address' in (select jsonb_array_elements_text(${msList}::jsonb))
+    .where(sql`${schema.subjects.network} = ${network} and ${schema.subjects.kind} = 'program' and ${schema.subjects.id} in (
+      select jsonb_array_elements_text(${idList}::jsonb)
+      union select id from subjects where authority = ${address}
+      union select id from subjects
+        where facts->'multisig'->>'address' in (select jsonb_array_elements_text(${msWithSelf}::jsonb))
     )`);
 
   const [funded] = (await db.execute(sql`
