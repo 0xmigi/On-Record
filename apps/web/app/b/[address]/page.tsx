@@ -26,10 +26,10 @@ import { dayStamp, truncateAddress } from "@/lib/format";
 // dossier's layout, for an actor instead of a contract. Reached by clicking a
 // deployer, authority or multisig anywhere on the site; no nav item.
 
-export const revalidate = 900;
-export async function generateStaticParams() {
-  return [];
-}
+// Rendered per request: the page reads ?network= (a devnet dossier links to
+// the devnet profile), which a statically cached page can't. The API response
+// itself is still cached for the dossier window (fetchBuilder).
+export const dynamic = "force-dynamic";
 
 export async function generateMetadata({ params }: { params: Promise<{ address: string }> }): Promise<Metadata> {
   const { address } = await params;
