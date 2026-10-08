@@ -39,6 +39,7 @@ import {
   fetchVerification,
   fetchVersions,
   versionsBySlot,
+  builderHref,
   orbAddress,
   orbTx,
   type ApiProgramDetail,
@@ -278,6 +279,28 @@ function SecurityTxtPanel({
   );
 }
 
+/** the deployer: a person glyph, in the header next to the calendar */
+function DeployerIcon() {
+  return (
+    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+      <circle cx="12" cy="8" r="4" />
+      <path d="M4 21c0-4.4 3.6-8 8-8s8 3.6 8 8" />
+    </svg>
+  );
+}
+
+/** an address On Record has a profile for: links to /b/, not out to Orb */
+function WalletLink({ address, network }: { address: string; network: ApiProgramDetail["network"] }) {
+  return (
+    <>
+      {" "}
+      <Link className="receipt-link" href={builderHref(address, network)}>
+        {truncateAddress(address)}
+      </Link>
+    </>
+  );
+}
+
 function Ext({ href, text }: { href: string; text: string }) {
   return (
     <a className="receipt-link" href={href} target="_blank" rel="noopener noreferrer">
@@ -501,20 +524,20 @@ export default async function ProgramDossierPage({
               {program.multisig.threshold != null && program.multisig.members != null ? (
                 <span> · {program.multisig.threshold} of {program.multisig.members} signers</span>
               ) : null}
-              <Ext
-                href={orbAddress(program.multisig.address)}
-                text={truncateAddress(program.multisig.address)}
-              />
+              <WalletLink address={program.multisig.address} network={program.network} />
             </>
           ) : (
             <>
               {program.authorityClass ?? "unknown"}
-              {program.authority ? (
-                <Ext href={orbAddress(program.authority)} text={truncateAddress(program.authority)} />
-              ) : null}
+              {program.authority ? <WalletLink address={program.authority} network={program.network} /> : null}
             </>
           )}
         </Row>
+        {program.deployer ? (
+          <Row label="Deployed by">
+            <WalletLink address={program.deployer} network={program.network} />
+          </Row>
+        ) : null}
         <Row
           label="Verified build"
           explain={
@@ -1205,6 +1228,9 @@ export default async function ProgramDossierPage({
                 {lifecycle.lifespanLabel ? ` · ${lifecycle.lifespanLabel}` : ""}
               </span>
             ) : null}
+            {/* cluster presence sits with the other chips, so the date and
+                deployer line below never shifts */}
+            <ClusterBadge program={program} />
           </div>
 
           <div className="dossier-title-row">
@@ -1248,14 +1274,28 @@ export default async function ProgramDossierPage({
               stays to a bare date. Falls back to first-seen when unknown. */}
           {(() => {
             const first = program.firstDeployAt ?? program.deployedAt;
-            if (!first) return null;
+            if (!first && !program.deployer) return null;
             const cluster = program.network === "devnet" ? "devnet" : "mainnet";
             const verb = program.firstDeployAt != null ? "First deployed on" : "First seen on";
             return (
-              <div className="dossier-deployed" title={`${verb} ${cluster} · ${relativeTime(first)}`}>
-                <CalendarIcon />
-                <span className="dossier-deployed-date">{dayStamp(first)}</span>
-                <ClusterBadge program={program} />
+              <div className="dossier-deployed">
+                {first ? (
+                  <span className="dossier-deployed-when" title={`${verb} ${cluster} · ${relativeTime(first)}`}>
+                    <CalendarIcon />
+                    <span className="dossier-deployed-date">{dayStamp(first)}</span>
+                  </span>
+                ) : null}
+                {/* the wallet that paid for the first deploy: one click to
+                    everything else it has deployed (the loader record) */}
+                {program.deployer ? (
+                  <span className="dossier-deployer">
+                    <DeployerIcon />
+                    <span className="dossier-deployer-k">deployer</span>
+                    <Link className="receipt-link" href={builderHref(program.deployer, program.network)}>
+                      {truncateAddress(program.deployer)}
+                    </Link>
+                  </span>
+                ) : null}
               </div>
             );
           })()}

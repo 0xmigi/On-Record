@@ -532,6 +532,7 @@ export const loaderTxns = pgTable(
     index("loader_txns_kind_idx").on(t.network, t.kind),
     index("loader_txns_fee_payer_idx").on(t.feePayer),
     index("loader_txns_authority_idx").on(t.authorityAfter),
+    index("loader_txns_authority_before_idx").on(t.authorityBefore),
   ],
 );
 
@@ -563,3 +564,50 @@ export const loaderWalks = pgTable("loader_walks", {
   error: text("error"),
   walkedAt: timestamp("walked_at", { withTimezone: true }).defaultNow().notNull(),
 }, (t) => [primaryKey({ name: "loader_walks_pk", columns: [t.network, t.programId] })]);
+
+// ---------------------------------------------------------------------------
+// Wallet profiles (/b/<address>). The loader record says what every wallet did
+// to every program; these two say who it acts with.
+// ---------------------------------------------------------------------------
+
+/** Who sits on each Squads multisig that controls a program on record, as read
+ *  from the multisig account. A whole multisig is re-read at once, so every row
+ *  for it shares `readAt`. */
+export const multisigMembers = pgTable(
+  "multisig_members",
+  {
+    network: text("network").notNull(),
+    multisig: text("multisig").notNull(),
+    member: text("member").notNull(),
+    /** 'v4' (v3's layout isn't decoded) */
+    version: text("version").notNull(),
+    threshold: integer("threshold"),
+    memberCount: integer("member_count"),
+    readAt: timestamp("read_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (t) => [
+    primaryKey({ name: "multisig_members_pk", columns: [t.network, t.multisig, t.member] }),
+    index("multisig_members_member_idx").on(t.network, t.member),
+  ],
+);
+
+/** Where a wallet's first SOL came from: the account whose balance dropped most
+ *  in its oldest transaction, when the wallet received SOL in it. `busy` marks
+ *  a wallet with 1,000+ transactions (an exchange, bridge or service, most
+ *  likely), which a trail is never followed past. */
+export const fundingTrails = pgTable(
+  "funding_trails",
+  {
+    network: text("network").notNull(),
+    address: text("address").notNull(),
+    funder: text("funder"),
+    lamports: bigint("lamports", { mode: "number" }),
+    fundedAt: timestamp("funded_at", { withTimezone: true }),
+    busy: boolean("busy").notNull(),
+    readAt: timestamp("read_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (t) => [
+    primaryKey({ name: "funding_trails_pk", columns: [t.network, t.address] }),
+    index("funding_trails_funder_idx").on(t.network, t.funder),
+  ],
+);

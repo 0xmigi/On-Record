@@ -2690,6 +2690,23 @@ a.copy-addr-text:hover {
   cursor: default;
 }
 
+.dossier-deployed {
+  flex-wrap: wrap;
+}
+.dossier-deployed-when {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+.dossier-deployer {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  margin-left: 8px;
+}
+.dossier-deployer-k {
+  color: var(--ink-faint);
+}
 .dossier-deployed-date {
   font-weight: 600;
   color: var(--ink);
@@ -6305,5 +6322,64 @@ a.copy-addr-text:hover {
   }
   .watch-list-when {
     display: none;
+  }
+}
+
+/* ---- builder profiles (/b/<address>) ---- */
+
+.builder-chip {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--ink);
+  border: 1px solid var(--border-strong);
+  border-radius: 2px;
+  padding: 1px 6px;
+  white-space: nowrap;
+}
+.builder-churn {
+  color: var(--ink-faint);
+  border-color: var(--border);
+}
+
+/* the four numbers under the header */
+.builder-tiles {
+  margin: 4px 0 18px;
+}
+.builder-disclosure {
+  grid-template-columns: repeat(3, 1fr);
+}
+
+/* this address's role in the program, inside the card above its row */
+.builder-roles {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 12px 20px 0;
+}
+.builder-roles + .radar-row {
+  padding-top: 6px;
+}
+.builder-role {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  color: var(--ink-faint);
+  white-space: nowrap;
+}
+.builder-role + .builder-role::before {
+  content: "· ";
+  opacity: 0.6;
+}
+
+.builder-related {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 4px 14px;
+}
+@media (max-width: 720px) {
+  .builder-disclosure {
+    grid-template-columns: repeat(2, 1fr);
   }
 }

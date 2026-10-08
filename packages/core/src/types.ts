@@ -513,6 +513,9 @@ export interface ApiNearest {
 export interface ApiProgramDetail extends ApiProgram {
   repoUrl: string | null;
   authority: string | null;
+  /** fee payer of the first successful deploy (the loader record), null when
+   *  the record holds no deploy. Older API builds omit it. */
+  deployer?: string | null;
   sha256: string | null;
   events: ApiRawEvent[];
   neighbors: { programId: string; distance: number; name: string | null }[];
@@ -700,6 +703,85 @@ export interface ApiCluster {
      *  which is the whole story of a redeploy-and-gut family */
     closedAt: string | null;
   }[];
+}
+
+/** What a wallet is to one program. A wallet can be several at once. */
+export type BuilderRole =
+  | "deployed" // paid for, or was the authority of, the first deploy
+  | "controls" // holds the upgrade authority now
+  | "controlled" // held it and handed it on
+  | "upgraded" // signed upgrades as the authority
+  | "paid" // paid the fee for someone else's deploy or upgrade
+  | "multisig" // the wallet is the Squads multisig that holds it
+  | "member"; // sits on the Squads multisig that holds it
+
+/** The label a profile leads with. "churn" is the quiet default for wallets
+ *  that deploy many programs and close most within a day. */
+export type BuilderLabel = "serial-builder" | "secured-team" | "one-shot" | "churn";
+
+export interface ApiBuilderProgram {
+  program: ApiProgram;
+  roles: BuilderRole[];
+  /** upgrades this wallet signed as the authority */
+  upgradesSigned: number;
+  /** first and last loader instruction this wallet took part in */
+  firstAt: string | null;
+  lastAt: string | null;
+}
+
+export interface ApiBuilderRelation {
+  address: string;
+  relation:
+    | "handed-control-to"
+    | "received-control-from"
+    | "fees-paid-by"
+    | "paid-fees-for"
+    | "multisig-co-member"
+    | "multisig-member"
+    | "funded-by"
+    | "funded";
+  /** programs the two share in this relation (0 where it isn't about programs) */
+  programs: number;
+}
+
+export interface ApiBuilder {
+  address: string;
+  network: Network;
+  /** on-curve = a key that can sign; off-curve = a PDA (a multisig vault,
+   *  governance or another program's account) */
+  kind: "wallet" | "pda";
+  labels: BuilderLabel[];
+  summary: {
+    deployed: number;
+    deployedOpen: number;
+    deployedClosedWithinDay: number;
+    controlsNow: number;
+    upgradesSigned: number;
+    firstSeenAt: string | null;
+    lastSeenAt: string | null;
+    /** of the programs it deployed: control handed to someone else */
+    handedOff: {
+      programs: number;
+      toProgramControlled: number;
+      toWallet: number;
+      toNobody: number;
+      medianHoursToFirst: number | null;
+    };
+    /** the Squads multisigs it is, or sits on, that control programs on record */
+    multisigs: { address: string; threshold: number | null; members: number | null; programs: number; isMember: boolean }[];
+    /** upgrades it signed whose fee someone else paid */
+    feesPaidByOthers: { upgrades: number; of: number };
+    /** programs it deployed that ran at the same address on devnet first */
+    devnetFirst: { programs: number; of: number };
+  };
+  /** what its still-open programs (deployed or controlled) publish */
+  disclosure: { of: number; named: number; securityTxt: number; repo: number; verified: number; idl: number; site: number };
+  /** where its own first SOL came from (research trail; null = not traced) */
+  fundedBy: { funder: string | null; busy: boolean; at: string | null; sol: number | null } | null;
+  programs: ApiBuilderProgram[];
+  /** true when the list was capped */
+  programsTruncated: boolean;
+  related: ApiBuilderRelation[];
 }
 
 export interface ApiCursorPage<T> {

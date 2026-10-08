@@ -33,6 +33,7 @@ import {
 } from "../serialize.js";
 import { computeWindowFunnel, windowHoursFor } from "../funnel.js";
 import { buildDossier } from "../dossier.js";
+import { buildBuilderProfile } from "../builder.js";
 import { edgesFor } from "../refs.js";
 import { composeReply } from "../reply.js";
 import { renderCardFor } from "../card.js";
@@ -465,18 +466,44 @@ export function registerPublicRoutes(app: FastifyInstance): void {
       if (d != null) similarityTo[id] = Math.round(Math.max(0, 1 - d / 300) * 100) / 100;
     }
 
-    return serializeProgramDetail(
-      row,
-      events,
-      neighbors,
-      clusterSize,
-      nearestMeta,
-      sourceKin,
-      references,
-      similarityTo,
-      computeRank,
-    );
+    // who paid for the first deploy: the dossier's way into that wallet's profile
+    const [genesis] = (await db.execute(sql`
+      select fee_payer from loader_txns
+      where network = ${row.network} and program_id = ${row.id} and kind = 'deploy' and not failed
+      order by slot, outer_index limit 1
+    `)) as unknown as { fee_payer: string }[];
+
+    return {
+      ...serializeProgramDetail(
+        row,
+        events,
+        neighbors,
+        clusterSize,
+        nearestMeta,
+        sourceKin,
+        references,
+        similarityTo,
+        computeRank,
+      ),
+      deployer: genesis?.fee_payer ?? null,
+    };
   });
+
+  // --- one wallet: every program it shows up in, and how it acts ----------
+  app.get<{ Params: { address: string }; Querystring: { network?: string } }>(
+    "/api/builders/:address",
+    async (req, reply) => {
+      const address = req.params.address;
+      if (!looksLikeProgramId(address)) return reply.code(400).send({ error: "not an address" });
+      const network: Network = req.query.network === "devnet" ? "devnet" : "mainnet";
+      const profile = await buildBuilderProfile(network, address, async (rows) => {
+        const [sizes, nearest] = await Promise.all([clusterSizes(rows.map((r) => r.bucketId)), nearestMetaFor(rows)]);
+        return rows.map((r) => serializeProgram(r, r.bucketId ? (sizes.get(r.bucketId) ?? null) : null, nearest));
+      });
+      if (!profile) return reply.code(404).send({ error: "nothing on record for this address" });
+      return profile;
+    },
+  );
 
   // --- a program's full Anchor IDL (the human-readable interface) ----------
   // Both RPC-backed routes require the id to be on record: they drive metered

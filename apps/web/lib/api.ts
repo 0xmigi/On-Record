@@ -241,6 +241,9 @@ export interface RepoLink {
 
 export interface ApiProgramDetail extends ApiProgram {
   authority: string | null;
+  /** fee payer of the first deploy — the way into that wallet's profile.
+   *  Older API builds omit it. */
+  deployer?: string | null;
   sha256: string | null;
   events: ApiRawEvent[]; // deploy/upgrade/authority timeline, newest first
   neighbors: ApiNeighbor[]; // nearest bytecode fingerprints
@@ -709,6 +712,64 @@ export async function fetchSitemap(): Promise<{ id: string; lastEventAt: string 
     3600
   );
   return res?.items ?? [];
+}
+
+// --- wallet profiles: every program an address shows up in, and how it acts
+export type BuilderRole = "deployed" | "controls" | "controlled" | "upgraded" | "paid" | "multisig" | "member";
+export type BuilderLabel = "serial-builder" | "secured-team" | "one-shot" | "churn";
+export interface ApiBuilderProgram {
+  program: ApiProgram;
+  roles: BuilderRole[];
+  upgradesSigned: number;
+  firstAt: string | null;
+  lastAt: string | null;
+}
+export interface ApiBuilderRelation {
+  address: string;
+  relation:
+    | "handed-control-to"
+    | "received-control-from"
+    | "fees-paid-by"
+    | "paid-fees-for"
+    | "multisig-co-member"
+    | "multisig-member"
+    | "funded-by"
+    | "funded";
+  programs: number;
+}
+export interface ApiBuilder {
+  address: string;
+  network: Network;
+  kind: "wallet" | "pda";
+  labels: BuilderLabel[];
+  summary: {
+    deployed: number;
+    deployedOpen: number;
+    deployedClosedWithinDay: number;
+    controlsNow: number;
+    upgradesSigned: number;
+    firstSeenAt: string | null;
+    lastSeenAt: string | null;
+    handedOff: { programs: number; toProgramControlled: number; toWallet: number; toNobody: number; medianHoursToFirst: number | null };
+    multisigs: { address: string; threshold: number | null; members: number | null; programs: number; isMember: boolean }[];
+    feesPaidByOthers: { upgrades: number; of: number };
+    devnetFirst: { programs: number; of: number };
+  };
+  disclosure: { of: number; named: number; securityTxt: number; repo: number; verified: number; idl: number; site: number };
+  fundedBy: { funder: string | null; busy: boolean; at: string | null; sol: number | null } | null;
+  programs: ApiBuilderProgram[];
+  programsTruncated: boolean;
+  related: ApiBuilderRelation[];
+}
+
+export async function fetchBuilder(address: string, network: Network = "mainnet"): Promise<ApiBuilder | null> {
+  const q = network === "devnet" ? "?network=devnet" : "";
+  return getJson<ApiBuilder>(`/api/builders/${encodeURIComponent(address)}${q}`, DOSSIER_REVALIDATE);
+}
+
+/** the profile of an address, on the cluster the link came from */
+export function builderHref(address: string, network: Network = "mainnet"): string {
+  return `/b/${address}${network === "devnet" ? "?network=devnet" : ""}`;
 }
 
 export async function fetchCluster(id: string): Promise<ApiCluster | null> {
