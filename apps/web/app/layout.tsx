@@ -51,7 +51,7 @@ export default function RootLayout({
 
         <header className="topbar">
           <div className="topbar-inner">
-            <Link className="wordmark" href="/">
+            <Link className="wordmark" href="/about">
               <Mark size={20} />
               <span>on record</span>
             </Link>

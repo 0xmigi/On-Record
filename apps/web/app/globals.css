@@ -6383,3 +6383,1239 @@ a.copy-addr-text:hover {
     grid-template-columns: repeat(2, 1fr);
   }
 }
+
+/* --- about page ----------------------------------------------------------
+   The landing page. The words are the Colosseum deck's; the page is built
+   from On Record's own pieces: a live sheet of 0/1 cells where programs get
+   found and ringed in red marker (BitField), the site's ruled section
+   headers, hairline rows, and the deck's hand-drawn diagrams, moving.
+   Diagram strokes pass through a wobble (#about-rough*) and the red ones
+   "boil" between three seeds. Motion is armed by AboutMotion (.about-armed /
+   .is-in); every diagram restacks for narrow screens (.about-wide /
+   .about-narrow); the site-wide reduced-motion rule turns all of it off. */
+.about {
+  --box: #ffffff;
+  --a-panel: #ffffff;
+  --a-grid: rgba(23, 23, 23, 0.075);
+  --a-ink: #1c1c1a;
+  --a-soft: #55554f;
+  --a-faint: #6b6b65;
+  --a-ghost: #9c9c96;
+  --a-line: #9c9c96;
+  --a-rule: #b8b6af;
+  --a-cell: #d8d8d2;
+  --a-red: #e0391f;
+  --a-red-text: #c4351f;
+
+  /* wider than the reading measure: the diagrams need the room */
+  width: min(1160px, calc(100vw - 40px));
+  margin-left: 50%;
+  transform: translateX(-50%);
+  color: var(--a-ink);
+}
+@media (prefers-color-scheme: dark) {
+  .about {
+    --box: #1d1f23;
+    --a-panel: #131416;
+    --a-grid: rgba(255, 255, 255, 0.07);
+    --a-ink: #f2f2f2;
+    --a-soft: #b9b9b9;
+    --a-faint: #8f9299;
+    --a-ghost: #70737a;
+    --a-line: #7a7d84;
+    --a-rule: #474a51;
+    --a-cell: #34373c;
+    --a-red: #f0563e;
+    --a-red-text: #f0563e;
+  }
+}
+.about-defs {
+  position: absolute;
+}
+
+/* ---- the bit field behind the hero and the close ---- */
+.about-bitfield {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  /* clear on the left for the words, full strength on the right */
+  -webkit-mask-image: linear-gradient(98deg, transparent 0%, transparent 38%, #000 66%);
+  mask-image: linear-gradient(98deg, transparent 0%, transparent 38%, #000 66%);
+}
+
+/* ---- type: one loud thing per section, the rest quiet ---- */
+.about-title {
+  font-family: var(--font-head);
+  font-size: clamp(46px, 8.2vw, 116px);
+  font-weight: 600;
+  letter-spacing: -0.035em;
+  line-height: 0.98;
+}
+/* the half of a line that only sets the other half up */
+.about-dim {
+  font-weight: 400;
+  color: var(--a-ghost);
+}
+.about-hot {
+  color: var(--a-red);
+}
+.about-lede {
+  margin-top: 1.1em;
+  max-width: 22em;
+  font-size: clamp(18px, 2.1vw, 25px);
+  line-height: 1.35;
+  color: var(--a-soft);
+}
+/* the way in to the radar */
+.about-cta {
+  margin-top: clamp(26px, 3.4vw, 40px);
+}
+.about-cta a {
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 22px;
+  border-radius: 10px;
+  background: var(--a-ink);
+  color: var(--bg);
+  font-family: var(--font-mono);
+  font-size: 15px;
+  font-weight: 500;
+  text-decoration: none;
+  transition: background-color 0.2s ease;
+}
+.about-cta a span {
+  transition: transform 0.2s ease;
+}
+.about-cta a:hover {
+  background: var(--a-red);
+  color: #fff;
+}
+.about-cta a:hover span {
+  transform: translateX(4px);
+}
+.about-cta a:focus-visible {
+  outline: 2px solid var(--a-red);
+  outline-offset: 3px;
+}
+.about .section-header {
+  margin: 0 0 30px;
+  font-size: 13px;
+  color: var(--a-faint);
+}
+.about-head {
+  max-width: 860px;
+  margin: 0 0 56px;
+}
+.about-h {
+  font-family: var(--font-head);
+  font-size: clamp(27px, 3.8vw, 46px);
+  font-weight: 500;
+  letter-spacing: -0.025em;
+  line-height: 1.1;
+}
+.about-sub {
+  margin-top: 14px;
+  font-size: clamp(16px, 1.9vw, 21px);
+  line-height: 1.35;
+  color: var(--a-soft);
+}
+.about-source {
+  font-family: var(--font-mono);
+  font-size: 13px;
+  color: var(--a-faint);
+}
+.about-scribble {
+  font-family: var(--font-caveat), "Brush Script MT", cursive;
+  font-weight: 500;
+  line-height: 1;
+  color: var(--a-red);
+}
+.about-scribble.quiet {
+  color: var(--a-ghost);
+}
+.about-rowlabel {
+  font-family: var(--font-mono);
+  font-size: 13px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+/* ---- sections: one to a screen, with room around it ---- */
+.about-sec {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  min-height: min(100vh, 1080px);
+  min-height: min(100svh, 1080px);
+  padding-block: clamp(72px, 11vh, 128px);
+}
+
+/* ---- strokes, boxes and text shared by the SVG diagrams ---- */
+.about-svg {
+  display: block;
+  width: 100%;
+  height: auto;
+  overflow: visible;
+  font-size: 24px;
+}
+.about-line {
+  fill: none;
+  stroke: var(--a-ink);
+  stroke-width: 3;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.about-line.quiet {
+  stroke: var(--a-line);
+  stroke-width: 2.5;
+}
+.about-line.hot {
+  stroke: var(--a-red);
+}
+.about-line.thick {
+  stroke-width: 4;
+}
+.about-line.dashed {
+  stroke-dasharray: 6 10;
+}
+.about-box {
+  fill: var(--box);
+  stroke: var(--a-ink);
+  stroke-width: 3;
+  stroke-linejoin: round;
+}
+.about-dot {
+  fill: var(--a-ink);
+}
+.about-dot.hot {
+  fill: var(--a-red);
+}
+.about-mote {
+  fill: var(--a-line);
+}
+.about-mote.hot {
+  fill: var(--a-red);
+}
+.about-t {
+  font-family: var(--font-sans);
+  fill: var(--a-ink);
+}
+.about-t.soft {
+  fill: var(--a-soft);
+}
+.about-t.faint {
+  fill: var(--a-faint);
+}
+.about-t.ghost {
+  fill: var(--a-ghost);
+}
+.about-t.code {
+  font-family: var(--font-mono);
+}
+.about-t.row {
+  font-size: 26px;
+  letter-spacing: 3px;
+}
+.about-t.hot {
+  fill: var(--a-red-text);
+}
+.about-t.scribble {
+  font-family: var(--font-caveat), "Brush Script MT", cursive;
+  font-weight: 500;
+  fill: var(--a-red);
+}
+
+/* the same hand-drawn box for HTML: the outline lives on ::before so the
+   wobble bends the border and never the text inside it */
+.about-rough {
+  position: relative;
+  border-radius: 10px;
+}
+.about-rough::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border: 2.5px solid var(--a-ink);
+  border-radius: inherit;
+  background: var(--box);
+  filter: url(#about-rough-px);
+}
+.about-rough.quiet::before {
+  border-color: var(--a-line);
+  border-width: 2px;
+}
+.about-rough.strong::before {
+  border-width: 3.5px;
+}
+.about-rough.thin::before {
+  border-width: 1.5px;
+  background: none;
+}
+.about-rough > * {
+  position: relative;
+}
+
+.about-wide {
+  display: block;
+}
+.about-narrow {
+  display: none;
+}
+
+/* ---- motion ---- */
+/* the red strokes never sit still: three wobbles, swapped a few times a second */
+.about-boil {
+  animation: about-boil 0.54s steps(1, end) infinite;
+}
+@keyframes about-boil {
+  0% {
+    filter: url(#about-rough);
+  }
+  33% {
+    filter: url(#about-rough-b);
+  }
+  66% {
+    filter: url(#about-rough-c);
+  }
+}
+.about-rough:hover::before {
+  animation: about-boil-px 0.36s steps(1, end) infinite;
+}
+@keyframes about-boil-px {
+  0% {
+    filter: url(#about-rough-px);
+  }
+  50% {
+    filter: url(#about-rough-px-b);
+  }
+}
+/* scroll reveals: AboutMotion arms them, and --d staggers them */
+.about-rise {
+  transition:
+    opacity 0.8s cubic-bezier(0.2, 0.7, 0.2, 1),
+    transform 0.8s cubic-bezier(0.2, 0.7, 0.2, 1);
+  transition-delay: calc(var(--d, 0) * 80ms);
+}
+.about-armed [data-reveal]:not(.is-in) .about-rise {
+  opacity: 0;
+  transform: translateY(28px);
+}
+.about-draw {
+  stroke-dasharray: 1;
+  stroke-dashoffset: 0;
+  transition: stroke-dashoffset 1.1s cubic-bezier(0.5, 0, 0.2, 1);
+  transition-delay: calc(var(--d, 0) * 90ms + 350ms);
+}
+.about-armed [data-reveal]:not(.is-in) .about-draw,
+.about-armed .about-fold:not(.is-open) .about-draw {
+  stroke-dashoffset: 1;
+}
+.about-fade {
+  transition: opacity 0.6s ease;
+  transition-delay: calc(var(--d, 0) * 90ms + 350ms);
+}
+.about-armed [data-reveal]:not(.is-in) .about-fade,
+.about-armed .about-fold:not(.is-open) .about-fade {
+  opacity: 0;
+}
+.about-pop {
+  transition:
+    opacity 0.4s ease,
+    transform 0.5s cubic-bezier(0.3, 1.5, 0.5, 1);
+  transition-delay: calc(var(--d, 0) * 90ms + 350ms);
+}
+.about-armed [data-reveal]:not(.is-in) .about-pop,
+.about-armed .about-fold:not(.is-open) .about-pop {
+  opacity: 0;
+  transform: translateY(14px);
+}
+/* a ring opening out from something that just happened */
+.about-ping {
+  fill: none;
+  stroke: var(--a-red);
+  stroke-width: 3;
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: about-ping 2.4s ease-out infinite;
+}
+@keyframes about-ping {
+  0% {
+    transform: scale(1);
+    opacity: 0.9;
+  }
+  75%,
+  100% {
+    transform: scale(2.6);
+    opacity: 0;
+  }
+}
+
+/* ---- hero: the words on the left, the chain being read on the right ---- */
+.about-hero,
+.about-close {
+  position: relative;
+  /* the field runs to the window's edges; the words stay on the page measure */
+  margin-inline: calc(50% - 50vw + 8px);
+}
+.about-hero-in,
+.about-close-in {
+  position: relative;
+  width: min(1160px, calc(100vw - 40px));
+  margin: 0 auto;
+}
+.about-hero {
+  border-bottom: 1px solid var(--border);
+}
+.about-hero-in {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  /* what is left of the first screen under the top bar */
+  min-height: min(100vh - 93px, 960px);
+  min-height: min(100svh - 93px, 960px);
+  padding: clamp(80px, 11vh, 150px) 0;
+}
+.about-title-line {
+  position: relative;
+  display: inline-block;
+}
+/* the scribble hangs off the end of "Product Hunt", sized in title ems so it
+   keeps the deck's proportions at every width */
+.about-hero-note {
+  position: absolute;
+  left: 100%;
+  top: -0.09em;
+  letter-spacing: 0;
+}
+.about-hero-note svg {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 1.6em;
+  height: 0.733em;
+  overflow: visible;
+}
+.about-hero-note .about-scribble {
+  position: absolute;
+  left: 4.17em;
+  top: -0.5em;
+  font-size: 0.4em;
+  white-space: nowrap;
+  transform: rotate(-3deg);
+  transform-origin: left center;
+}
+.about-hero-note-m {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+/* ---- problem: three numbers taking turns over one sheet of 40 programs ---- */
+.about-reel-tabs {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: clamp(12px, 3vw, 40px);
+  /* a stretched button centres its contents; keep the three hairlines level */
+  align-items: start;
+}
+.about-reel-tab {
+  display: block;
+  padding: 0 0 4px;
+  border: 0;
+  border-radius: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.about-reel-tab:focus-visible {
+  outline: 2px solid var(--a-ink);
+  outline-offset: 6px;
+}
+/* the hairline over each number; the one that is up fills as its turn runs */
+.about-reel-bar {
+  display: block;
+  height: 2px;
+  margin-bottom: clamp(18px, 2.4vw, 28px);
+  background: var(--border-strong);
+}
+.about-reel-bar i {
+  display: block;
+  height: 100%;
+  background: var(--a-ink);
+  transform-origin: left center;
+}
+.about-reel-bar i.run {
+  animation: about-reel 5s linear forwards;
+}
+.about-reel:hover .about-reel-bar i.run {
+  animation-play-state: paused;
+}
+@keyframes about-reel {
+  from {
+    transform: scaleX(0);
+  }
+  to {
+    transform: scaleX(1);
+  }
+}
+.about-stat-num {
+  display: block;
+  font-family: var(--font-head);
+  font-size: clamp(27px, 4.8vw, 62px);
+  font-weight: 600;
+  letter-spacing: -0.03em;
+  line-height: 1;
+  transition: color 0.35s ease;
+}
+.about-stat-label {
+  display: block;
+  margin-top: 8px;
+  font-size: clamp(13px, 1.5vw, 17px);
+  line-height: 1.3;
+  color: var(--a-soft);
+  transition: color 0.35s ease;
+}
+/* the two that are waiting their turn */
+.about-reel-tab:not(.on) .about-stat-num,
+.about-reel-tab:not(.on) .about-stat-label {
+  color: var(--a-ghost);
+}
+.about-reel-tab:not(.on):hover .about-stat-num,
+.about-reel-tab:not(.on):hover .about-stat-label {
+  color: var(--a-soft);
+}
+.about-bits {
+  display: grid;
+  grid-template-columns: repeat(20, minmax(0, 1fr));
+  gap: clamp(4px, 0.7vw, 8px);
+  margin-top: clamp(30px, 4.4vw, 52px);
+}
+.about-bits i {
+  position: relative;
+  aspect-ratio: 1;
+  display: grid;
+  place-items: center;
+  border: 1.5px solid var(--a-cell);
+  border-radius: 8px;
+  background: var(--box);
+  font-family: var(--font-mono);
+  font-size: clamp(11px, 1.5vw, 19px);
+  font-style: normal;
+  font-weight: 500;
+  line-height: 1;
+  color: var(--a-rule);
+  transition:
+    background-color 0.4s ease,
+    border-color 0.4s ease,
+    color 0.4s ease,
+    transform 0.45s cubic-bezier(0.3, 1.6, 0.5, 1);
+}
+.about-bits i.flip {
+  animation: about-flip 0.3s ease-out;
+}
+@keyframes about-flip {
+  0% {
+    transform: rotateX(90deg);
+    color: var(--a-ink);
+  }
+  100% {
+    transform: none;
+  }
+}
+/* the shaded ones: they fill in one after another, and clear together */
+.about-bits i.on {
+  border-color: transparent;
+  transition-delay: calc(var(--k) * 70ms + 150ms);
+}
+.about-bits.tone-1 i.on {
+  background: color-mix(in srgb, var(--a-red) 22%, var(--box));
+  color: var(--a-ink);
+}
+.about-bits.tone-2 i.on {
+  background: color-mix(in srgb, var(--a-red) 62%, var(--box));
+  color: #fff;
+}
+.about-bits.tone-3 i.on {
+  background: var(--a-red);
+  color: #fff;
+}
+.about-armed [data-reveal]:not(.is-in) .about-bits i.on,
+.about-armed .about-fold:not(.is-open) .about-bits i.on {
+  background: var(--box);
+  border-color: var(--a-cell);
+  color: var(--a-rule);
+  transform: scale(0.82);
+}
+/* the verified one gets its tick */
+.about-bits i span {
+  transition: opacity 0.2s ease;
+}
+.about-bits i svg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  opacity: 0;
+}
+.about-bits i svg path {
+  fill: none;
+  stroke: #fff;
+  stroke-width: 4.5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-dasharray: 1;
+  stroke-dashoffset: 1;
+  transition: stroke-dashoffset 0.35s ease;
+}
+.about-bits.tone-3 i span {
+  opacity: 0;
+}
+.about-bits.tone-3 i svg {
+  opacity: 1;
+}
+.about-bits.tone-3 i svg path {
+  stroke-dashoffset: 0;
+  transition-delay: 0.3s;
+}
+/* ---- the sections, folded under their ruled headers: one open at a time,
+   taking turns (Folds). The folding only applies once AboutMotion has armed
+   the page, so with no JavaScript every panel is open. ---- */
+.about-sec-folds {
+  padding-block: clamp(40px, 6vh, 80px);
+}
+.about-fold-btn {
+  display: block;
+  width: 100%;
+  padding: 13px 0;
+  border: 0;
+  border-radius: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  scroll-margin-top: 16px;
+}
+.about-fold-btn:focus-visible {
+  outline: 2px solid var(--a-ink);
+  outline-offset: 2px;
+}
+.about .about-fold-label {
+  margin: 0;
+  transition: color 0.35s ease;
+}
+/* the header's ruled lines are a real element here, so the open one's can ink
+   in from the left as its turn runs */
+.about-fold-label::after {
+  content: none;
+}
+.about-fold-rule {
+  position: relative;
+  flex: 1;
+  height: 9px;
+  margin-left: 14px;
+  background: repeating-linear-gradient(to bottom, var(--border) 0, var(--border) 1px, transparent 1px, transparent 4px);
+}
+.about-fold-rule i {
+  position: absolute;
+  inset: 0;
+  background: repeating-linear-gradient(to bottom, var(--a-ink) 0, var(--a-ink) 1px, transparent 1px, transparent 4px);
+  transform-origin: left center;
+}
+.about-fold-rule i.run {
+  animation: about-reel 9s linear forwards;
+}
+.about-folds:hover .about-fold-rule i.run {
+  animation-play-state: paused;
+}
+.about-fold-mark {
+  position: relative;
+  width: 11px;
+  height: 11px;
+  margin-left: 8px;
+}
+.about-fold-mark::before,
+.about-fold-mark::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 50%;
+  height: 1.5px;
+  margin-top: -0.75px;
+  background: currentColor;
+  transition: transform 0.35s ease;
+}
+.about-fold.is-open .about-fold-label,
+.about:not(.about-armed) .about-fold-label {
+  color: var(--a-ink);
+}
+.about-armed .about-fold:not(.is-open) .about-fold-btn:hover .about-fold-label {
+  color: var(--a-soft);
+}
+.about-armed .about-fold:not(.is-open) .about-fold-mark::after {
+  transform: rotate(90deg);
+}
+.about-fold-panel {
+  display: grid;
+  grid-template-rows: 1fr;
+  transition: grid-template-rows 0.7s cubic-bezier(0.3, 0, 0.2, 1);
+}
+.about-fold-body {
+  min-height: 0;
+  /* clipped top and bottom only, so a ring opening at a diagram's edge still shows */
+  overflow: hidden;
+  overflow: visible clip;
+  transition: visibility 0s;
+}
+.about-armed .about-fold:not(.is-open) .about-fold-panel {
+  grid-template-rows: 0fr;
+}
+.about-armed .about-fold:not(.is-open) .about-fold-body {
+  visibility: hidden;
+  transition: visibility 0s 0.7s;
+}
+/* every panel as tall as the tallest (Folds measures it) */
+.about-fold-in {
+  box-sizing: content-box;
+  min-height: var(--fold-h, 0px);
+  padding: 18px 0 36px;
+}
+.about-fold-content .about-head {
+  max-width: none;
+  margin-bottom: 34px;
+}
+.about-fold-content .about-h {
+  font-size: clamp(26px, 3.3vw, 40px);
+}
+.about-fold-content > .about-source {
+  margin-top: 24px;
+}
+
+/* ---- solution: sources -> the loader -> the dossier ---- */
+.about-flow {
+  display: grid;
+  grid-template-columns: 200px 72px 210px 132px minmax(0, 1fr);
+  align-items: center;
+  padding: 26px 0 6px;
+}
+.about-flow-sources {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.about-flow-sources li {
+  height: 48px;
+  display: grid;
+  place-items: center;
+  font-size: 15px;
+  color: var(--a-soft);
+}
+.about-flow-join {
+  width: 72px;
+  height: 234px;
+  overflow: visible;
+}
+.about-flow-down {
+  display: none;
+}
+.about-flow-door {
+  position: relative;
+}
+.about-flow-door-note {
+  position: absolute;
+  left: 6px;
+  top: -34px;
+  font-size: 23px;
+  white-space: nowrap;
+  transform: rotate(-3deg);
+}
+.about-flow-door-outer {
+  border-radius: 16px;
+  padding: 7px;
+}
+.about-flow-door-inner {
+  border-radius: 11px;
+  padding: 30px 14px;
+  text-align: center;
+  font-size: 18px;
+  font-weight: 600;
+  line-height: 1.2;
+}
+.about-flow-reads {
+  position: relative;
+  display: flex;
+  align-items: center;
+  padding: 0 10px 0 8px;
+}
+.about-flow-reads .about-scribble {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: calc(50% + 12px);
+  text-align: center;
+  font-size: 23px;
+  white-space: nowrap;
+}
+.about-flow-reads svg {
+  flex: 1;
+  min-width: 0;
+  height: 24px;
+  overflow: visible;
+}
+.about-flow-reads svg.about-flow-reads-head {
+  flex: none;
+  width: 24px;
+  margin-left: -16px;
+}
+/* what was read, on its way into the dossier */
+.about-flow-reads-dot {
+  position: absolute;
+  left: 8px;
+  top: 50%;
+  width: 10px;
+  height: 10px;
+  margin: -5px 0 0 -5px;
+  border-radius: 50%;
+  background: var(--a-red);
+  animation: about-reads 2.8s cubic-bezier(0.5, 0, 0.5, 1) infinite;
+}
+@keyframes about-reads {
+  0% {
+    left: 8px;
+    opacity: 0;
+  }
+  12% {
+    opacity: 1;
+  }
+  68% {
+    left: calc(100% - 24px);
+    opacity: 1;
+  }
+  80%,
+  100% {
+    left: calc(100% - 24px);
+    opacity: 0;
+  }
+}
+.about-dossier {
+  border-radius: 14px;
+  padding: 22px 26px 12px;
+}
+.about-dossier-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 12px;
+  padding-bottom: 14px;
+  margin-bottom: 6px;
+  border-bottom: 1.5px dashed var(--a-line);
+  font-size: 21px;
+  font-weight: 600;
+}
+.about-dossier-per {
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+  font-weight: 400;
+  color: var(--a-faint);
+  white-space: nowrap;
+}
+.about-dossier-row {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  padding: 9px 0;
+}
+/* the dossier being written: each row lights in turn */
+.about-dossier-row dt {
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+  font-weight: 500;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  animation: about-scan 6.5s linear infinite;
+  animation-delay: calc(var(--i) * 0.7s + 1.2s);
+}
+@keyframes about-scan {
+  0%,
+  16%,
+  100% {
+    color: var(--a-ink);
+  }
+  3%,
+  11% {
+    color: var(--a-red);
+  }
+}
+.about-dossier-dots {
+  flex: 1;
+  min-width: 12px;
+  border-bottom: 2px dotted var(--a-rule);
+  transform: translateY(-4px);
+  animation: about-scan-dots 6.5s linear infinite;
+  animation-delay: calc(var(--i) * 0.7s + 1.2s);
+}
+@keyframes about-scan-dots {
+  0%,
+  16%,
+  100% {
+    border-bottom-color: var(--a-rule);
+  }
+  3%,
+  11% {
+    border-bottom-color: var(--a-red);
+  }
+}
+.about-dossier-row dd {
+  font-size: 14.5px;
+  color: var(--a-soft);
+  white-space: nowrap;
+}
+
+/* ---- validation ---- */
+.about-flint {
+  margin: 4px 0 -6px;
+}
+
+/* ---- go-to-market: 1 in 4 beside the loop ---- */
+.about-split {
+  display: grid;
+  grid-template-columns: minmax(0, 0.92fr) minmax(0, 1fr);
+  gap: 64px;
+  align-items: center;
+}
+.about-split .about-h {
+  font-size: clamp(24px, 2.9vw, 36px);
+}
+.about-big {
+  margin-top: 36px;
+  font-family: var(--font-head);
+  font-size: clamp(84px, 13.5vw, 176px);
+  font-weight: 600;
+  letter-spacing: -0.04em;
+  line-height: 0.95;
+  white-space: nowrap;
+}
+.about-split .about-source {
+  margin-top: 30px;
+}
+/* each box warms as the marker passes behind it */
+.about-turn {
+  animation: about-turn 9s linear infinite;
+}
+.about-turn:nth-child(1) {
+  animation-delay: 7.3s;
+}
+.about-turn:nth-child(2) {
+  animation-delay: 1.05s;
+}
+.about-turn:nth-child(3) {
+  animation-delay: 2.7s;
+}
+.about-turn:nth-child(4) {
+  animation-delay: 5.6s;
+}
+@keyframes about-turn {
+  0%,
+  22%,
+  100% {
+    stroke: var(--a-ink);
+    fill: var(--box);
+  }
+  3%,
+  14% {
+    stroke: var(--a-red);
+    fill: color-mix(in srgb, var(--a-red) 12%, var(--box));
+  }
+}
+
+/* ---- the close ---- */
+.about-close {
+  margin-top: clamp(16px, 3vw, 40px);
+  border-top: 1px solid var(--border);
+}
+/* the close's field rises out of the bottom-right corner as a quarter-disc,
+   where the hero's is a wall leaning in from the right */
+.about-close .about-bitfield {
+  -webkit-mask-image: radial-gradient(ellipse 75% 120% at 100% 100%, #000 0%, #000 30%, transparent 64%);
+  mask-image: radial-gradient(ellipse 75% 120% at 100% 100%, #000 0%, #000 30%, transparent 64%);
+}
+.about-close-in {
+  padding: clamp(88px, 15vh, 176px) 0 clamp(80px, 14vh, 160px);
+}
+.about-final {
+  margin-top: 6px;
+  padding-top: 1.1em;
+  font-size: clamp(34px, 7vw, 96px);
+}
+.about-final-old {
+  position: relative;
+  display: inline-block;
+  color: var(--a-ghost);
+  font-weight: 400;
+}
+.about-final-old > svg {
+  position: absolute;
+  left: -0.19em;
+  top: 0.26em;
+  width: calc(100% + 0.38em);
+  height: 0.53em;
+  overflow: visible;
+}
+.about-final-old .about-line {
+  stroke-width: 9;
+}
+.about-final-new {
+  position: absolute;
+  left: 0.14em;
+  bottom: 0.94em;
+  font-size: 1em;
+  font-weight: 700;
+  letter-spacing: 0;
+  white-space: nowrap;
+  transform: rotate(-4deg);
+  transform-origin: left bottom;
+  /* written in, left to right, once the strike has gone through */
+  clip-path: inset(-30% -5% -30% -5%);
+  transition: clip-path 0.8s cubic-bezier(0.5, 0, 0.2, 1) 1.5s;
+}
+.about-armed [data-reveal]:not(.is-in) .about-final-new {
+  clip-path: inset(-30% 105% -30% -5%);
+}
+.about-url {
+  margin-top: clamp(32px, 4vw, 52px);
+}
+.about-url a {
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+  color: var(--a-ink);
+  font-family: var(--font-mono);
+  font-size: clamp(16px, 2.2vw, 26px);
+  text-decoration: none;
+}
+.about-url a:hover {
+  text-decoration: underline;
+  text-underline-offset: 6px;
+}
+
+/* the hero scribble no longer fits beside the title: tuck it underneath */
+@media (max-width: 899px) {
+  .about-hero-note {
+    display: none;
+  }
+  .about-hero-note-m {
+    position: static;
+    width: auto;
+    height: auto;
+    overflow: visible;
+    clip-path: none;
+    display: flex;
+    align-items: flex-end;
+    gap: 6px;
+    margin: 10px 0 0 6px;
+  }
+  .about-hero-note-m svg {
+    width: clamp(64px, 12vw, 96px);
+    height: auto;
+    flex: none;
+    transform: scaleY(-1);
+    overflow: visible;
+  }
+  .about-hero-note-m .about-scribble {
+    font-size: clamp(27px, 5.2vw, 36px);
+    transform: rotate(-3deg);
+    margin-bottom: -4px;
+  }
+  .about-split {
+    grid-template-columns: 1fr;
+    gap: 48px;
+  }
+}
+
+/* narrow screens: every diagram restacks */
+@media (max-width: 759px) {
+  .about-head {
+    margin-bottom: 36px;
+  }
+  /* the field moves under the words instead of beside them */
+  .about-bitfield {
+    -webkit-mask-image: linear-gradient(180deg, transparent 0%, transparent 58%, #000 88%);
+    mask-image: linear-gradient(180deg, transparent 0%, transparent 58%, #000 88%);
+  }
+  .about-close .about-bitfield {
+    -webkit-mask-image: radial-gradient(ellipse 120% 44% at 100% 100%, #000 0%, #000 34%, transparent 82%);
+    mask-image: radial-gradient(ellipse 120% 44% at 100% 100%, #000 0%, #000 34%, transparent 82%);
+  }
+  .about-hero-in {
+    padding-bottom: 210px;
+  }
+  .about-close-in {
+    padding-bottom: 190px;
+  }
+  .about-wide {
+    display: none;
+  }
+  .about-narrow {
+    display: block;
+  }
+
+  .about-sec {
+    padding-block: 64px;
+  }
+  /* natural heights here: the panels are too unequal to hold at the tallest */
+  .about-fold-in {
+    min-height: 0;
+    padding: 14px 0 30px;
+  }
+  .about-fold-content .about-head {
+    margin-bottom: 28px;
+  }
+  .about-bits {
+    grid-template-columns: repeat(10, minmax(0, 1fr));
+    gap: 5px;
+  }
+  .about-bits i {
+    border-radius: 6px;
+    font-size: 13px;
+  }
+
+  .about-flow {
+    grid-template-columns: 1fr;
+    padding: 0;
+  }
+  .about-flow-sources {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+  }
+  .about-flow-sources li {
+    font-size: 13.5px;
+  }
+  .about-flow-join,
+  .about-flow-reads svg,
+  .about-flow-reads-dot {
+    display: none;
+  }
+  .about-flow-down {
+    display: block;
+    padding: 12px 0;
+    text-align: center;
+    font-family: var(--font-mono);
+    font-size: 18px;
+    line-height: 1;
+    color: var(--a-line);
+  }
+  .about-flow-down.hot {
+    color: var(--a-red);
+    padding-top: 6px;
+  }
+  .about-flow-door {
+    margin-top: 30px;
+  }
+  .about-flow-reads {
+    justify-content: center;
+    padding-top: 16px;
+  }
+  .about-flow-reads .about-scribble {
+    position: static;
+  }
+  .about-dossier-row {
+    flex-direction: column;
+    gap: 2px;
+  }
+  .about-dossier-dots {
+    display: none;
+  }
+  .about-dossier-row dd {
+    white-space: normal;
+  }
+
+  .about-flint-m ol {
+    list-style: none;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    margin: 14px 0 26px 6px;
+    padding: 4px 0;
+    border-left: 2.5px solid var(--a-ink);
+  }
+  .about-flint-m li {
+    position: relative;
+    display: flex;
+    align-items: baseline;
+    gap: 12px;
+    padding-left: 20px;
+    font-size: 15px;
+  }
+  .about-flint-m li::before {
+    content: "";
+    position: absolute;
+    left: -7.5px;
+    top: 0.3em;
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    background: var(--a-ink);
+  }
+  .about-flint-m-date {
+    min-width: 54px;
+    font-family: var(--font-mono);
+    font-size: 12.5px;
+    color: var(--a-faint);
+  }
+  .about-flint-m-quiet {
+    margin: 12px 0 10px;
+    font-family: var(--font-mono);
+    font-size: 13px;
+    color: var(--a-ghost);
+  }
+  .about-flint-m .about-scribble {
+    font-size: 27px;
+  }
+  .about-flint-m .about-scribble.big {
+    margin-top: 10px;
+    font-size: 34px;
+  }
+
+  .about-loop-m ol {
+    list-style: none;
+    display: flex;
+    flex-direction: column;
+    gap: 32px;
+  }
+  .about-loop-m li {
+    padding: 15px 12px;
+    text-align: center;
+    font-size: 15px;
+  }
+  .about-loop-m li + li::after {
+    content: "↓";
+    position: absolute;
+    left: 50%;
+    top: -26px;
+    transform: translateX(-50%);
+    font-family: var(--font-mono);
+    font-size: 17px;
+    line-height: 1;
+    color: var(--a-red);
+  }
+  .about-loop-m em {
+    margin-left: 8px;
+    font-size: 24px;
+    font-style: normal;
+  }
+  .about-loop-m > p {
+    margin-top: 16px;
+    text-align: center;
+    font-size: 27px;
+  }
+}
