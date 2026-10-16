@@ -10,7 +10,7 @@ import { fetchDossierMarkdown } from "@/lib/api";
  * (app/api/revalidate). Google is pointed at the HTML page as canonical so
  * the two never compete in results.
  */
-export const revalidate = 900; // DOSSIER_REVALIDATE — segment config must be a literal
+export const revalidate = 3600; // DOSSIER_REVALIDATE — segment config must be a literal
 export async function generateStaticParams() {
   return [];
 }

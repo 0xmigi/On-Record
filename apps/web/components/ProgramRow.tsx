@@ -113,11 +113,14 @@ export function ProgramRow({
       ? `First deployed on chain ${program.firstDeployAt.slice(0, 10)} (ProgramData history). First seen by the radar ${program.deployedAt?.slice(0, 10) ?? "unknown"}.`
       : "When this program first went on record";
 
+  // No prefetch: a prefetched dossier is a full server render and a cache write,
+  // so a feed of rows in view cost several renders per visit, clicked or not.
   return (
     <article className="radar-row">
       <Link
         className="radar-row-link"
         href={`/p/${program.id}`}
+        prefetch={false}
         aria-label={`Open ${program.name ?? truncateAddress(program.id)}`}
       />
       <div className="radar-main">

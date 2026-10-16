@@ -407,7 +407,7 @@ export class ApiUnavailableError extends Error {
 /** Dossier data is cached as long as the dossier page itself (app/p/[id]):
  *  Next.js revalidates a route at its shortest fetch window, so a 30s fetch
  *  here would quietly undo the page's cache. */
-export const DOSSIER_REVALIDATE = 900;
+export const DOSSIER_REVALIDATE = 3600;
 
 async function getJson<T>(path: string, revalidate = 30): Promise<T | null> {
   if (API_MISCONFIGURED) throw new ApiUnavailableError(path, "API_URL not configured");

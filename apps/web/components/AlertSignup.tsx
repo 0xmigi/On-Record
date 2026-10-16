@@ -52,7 +52,7 @@ function WatchList({ programs }: { programs: Program[] }) {
         {rows.map((p) => (
           <li key={p.id}>
             <ProgramAvatar program={{ ...p, network: "mainnet" }} size={18} />
-            <Link href={`/p/${p.id}`} className="watch-list-name" target="_blank">
+            <Link href={`/p/${p.id}`} prefetch={false} className="watch-list-name" target="_blank">
               {p.name ?? short(p.id)}
             </Link>
             <span className={`vfy ${p.verified ? "vfy-yes" : "vfy-no"}`}>{p.verified ? "✓ verified" : "✗ not verified"}</span>

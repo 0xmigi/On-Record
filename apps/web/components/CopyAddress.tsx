@@ -34,7 +34,7 @@ export function CopyAddress({
   return (
     <span className={`copy-addr ${className}`.trim()}>
       {href ? (
-        <Link className="copy-addr-text" href={href} title={value}>
+        <Link className="copy-addr-text" href={href} prefetch={false} title={value}>
           {display}
         </Link>
       ) : (

@@ -79,7 +79,10 @@ function sizeFillPct(bytes: number): number {
 // be a fresh server render, which is what let crawlers burn the Vercel CPU
 // allowance (see app/robots.ts). An empty list still opts the route into ISR:
 // pages render on first visit, then serve from cache.
-export const revalidate = 900;
+// An hour, not a day: ingest pushes a rebuild when the record changes
+// (app/api/revalidate), but "Last 24h" and the "ago" times only move with
+// the clock, and a day-old count must not read as current.
+export const revalidate = 3600;
 export async function generateStaticParams() {
   return [];
 }
@@ -295,7 +298,7 @@ function WalletLink({ address, network }: { address: string; network: ApiProgram
   return (
     <>
       {" "}
-      <Link className="receipt-link" href={builderHref(address, network)}>
+      <Link className="receipt-link" prefetch={false} href={builderHref(address, network)}>
         {truncateAddress(address)}
       </Link>
     </>
@@ -591,7 +594,7 @@ export default async function ProgramDossierPage({
           >
             yes{" "}
             <span className="cell-dim">
-              · by On Record · <Link href={`/p/${id}/rebuild`}>see the comparison</Link>
+              · by On Record · <Link href={`/p/${id}/rebuild`} prefetch={false}>see the comparison</Link>
             </span>
           </Row>
         ) : null}
@@ -1269,6 +1272,7 @@ export default async function ProgramDossierPage({
               ) : rebuild ? (
                 <Link
                   href={`/p/${id}/rebuild`}
+                  prefetch={false}
                   className="verified-badge-link tip"
                   data-tip="Verified by On Record, not OtterSec: rebuilt from public source and matched the deployed bytes exactly. Click to see the comparison."
                 >
@@ -1330,7 +1334,7 @@ export default async function ProgramDossierPage({
                   <span className="dossier-deployer">
                     <DeployerIcon />
                     <span className="dossier-deployer-k">deployer</span>
-                    <Link className="receipt-link" href={builderHref(program.deployer, program.network)}>
+                    <Link className="receipt-link" prefetch={false} href={builderHref(program.deployer, program.network)}>
                       {truncateAddress(program.deployer)}
                     </Link>
                   </span>

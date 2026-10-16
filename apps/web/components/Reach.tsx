@@ -69,6 +69,7 @@ function Chip({ e, sub, scale }: { e: Edge; sub: string; scale: number }) {
   return (
     <Link
       href={`/p/${e.id}`}
+      prefetch={false}
       className="map-chip"
       title={
         traffic

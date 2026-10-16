@@ -89,7 +89,7 @@ function Metric({ value, label }: { value: ReactNode; label: string }) {
 
 function BuilderLink({ address, network }: { address: string; network: ApiBuilder["network"] }) {
   return (
-    <Link className="receipt-link" href={builderHref(address, network)}>
+    <Link className="receipt-link" prefetch={false} href={builderHref(address, network)}>
       {truncateAddress(address)}
     </Link>
   );

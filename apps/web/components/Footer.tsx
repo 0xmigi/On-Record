@@ -48,7 +48,7 @@ export function Footer() {
     <footer className="footer">
       <div className="footer-inner">
         <div className="footer-brand">
-          <Link className="wordmark" href="/">
+          <Link className="wordmark" href="/" prefetch={false}>
             <Mark size={18} />
             <span>on record</span>
           </Link>
@@ -66,7 +66,7 @@ export function Footer() {
                         {l.label}
                       </a>
                     ) : (
-                      <Link href={l.href}>{l.label}</Link>
+                      <Link href={l.href} prefetch={false}>{l.label}</Link>
                     )}
                   </li>
                 ))}

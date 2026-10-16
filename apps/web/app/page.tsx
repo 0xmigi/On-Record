@@ -107,7 +107,7 @@ function SpectrumBar({
           <Tier k="recycled" n={counts.recycled} />
         </div>
       ) : null}
-      <Link className="spectrum-funnel" href="/funnel">
+      <Link className="spectrum-funnel" href="/funnel" prefetch={false}>
         {groupNum(upgrades)} upgrades · stats →
       </Link>
     </div>
@@ -139,7 +139,7 @@ function RecycledRow({ rep, count, windowLabel }: { rep: ApiProgram; count: numb
   const kind = botKind(rep) ?? "recycled";
   const t = rep.momentum?.txns24h ?? rep.earlySigners ?? null;
   return (
-    <Link href={`/p/${rep.id}`} className="recycled-row">
+    <Link href={`/p/${rep.id}`} prefetch={false} className="recycled-row">
       <span className={`recycled-kind rk-${kind}`}>{BOT_LABEL[kind]}</span>
       <span className="recycled-name">{rep.name ?? truncateAddress(rep.id)}</span>
       <span className="recycled-x">×{count} {count === 1 ? "seen" : windowLabel}</span>
@@ -222,7 +222,7 @@ function ClosedSection({
           const life = deriveLifecycle(rep);
           const kind = botKind(rep);
           return (
-            <Link href={`/p/${rep.id}`} className="recycled-row" key={rep.id}>
+            <Link href={`/p/${rep.id}`} prefetch={false} className="recycled-row" key={rep.id}>
               <span className="recycled-kind rk-closed">
                 closed{life.lifespanLabel ? ` within ${life.lifespanLabel}` : ""}
               </span>
