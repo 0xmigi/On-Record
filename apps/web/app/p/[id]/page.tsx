@@ -17,6 +17,7 @@ import { ComputeSection } from "@/components/ComputeSection";
 import { DossierTabs, type DossierTab } from "@/components/DossierTabs";
 import { RecordTable, type Trail } from "@/components/RecordTable";
 import { VerifyNote } from "@/components/VerifyNote";
+import { rebuiltFromSource, machineLabel } from "@/lib/rebuilds";
 import { SignalHex } from "@/components/SignalHex";
 import { Sparkline } from "@/components/Sparkline";
 import { deriveSignals } from "@/lib/signals";
@@ -461,6 +462,9 @@ export default async function ProgramDossierPage({
     onMainnet ? fetchVerification(id) : Promise.resolve(null),
   ]);
   const trail = versionsBySlot(versions);
+  // On Record's own rebuild from public source, shown only for programs without
+  // an OtterSec verification and only while the deployed bytes are the ones rebuilt
+  const rebuild = program.verified ? null : rebuiltFromSource(id, verification?.current?.hash);
   const usage = storedUsage.usage;
   const usageSampledAt = storedUsage.sampledAt;
 
@@ -566,10 +570,31 @@ export default async function ProgramDossierPage({
           ) : (
             <>
               no{" "}
-              <span className="cell-dim">· source not confirmed against on-chain bytecode</span>
+              <span className="cell-dim">
+                {rebuild
+                  ? "· not by OtterSec; On Record rebuilt it below"
+                  : "· source not confirmed against on-chain bytecode"}
+              </span>
             </>
           )}
         </Row>
+        {rebuild ? (
+          <Row
+            label="Rebuilt from source"
+            explain={
+              <p className="explainer-read">
+                On Record rebuilt {rebuild.repo.replace("https://github.com/", "")} @{" "}
+                {rebuild.commit.slice(0, 7)} on a {machineLabel(rebuild.machine)} machine and got
+                exactly the deployed bytes.
+              </p>
+            }
+          >
+            yes{" "}
+            <span className="cell-dim">
+              · by On Record · <Link href={`/p/${id}/rebuild`}>see the comparison</Link>
+            </span>
+          </Row>
+        ) : null}
       </div>
 
 
@@ -1239,7 +1264,21 @@ export default async function ProgramDossierPage({
               {program.name ?? (
                 <span className="dossier-title-unknown">Unidentified program</span>
               )}
-              {program.verified ? <VerifiedBadge size={19} /> : null}
+              {program.verified ? (
+                <VerifiedBadge size={19} />
+              ) : rebuild ? (
+                <Link
+                  href={`/p/${id}/rebuild`}
+                  className="verified-badge-link tip"
+                  data-tip="Verified by On Record, not OtterSec: rebuilt from public source and matched the deployed bytes exactly. Click to see the comparison."
+                >
+                  <VerifiedBadge
+                    size={19}
+                    issuer="onrecord"
+                    title="Verified by On Record: rebuilt from public source, byte for byte"
+                  />
+                </Link>
+              ) : null}
             </h1>
           </div>
 

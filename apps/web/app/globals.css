@@ -2382,6 +2382,14 @@ a.copy-addr-text:hover {
 .dossier-title .verified-badge {
   margin-left: 0.4em;
 }
+/* the same badge in orange: verified by On Record's own rebuild, not OtterSec */
+.verified-badge-onrecord .verified-badge-disc {
+  fill: #e07a1f;
+}
+.verified-badge-link,
+.verified-badge-tip {
+  display: inline-flex;
+}
 
 .cluster-note {
   font-family: var(--font-mono);
@@ -7617,5 +7625,170 @@ a.copy-addr-text:hover {
     margin-top: 16px;
     text-align: center;
     font-size: 27px;
+  }
+}
+
+/* ---- /p/<id>/rebuild: a verification run, laid out as a report ---- */
+.run-page {
+  max-width: 920px;
+  padding: 32px 0 64px;
+}
+.run-back {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--ink-faint);
+  text-decoration: none;
+}
+.run-eyebrow {
+  margin: 22px 0 10px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+}
+.run-result {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+  padding: 16px 20px;
+  border-radius: 6px;
+  border: 1px solid;
+}
+.run-result.ok {
+  border-color: color-mix(in srgb, var(--green) 40%, transparent);
+  background: color-mix(in srgb, var(--green) 7%, transparent);
+}
+.run-result.no {
+  border-color: color-mix(in srgb, var(--red) 40%, transparent);
+  background: color-mix(in srgb, var(--red) 7%, transparent);
+}
+.run-result-mark {
+  font-family: var(--font-mono);
+  font-size: 18px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.run-result.ok .run-result-mark {
+  color: var(--green);
+}
+.run-result.no .run-result-mark {
+  color: var(--red);
+}
+.run-result-what {
+  font-family: var(--font-mono);
+  font-size: 13px;
+  color: var(--ink-faint);
+}
+.run-section {
+  margin-top: 32px;
+}
+.run-h {
+  margin: 0 0 10px;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.run-box {
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--card);
+  padding: 14px 20px;
+}
+.run-fp {
+  display: grid;
+  grid-template-columns: 180px 1fr;
+  align-items: center;
+  gap: 16px;
+  padding: 10px 0;
+}
+.run-fp + .run-fp {
+  border-top: 1px dashed var(--border);
+}
+.run-label {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+}
+.run-hash {
+  display: grid;
+  grid-template-columns: repeat(8, auto);
+  justify-content: start;
+  gap: 10px;
+  font-family: var(--font-mono);
+  font-size: 15px;
+}
+.run-g.same {
+  color: var(--green);
+}
+.run-g.diff {
+  color: var(--red);
+}
+.run-verdict {
+  margin: 8px 0 4px;
+  font-family: var(--font-mono);
+  font-size: 13px;
+}
+.run-verdict.ok {
+  color: var(--green);
+}
+.run-verdict.no {
+  color: var(--red);
+}
+.run-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-family: var(--font-mono);
+  font-size: 13px;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+.run-table th {
+  text-align: left;
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+  padding: 10px 16px;
+  border-bottom: 1px solid var(--border);
+}
+.run-table td {
+  padding: 9px 16px;
+}
+.run-table tr + tr td {
+  border-top: 1px dashed var(--border);
+}
+.run-ok {
+  color: var(--green);
+}
+.run-no {
+  color: var(--red);
+}
+.run-note {
+  margin: 10px 0 0;
+  font-size: 13px;
+  color: var(--ink-faint);
+}
+.run-foot {
+  margin: 32px 0 0;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--ink-faint);
+}
+@media (max-width: 720px) {
+  .run-fp {
+    grid-template-columns: 1fr;
+    gap: 6px;
+  }
+  .run-hash {
+    grid-template-columns: repeat(4, auto);
   }
 }

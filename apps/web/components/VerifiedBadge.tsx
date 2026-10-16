@@ -6,17 +6,20 @@
  *  bytecode reproduces from public source. The scallop is our own geometry.
  *
  *  Kept as one component so the radar row and the dossier header cannot drift
- *  apart on what "verified" looks like. */
+ *  apart on what "verified" looks like. `issuer="onrecord"` is the same badge
+ *  in orange, for builds On Record rebuilt itself rather than OtterSec. */
 export function VerifiedBadge({
   size = 14,
   title = "Verified build — the on-chain bytecode reproduces from public source",
+  issuer = "ottersec",
 }: {
   size?: number;
   title?: string;
+  issuer?: "ottersec" | "onrecord";
 }) {
   return (
     <svg
-      className="verified-badge"
+      className={issuer === "onrecord" ? "verified-badge verified-badge-onrecord" : "verified-badge"}
       width={size}
       height={size}
       viewBox="0 0 24 24"
