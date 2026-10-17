@@ -17,6 +17,7 @@ import {
   type SecurityTxt,
   type SourceFrameworkFact,
 } from "@onrecord/core";
+import { readBuildClues } from "./buildclues.js";
 
 type SubjectRow = typeof schema.subjects.$inferSelect;
 type EventRow = typeof schema.events.$inferSelect;
@@ -234,11 +235,14 @@ export function serializeProgramDetail(
   // pull IDL instructions + notable strings from the most recent fingerprint
   let idlInstructions: string[] = [];
   let strings: string[] = [];
+  let build: ApiProgramDetail["build"] = null;
   for (const e of events) {
     const fp = (e.enrichment as EventEnrichment).fingerprint;
     if (fp) {
       idlInstructions = fp.idl?.instructions ?? [];
       strings = (fp.strings ?? []).slice(0, 40);
+      // before the cut: compiler paths are short and rarely in the first 40
+      build = readBuildClues(fp.strings ?? []);
       break; // events are newest-first
     }
   }
@@ -254,6 +258,7 @@ export function serializeProgramDetail(
     references,
     idlInstructions,
     strings,
+    build,
     syscalls: row.profile?.syscalls ?? [],
     syscallSource: row.profile?.syscallSource ?? null,
     // handler names read off the binary — present for programs with no IDL

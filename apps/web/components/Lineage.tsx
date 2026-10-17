@@ -388,6 +388,17 @@ function Cells({ row }: { row: Row }) {
   );
 }
 
+/** The lineage in a few words, for the overview grid: how many programs on
+ *  record share this code (same rules as the section below), or none. */
+export function lineageSummary(program: ApiProgramDetail, family: ApiCluster | null): string {
+  const kin = relativesOf(program, family).filter(
+    (r) =>
+      strength(r) > 0 &&
+      (r.exactRepo || r.sameBucket || r.sharedFiles != null || (r.similarity != null && r.similarity > NOVEL_SIM)),
+  ).length;
+  return kin ? `${kin} relative${kin === 1 ? "" : "s"}` : "no relative";
+}
+
 export function Lineage({
   program,
   family,

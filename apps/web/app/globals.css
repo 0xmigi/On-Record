@@ -952,6 +952,53 @@ a {
   color: var(--ink);
 }
 
+/* collapsed extras on the dossier: the full security.txt, the primitive tiers.
+   Same quiet "+" toggle as the proof receipts. */
+.sectxt-more,
+.prim-more {
+  margin-top: 10px;
+}
+
+.sectxt-more > summary,
+.prim-more > summary {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  color: var(--ink-faint);
+  cursor: pointer;
+  list-style: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  user-select: none;
+}
+
+.sectxt-more > summary::-webkit-details-marker,
+.prim-more > summary::-webkit-details-marker {
+  display: none;
+}
+
+.sectxt-more > summary::before,
+.prim-more > summary::before {
+  content: "+";
+  font-weight: 700;
+}
+
+.sectxt-more[open] > summary::before,
+.prim-more[open] > summary::before {
+  content: "−";
+}
+
+.sectxt-more > summary:hover,
+.prim-more > summary:hover {
+  color: var(--ink);
+}
+
+.sectxt-more > .facts-panel {
+  margin-top: 8px;
+}
+
+
 .proof-list {
   margin-top: 10px;
   list-style: none;
@@ -4015,7 +4062,8 @@ a.copy-addr-text:hover {
 }
 
 .radar-rail .sparkline,
-.fact-value .sparkline {
+.fact-value .sparkline,
+.ov-cell .sparkline {
   color: var(--accent);
   display: block;
 }
@@ -5712,6 +5760,10 @@ a.copy-addr-text:hover {
 }
 .vfy-no {
   color: var(--red);
+}
+/* rebuilt by On Record, not OtterSec: the orange of its badge */
+.vfy-or {
+  color: #e07a1f;
 }
 .vfy-pending {
   color: var(--ink-faint);
@@ -7791,4 +7843,200 @@ a.copy-addr-text:hover {
   .run-hash {
     grid-template-columns: repeat(4, auto);
   }
+}
+
+/* mainnet / devnet switch above the record; devnet rows run in a cooler tint */
+.cswitch-bar {
+  display: inline-flex;
+  gap: 2px;
+  margin-bottom: 8px;
+  padding: 2px;
+  border: 1px solid var(--border);
+  border-radius: 2px;
+}
+.cswitch-btn {
+  padding: 4px 10px;
+  border: none;
+  background: none;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  color: var(--ink-faint);
+  cursor: pointer;
+}
+.cswitch-btn.active {
+  background: var(--card);
+  color: var(--ink);
+}
+.cswitch-devnet.active {
+  color: var(--red);
+}
+.record-devnet .record-table {
+  background: color-mix(in srgb, var(--red) 3%, var(--card));
+}
+
+
+
+
+/* ---- overview: twelve fixed cells, a receipt, then the deploy log ---- */
+.ov-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  margin: 4px 0 18px;
+  border: 1px solid var(--border);
+  border-radius: 2px;
+  background: var(--card);
+}
+.ov-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+  padding: 10px 13px 11px;
+  border-right: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+}
+.ov-cell:nth-child(4n) {
+  border-right: none;
+}
+.ov-cell:nth-last-child(-n + 4) {
+  border-bottom: none;
+}
+.ov-k {
+  align-self: flex-start;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+}
+.ov-cell:nth-child(4n) .ov-k.tip::after,
+.ov-cell:nth-child(4n - 1) .ov-k.tip::after {
+  left: auto;
+  right: 0;
+}
+.ov-v {
+  font-family: var(--font-mono);
+  font-size: 13.5px;
+  color: var(--ink);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.receipt {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  row-gap: 3px;
+  margin-bottom: 18px;
+  padding: 12px 14px;
+  border: 1px dashed var(--border-strong);
+  border-radius: 2px;
+  font-family: var(--font-mono);
+  font-size: 12px;
+}
+/* one column: a fixed label column with a short leader, value beside it */
+.receipt-line {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  min-width: 0;
+}
+.receipt-kcol {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  flex: 0 0 150px;
+}
+.receipt-k {
+  flex: none;
+  color: var(--ink-faint);
+}
+.receipt-dots {
+  flex: 1 1 auto;
+  min-width: 8px;
+  border-bottom: 1px dotted var(--border-strong);
+  transform: translateY(-3px);
+}
+.receipt-v {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ov-none {
+  margin: 6px 0 0;
+  font-family: var(--font-mono);
+  font-size: 12px;
+}
+@media (max-width: 720px) {
+  .ov-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .ov-cell:nth-child(4n) {
+    border-right: 1px solid var(--border);
+  }
+  .ov-cell:nth-child(2n) {
+    border-right: none;
+  }
+  .ov-cell:nth-last-child(-n + 4) {
+    border-bottom: 1px solid var(--border);
+  }
+  .ov-cell:nth-last-child(-n + 2) {
+    border-bottom: none;
+  }
+  .receipt-kcol {
+    flex-basis: 110px;
+  }
+}
+
+/* the map's reading notes, one quiet line */
+.map-legend {
+  margin: 12px 0 0;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--ink-faint);
+}
+
+.learn-links {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 4px 16px;
+}
+
+/* a cell's secondary reading — a note after the value and a hairline bar on
+   the bottom edge — kept quiet so the value stays the thing you read */
+.ov-note {
+  margin-left: 8px;
+  font-size: 10px;
+  color: var(--ink-faint);
+}
+.ov-note.size-band-lean {
+  color: var(--green);
+}
+.ov-note.size-band-moderate {
+  color: #d9a441;
+}
+.ov-note.size-band-heavy {
+  color: var(--accent);
+}
+.ov-bar {
+  margin-top: auto;
+  height: 2px;
+  background: var(--border);
+}
+/* height only: the fill color comes from its band class */
+.ov-bar > div {
+  height: 100%;
+}
+
+.ov-cell svg {
+  max-width: 100%;
+}
+
+/* traction with nothing in it: one line, not a panel of dashes */
+.activity-quiet {
+  margin: 0 0 18px;
+  font-family: var(--font-mono);
+  font-size: 12px;
 }

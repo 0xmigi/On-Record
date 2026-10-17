@@ -521,6 +521,14 @@ export interface ApiProgramDetail extends ApiProgram {
   neighbors: { programId: string; distance: number; name: string | null }[];
   idlInstructions: string[];
   strings: string[];
+  /** compiler download + crate versions read from paths in the binary
+   *  (apps/ingest/src/buildclues.ts). Older API builds omit it. */
+  build?: {
+    download: "mac" | "linux" | null;
+    downloadEvidence: string | null;
+    home?: "mac" | "linux" | null;
+    crates: { name: string; version: string }[];
+  } | null;
   /** sol_* syscall imports read off the ELF — the evidence behind capabilities */
   syscalls: string[];
   /** which ELF shape the syscalls came from: dynamic imports (SBPFv1), hashed

@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { Suspense, type ReactNode } from "react";
 import { Chevron } from "@/components/Chevron";
-import { parseAuditors, parseContacts, type SecTxtPart } from "@/lib/securitytxt";
+import { parseAuditors, parseContacts } from "@/lib/securitytxt";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { BackToRadar } from "@/components/BackToRadar";
@@ -15,8 +15,8 @@ import { IdlViewer } from "@/components/IdlViewer";
 import { UsageSection } from "@/components/UsageSection";
 import { ComputeSection } from "@/components/ComputeSection";
 import { DossierTabs, type DossierTab } from "@/components/DossierTabs";
-import { RecordTable, type Trail } from "@/components/RecordTable";
-import { VerifyNote } from "@/components/VerifyNote";
+import { ClusterSwitch } from "@/components/ClusterSwitch";
+import { RecordTable } from "@/components/RecordTable";
 import { rebuiltFromSource, machineLabel } from "@/lib/rebuilds";
 import { SignalHex } from "@/components/SignalHex";
 import { Sparkline } from "@/components/Sparkline";
@@ -24,12 +24,11 @@ import { deriveSignals } from "@/lib/signals";
 import { deriveComposition } from "@/lib/composition";
 import { TIER_ORDER } from "@/lib/primitives";
 import { deriveLifecycle, botKind, BOT_LABEL } from "@/lib/lifecycle";
-import { ANCHOR_LINE, OTHER_FRAMEWORKS_NOTE, builtWith } from "@/lib/frameworks";
-import { SectionExplainer } from "@/components/SectionExplainer";
+import { ANCHOR_LINE, builtWith } from "@/lib/frameworks";
 import { BotExplainer } from "@/components/BotExplainer";
 import { SectionHeader } from "@/components/SectionHeader";
 import { SaveButton } from "@/components/SaveButton";
-import { Lineage } from "@/components/Lineage";
+import { Lineage, lineageSummary } from "@/components/Lineage";
 import { ReachMap } from "@/components/Reach";
 import {
   categoryLabel,
@@ -45,7 +44,6 @@ import {
   orbTx,
   type ApiProgramDetail,
   type ApiRawEvent,
-  type ApiVerification,
   type SecurityTxt,
 } from "@/lib/api";
 import {
@@ -66,8 +64,7 @@ const EVENT_LABELS: Record<ApiRawEvent["type"], string> = {
 
 // Size bar fill: log scale across the range programs actually occupy (~8 KB to
 // ~4 MiB), NOT the 10 MiB account ceiling almost nothing reaches. This keeps the
-// fill aligned with the lean/moderate/heavy/extra-heavy bands; true whales (4 MiB+)
-// cap at full.
+// fill aligned with the lean/moderate/heavy bands; true whales (4 MiB+) cap at full.
 function sizeFillPct(bytes: number): number {
   const FLOOR = Math.log10(8 * 1024);
   const CEIL = Math.log10(4 * 1024 * 1024);
@@ -151,136 +148,12 @@ function Row({
   );
 }
 
-/** One line per security.txt entry, links as links (lib/securitytxt.ts). */
-function SecTxtParts({ parts }: { parts: SecTxtPart[] }) {
-  return (
-    <span className="sectxt-parts">
-      {parts.map((p, i) => (
-        <span className="sectxt-part" key={i}>
-          {p.via ? <span className="cell-dim">{p.via} · </span> : null}
-          {p.kind === "link" ? (
-            p.href.startsWith("mailto:") ? (
-              <a className="receipt-link" href={p.href}>
-                {p.text}
-              </a>
-            ) : (
-              <Ext href={p.href} text={p.text} />
-            )
-          ) : (
-            p.text
-          )}
-        </span>
-      ))}
-    </span>
-  );
-}
-
-/** A value that may be a URL: http(s) becomes a link, anything else stays
- *  text — these strings came out of a binary or an account anyone can write. */
-function UrlOrText({ value }: { value: string }) {
-  return /^https?:\/\/\S+$/i.test(value) ? <Ext href={value} text={shortUrl(value)} /> : <>{value}</>;
-}
-
 /** A declared repo the liveness sweep found gone is shown once, as text,
  *  under the binary panel — never as a working link in any panel. */
 function withoutDeadRepo(fields: SecurityTxt, dead: string | null): SecurityTxt {
   if (!dead || !fields.source_code || fields.source_code.trim() !== dead) return fields;
   const { source_code: _gone, ...rest } = fields;
   return rest;
-}
-
-const SECTXT_ROWS: [keyof SecurityTxt, string][] = [
-  ["project_url", "Project URL"],
-  ["contacts", "Contacts"],
-  ["auditors", "Auditors"],
-  ["policy", "Policy"],
-  ["source_code", "Source code"],
-  ["source_release", "Source release"],
-  ["source_revision", "Source revision"],
-  ["preferred_languages", "Languages"],
-  ["encryption", "Encryption"],
-  ["acknowledgements", "Acknowledgements"],
-  ["expiry", "Expiry"],
-];
-
-/** One security.txt, from one place. The first row says where it was found;
- *  the rest are the developer's fields, and — for a PMP account, which is free
- *  JSON — whatever else they wrote, under their own key names. */
-function SecurityTxtPanel({
-  fields,
-  extra = [],
-  source,
-  children,
-}: {
-  fields: SecurityTxt;
-  extra?: { key: string; value: string }[];
-  source: "binary" | "pmp";
-  children?: ReactNode;
-}) {
-  return (
-    <div className="facts-panel">
-      <Row
-        label="Found"
-        explain={
-          source === "binary" ? (
-            <>
-              <p className="explainer-read">
-                A block of contact info a developer embeds directly in the program
-                binary — the Neodyme convention — so whitehats know how to report a
-                vulnerability.
-              </p>
-              <p>
-                It carries contacts, a disclosure policy, auditors, and a source
-                link. It&apos;s self-declared, so treat it as a claim, not proof —
-                but its presence signals a team that expects scrutiny and wants to
-                be reachable.
-              </p>
-            </>
-          ) : (
-            <>
-              <p className="explainer-read">
-                The same kind of contact block, published in an account next to the
-                program instead of inside the binary. The Program Metadata Program
-                keeps one per program under the seed &ldquo;security&rdquo;.
-              </p>
-              <p>
-                On Record only reads the canonical account — the one written by
-                whoever holds the program&apos;s upgrade authority, so it speaks for
-                the same people the binary does. It can be changed without
-                redeploying the program, and it is still self-declared: a claim,
-                not proof.
-              </p>
-            </>
-          )
-        }
-      >
-        {source === "binary" ? "in the binary" : "in a PMP account"}
-      </Row>
-      {SECTXT_ROWS.map(([key, label]) => {
-        const value = fields[key];
-        if (!value) return null;
-        return (
-          <Row key={key} label={label}>
-            {key === "contacts" ? (
-              <SecTxtParts parts={parseContacts(value)} />
-            ) : key === "auditors" ? (
-              <SecTxtParts parts={parseAuditors(value)} />
-            ) : key === "source_revision" ? (
-              <span className="cell-dim">{value}</span>
-            ) : (
-              <UrlOrText value={value} />
-            )}
-          </Row>
-        );
-      })}
-      {extra.map((e) => (
-        <Row key={e.key} label={e.key}>
-          <UrlOrText value={e.value} />
-        </Row>
-      ))}
-      {children}
-    </div>
-  );
 }
 
 /** the deployer: a person glyph, in the header next to the calendar */
@@ -293,85 +166,12 @@ function DeployerIcon() {
   );
 }
 
-/** an address On Record has a profile for: links to /b/, not out to Orb */
-function WalletLink({ address, network }: { address: string; network: ApiProgramDetail["network"] }) {
-  return (
-    <>
-      {" "}
-      <Link className="receipt-link" prefetch={false} href={builderHref(address, network)}>
-        {truncateAddress(address)}
-      </Link>
-    </>
-  );
-}
-
 function Ext({ href, text }: { href: string; text: string }) {
   return (
     <a className="receipt-link" href={href} target="_blank" rel="noopener noreferrer">
       {text}
       <span aria-hidden="true"> ↗</span>
     </a>
-  );
-}
-
-/** One cluster's slice of the record: a heading that says which cluster and how
- *  that deployment stands, then its events.
- *
- *  A program id can hold a deployment on each cluster, and they have separate
- *  lives — different builds, different upgrade counts, often a hot key on devnet
- *  and a multisig on mainnet. Listing both in one table meant the only way to
- *  tell a devnet row from a mainnet one was to know that devnet runs tens of
- *  millions of slots ahead. */
-function ClusterRecord({
-  cluster,
-  events,
-  program,
-  isPrimary,
-  trail,
-  verification,
-}: {
-  cluster: string;
-  events: ApiProgramDetail["events"];
-  program: ApiProgramDetail;
-  isPrimary: boolean;
-  trail: Trail;
-  /** mainnet only: OtterSec's verifier doesn't serve devnet */
-  verification?: ApiVerification | null;
-}) {
-  const cp = program.counterpart;
-  const upgrades = events.filter((e) => e.type === "upgrade").length;
-  const last = events[0]?.blockTime ?? null;
-
-  // The summary only states what this cluster's own evidence supports. On the
-  // primary that is the profiled row; on the other side it is the probe, and
-  // when there is no probe it says so rather than implying "live".
-  const bits: string[] = [];
-  if (isPrimary) {
-    bits.push(program.closed ? "closed" : "live");
-    if (program.authorityClass === "none") bits.push("immutable");
-    else if (program.multisig?.threshold)
-      bits.push(`squads ${program.multisig.threshold}/${program.multisig.members ?? "?"}`);
-    else if (program.authorityClass) bits.push(program.authorityClass.replace("_", " "));
-  } else if (cp?.network === cluster) {
-    bits.push(cp.present ? (cp.alive === false ? "closed there" : "live") : "not deployed");
-    if (cp.authorityClass) bits.push(cp.authorityClass.replace("_", " "));
-  } else {
-    bits.push("not probed");
-  }
-  if (upgrades > 0) bits.push(`${upgrades} upgrade${upgrades === 1 ? "" : "s"} on record`);
-  if (last) bits.push(`last ${relativeTime(last)}`);
-
-  return (
-    <div className="cluster-record">
-      <p className="cluster-record-head">
-        <span className={`cluster-record-net cluster-record-net-${cluster}`}>on {cluster}</span>
-        <span className="cell-dim"> · {bits.join(" · ")}</span>
-      </p>
-      {/* above the table: it explains the top row, and a long record would
-          push it screens away from the version it's about */}
-      {verification?.current ? <VerifyNote current={verification.current} broke={verification.broke} /> : null}
-      <RecordTable events={events} trail={trail} verification={verification?.versions} />
-    </div>
   );
 }
 
@@ -499,240 +299,295 @@ export default async function ProgramDossierPage({
         ? "mutable"
         : "unknown";
 
-  const trustPanel = (
-    <>
-      <SectionHeader title="Control" info="Who can change it — and whether it can rug." />
-      <div className="facts-panel">
-        <Row
-          label="Mutability"
-          explain={
-            <>
-              <p className="explainer-read">
-                The upgrade authority is the account allowed to replace a
-                program&apos;s code after it&apos;s deployed.
-              </p>
-              <p>
-                If it&apos;s set (<strong>mutable</strong>), that key can push new
-                bytecode at any time — including malicious code, the classic
-                &quot;rug&quot; vector. If it&apos;s null (
-                <strong>immutable / frozen</strong>), the code can never change;
-                what&apos;s on-chain is final. A <strong>Squads multisig</strong> sits in
-                between — upgrades are possible but need M-of-N signers, not one hot
-                wallet. So mutable + single hot-wallet = highest risk; immutable or
-                multisig = stronger guarantees.
-              </p>
-            </>
-          }
-        >{mutability}</Row>
-        <Row label="Authority">
-          {program.multisig ? (
-            <>
-              Squads multisig
-              {program.multisig.threshold != null && program.multisig.members != null ? (
-                <span> · {program.multisig.threshold} of {program.multisig.members} signers</span>
-              ) : null}
-              <WalletLink address={program.multisig.address} network={program.network} />
-            </>
-          ) : (
-            <>
-              {program.authorityClass ?? "unknown"}
-              {program.authority ? <WalletLink address={program.authority} network={program.network} /> : null}
-            </>
-          )}
-        </Row>
-        {program.deployer ? (
-          <Row label="Deployed by">
-            <WalletLink address={program.deployer} network={program.network} />
-          </Row>
-        ) : null}
-        <Row
-          label="Verified build"
-          explain={
-            <>
-              <p className="explainer-read">
-                A verified build proves the program running on-chain was compiled from
-                the public source you can read — nothing hidden.
-              </p>
-              <p>
-                Someone re-compiles the source in a deterministic (Docker) environment
-                and checks the resulting bytecode is byte-for-byte identical to
-                what&apos;s deployed; tools like <strong>solana-verify</strong> do this
-                and record it with a verification service.{" "}
-                <strong>&quot;Not verified&quot; isn&apos;t a red flag by itself</strong>{" "}
-                — most programs simply never submit one. It just means you&apos;re
-                trusting the deployed bytecode as-is, with no source cross-check.
-              </p>
-            </>
-          }
-        >
-          {program.verified ? (
-            <>
-              yes{" "}
-              <span className="cell-dim">· bytecode reproduces from public source</span>
-            </>
-          ) : (
-            <>
-              no{" "}
-              <span className="cell-dim">
-                {rebuild
-                  ? "· not by OtterSec; On Record rebuilt it below"
-                  : "· source not confirmed against on-chain bytecode"}
-              </span>
-            </>
-          )}
-        </Row>
-        {rebuild ? (
-          <Row
-            label="Rebuilt from source"
-            explain={
-              <p className="explainer-read">
-                On Record rebuilt {rebuild.repo.replace("https://github.com/", "")} @{" "}
-                {rebuild.commit.slice(0, 7)} on a {machineLabel(rebuild.machine)} machine and got
-                exactly the deployed bytes.
-              </p>
-            }
-          >
-            yes{" "}
-            <span className="cell-dim">
-              · by On Record · <Link href={`/p/${id}/rebuild`} prefetch={false}>see the comparison</Link>
-            </span>
-          </Row>
-        ) : null}
-      </div>
+  const comp = deriveComposition(program);
+  const build = program.build;
+  const vcur = program.network === "mainnet" ? verification?.current ?? null : null;
 
+  // The record, deduplicated. The loader record and the live poller can
+  // both log the same event — one with its transaction, one observed from
+  // account state with no signature — so a slot shows once, receipt preferred.
+  const timeline = (() => {
+    const seen = new Map<string, ApiProgramDetail["events"][number]>();
+    for (const e of [...program.events].sort(byRecency)) {
+      const k = `${e.network}:${e.type}:${e.slot}`;
+      const had = seen.get(k);
+      if (!had || (isSyntheticSignature(had.signature) && !isSyntheticSignature(e.signature))) seen.set(k, e);
+    }
+    return [...seen.values()].sort(byRecency);
+  })();
+  const mainnetTimeline = timeline.filter((e) => e.network === "mainnet");
+  const devnetTimeline = timeline.filter((e) => e.network === "devnet");
 
-      {program.repoLink ? (
+  // Compiled on: the binary's own paths first. When they were stripped, a
+  // byte-for-byte rebuild still answers it — the Mac and Linux compilers
+  // produce different bytes, so the machine that reproduced the program is the
+  // kind it was built on. OtterSec rebuilds in a Linux Docker image.
+  const otterMatched = !!(program.verified || vcur?.status === "verified");
+  const rebuiltOn: "mac" | "linux" | null = rebuild
+    ? rebuild.machine === "ubuntu-latest" ? "linux" : "mac"
+    : otterMatched ? "linux" : null;
+  const machine = build?.download ?? build?.home ?? rebuiltOn;
+  const machineFrom = build?.download
+    ? `Read from the ${build.download === "mac" ? "macOS" : "Linux"} compiler paths in the binary: ${build.downloadEvidence ?? ""}…`
+    : build?.home
+      ? `Read from the ${build.home === "mac" ? "/Users/" : "/home/"} folder in the binary's dependency paths.`
+      : rebuild
+        ? `The binary has no build paths; On Record's rebuild on ${machineLabel(rebuild.machine)} matched it byte for byte.`
+        : otterMatched
+          ? "The binary has no build paths; OtterSec's Linux Docker rebuild matched it byte for byte."
+          : "The binary carries no build paths, and no rebuild has matched it.";
+
+  const OTTER_SHORT: Record<string, string> = {
+    "not-verified": "OtterSec rebuilt the recipe and got different bytes.",
+    "never-submitted": "Never submitted for verification.",
+    "verified-older-build": "Verified, but for an older build.",
+  };
+  const upgrades = program.upgradeCount ?? timeline.filter((e) => e.type === "upgrade").length;
+  const sourceFound = !program.repoUrl && program.repoLink ? program.repoLink : null;
+
+  // Twelve cells, the same twelve on every program, in the same places. What
+  // isn't known reads "—"; nothing appears or disappears. Explanations live in
+  // the label's tooltip, never on the page.
+  const cells: { k: string; tip: string; v: ReactNode; bar?: ReactNode }[] = [
+    {
+      k: "verified",
+      tip: otterMatched
+        ? "OtterSec rebuilt the published source and got exactly the deployed bytes."
+        : rebuild
+          ? `On Record rebuilt ${rebuild.repo.replace("https://github.com/", "")} @ ${rebuild.commit.slice(0, 7)} with Solana ${rebuild.solana} and got exactly the deployed bytes.${vcur && OTTER_SHORT[vcur.status] ? ` OtterSec: ${OTTER_SHORT[vcur.status]}` : ""}`
+          : !onMainnet
+            ? "OtterSec's verifier only covers mainnet."
+            : (vcur?.diagnosis ?? "No verified build on record."),
+      v: otterMatched ? (
+        <span className="vfy-yes">✓ OtterSec</span>
+      ) : rebuild ? (
+        <Link className="vfy-or" href={`/p/${id}/rebuild`} prefetch={false}>
+          ✓ On Record
+        </Link>
+      ) : !onMainnet ? (
+        <span className="cell-dim">not checked</span>
+      ) : (
+        <span className="cell-dim">no</span>
+      ),
+    },
+    {
+      k: "crate",
+      tip: "The Rust crate the program was built from, read from the panic paths left in the binary (programs/<crate>/src/…). Programs built from the same source share it.",
+      v: program.crate ?? comp.crate ?? <span className="cell-dim">—</span>,
+    },
+    {
+      k: "framework",
+      tip: [
+        comp.framework.detection || "Read off the binary: the syscall ABI and marker strings.",
+        program.anchor ? `${ANCHOR_LINE[program.anchor.line].label}: ${program.anchor.evidence.join("; ")}.` : null,
+        program.frameworkSource === "source" && program.sourceFramework
+          ? `Named by its source repo ${program.sourceFramework.repo}, where the binary can't tell.`
+          : null,
+      ]
+        .filter(Boolean)
+        .join(" "),
+      v: comp.framework.label ? (
         <>
-          <SectionHeader
-            title="Source repo (found, not declared)"
-            info="Nobody declared a repo for this program. This one was found by searching public code for the program id."
-          />
-          <div className="facts-panel">
-            <Row label="Repo">
-              <Ext href={program.repoLink.repoUrl} text={program.repoLink.repo} />
-            </Row>
-            <Row
-              label="Match"
-              explain={
-                <>
-                  <p className="explainer-read">
-                    A program id is 32 bytes of entropy. A developer who publishes
-                    their source commits it verbatim — so searching public code for
-                    the address finds the repo the binary never names.
-                  </p>
-                  <p>
-                    It only counts when the link closes both ways: the binary leaks a
-                    crate path (<strong>programs/&lt;crate&gt;/src/…</strong>) and the
-                    repo carries that same path, or the repo declares this exact
-                    address as its own program.{" "}
-                    <strong>This is an inference, not a verified build</strong> —
-                    nobody re-compiled the source and matched the bytecode. Treat it
-                    as a lead with its evidence attached, and read the matched files
-                    yourself before trusting it.
-                  </p>
-                </>
-              }
-            >
-              {program.repoLink.method === "declared"
-                ? "declares this program id as its own"
-                : "carries the crate path the binary leaked"}
-              {program.repoLink.crateConfirmed ? (
-                <span className="cell-dim"> · crate path confirmed both ways</span>
-              ) : null}
-            </Row>
-            <Row label="Evidence">
-              {program.repoLink.matchCount} file
-              {program.repoLink.matchCount === 1 ? "" : "s"} contain the address
-              {program.repoLink.matchedPaths.length ? (
-                <span className="cell-dim"> · {program.repoLink.matchedPaths.join(" · ")}</span>
-              ) : null}
-            </Row>
-            {program.repoLink.otherCandidates > 0 ? (
-              <Row label="Other candidates">
-                {program.repoLink.otherCandidates} other repo
-                {program.repoLink.otherCandidates === 1 ? "" : "s"} could claim this link
-                <span className="cell-dim"> · copies, renames, hard forks</span>
-              </Row>
-            ) : null}
-          </div>
+          {comp.framework.label}
+          {program.anchor ? <span className="cell-dim"> {ANCHOR_LINE[program.anchor.line].label}</span> : null}
         </>
-      ) : null}
-      {program.securityTxt || program.pmpSecurityTxt?.counts ? (
+      ) : (
+        <span className="cell-dim">—</span>
+      ),
+    },
+    {
+      k: "control",
+      tip: "Who can replace the program's code. Frozen means nobody can; a Squads multisig needs several signers.",
+      v: program.multisig ? (
+        <Link className="receipt-link" prefetch={false} href={builderHref(program.multisig.address, program.network)}>
+          Squads{program.multisig.threshold != null && program.multisig.members != null ? ` ${program.multisig.threshold} of ${program.multisig.members}` : ""}
+        </Link>
+      ) : program.authorityClass === "none" ? (
+        "frozen"
+      ) : program.authority ? (
+        <Link className="receipt-link" prefetch={false} href={builderHref(program.authority, program.network)}>
+          {program.authorityClass?.replace("_", " ") ?? truncateAddress(program.authority)}
+        </Link>
+      ) : (
+        <span className="cell-dim">{program.authorityClass?.replace("_", " ") ?? "—"}</span>
+      ),
+    },
+    {
+      k: "source",
+      tip: program.repoUrl
+        ? "Declared by the program itself, in its security.txt."
+        : sourceFound
+          ? `Not declared. Found by searching public code for this program id: ${sourceFound.method === "declared" ? "the repo declares this id as its own" : "the repo carries the crate path the binary leaked"}${sourceFound.crateConfirmed ? ", confirmed both ways" : ""}. ${sourceFound.matchCount} file${sourceFound.matchCount === 1 ? "" : "s"} contain the address${sourceFound.otherCandidates > 0 ? `; ${sourceFound.otherCandidates} other repo${sourceFound.otherCandidates === 1 ? "" : "s"} could also claim it` : ""}. A lead, not a verified build.`
+          : "No source declared, and none found.",
+      v: program.repoUrl ? (
+        <Ext
+          href={program.repoUrl}
+          text={program.repoUrl.match(/github\.com\/([^/\s]+\/[^/\s#?]+)/i)?.[1]?.replace(/\.git$/i, "") ?? shortUrl(program.repoUrl)}
+        />
+      ) : sourceFound ? (
         <>
-          <SectionHeader
-            title="Security.txt"
-            info="The developer's own contact block — embedded in the binary, published in a Program Metadata account, or both. Their words, verbatim."
-          />
-          {program.securityTxt ? (
-            <SecurityTxtPanel fields={withoutDeadRepo(program.securityTxt, program.repoUrlDeclared)} source="binary">
-              {/* Declared source that doesn't resolve. Shown, because a broken
-                  on-chain pointer is a fact about the disclosure — but as text,
-                  never a link, and it is not counted as a repo anywhere else. */}
-              {program.repoUrlDeclared ? (
-                <Row label="Source code">
-                  <span className="cell-dim">{shortUrl(program.repoUrlDeclared)}</span>{" "}
-                  <span className="cell-dim">· declared, but the URL 404s</span>
-                </Row>
-              ) : null}
-            </SecurityTxtPanel>
-          ) : null}
-          {program.pmpSecurityTxt?.counts ? (
-            <SecurityTxtPanel
-              fields={withoutDeadRepo(program.pmpSecurityTxt.fields, program.repoUrlDeclared)}
-              extra={program.pmpSecurityTxt.extra}
-              source="pmp"
+          <Ext href={sourceFound.repoUrl} text={sourceFound.repo} /> <span className="cell-dim">found</span>
+        </>
+      ) : (
+        <span className="cell-dim">—</span>
+      ),
+    },
+    {
+      k: "compiled on",
+      tip: machineFrom,
+      v: machine === "mac" ? "a Mac" : machine === "linux" ? "Linux or Docker" : <span className="cell-dim">—</span>,
+    },
+    {
+      k: "upgrades",
+      tip: "Upgrades to this program id on its main cluster.",
+      v: `${upgrades}${program.upgradeCountTruncated ? "+" : ""}`,
+    },
+    {
+      k: "deployer",
+      tip: "The wallet that paid for the first deploy. Opens everything else it has deployed.",
+      v: program.deployer ? (
+        <Link className="receipt-link" prefetch={false} href={builderHref(program.deployer, program.network)}>
+          {truncateAddress(program.deployer)}
+        </Link>
+      ) : (
+        <span className="cell-dim">—</span>
+      ),
+    },
+    {
+      k: "lineage",
+      tip: "Other programs on record built from this code — byte-identical, near-identical, or sharing a source tree. The full list is in the Code tab.",
+      v: lineageSummary(program, family),
+    },
+    {
+      k: "size",
+      tip: "Size of the deployed program image. Lean is under 64 KB, moderate under 256 KB, heavy above that. The bar is log scale from 8 KB to 4 MB.",
+      v:
+        comp.sizeBytes != null ? (
+          <>
+            {formatBytes(comp.sizeBytes)}
+            {comp.sizeBand ? <span className={`ov-note size-band-${comp.sizeBand}`}>{comp.sizeBand}</span> : null}
+          </>
+        ) : (
+          <span className="cell-dim">—</span>
+        ),
+      bar:
+        comp.sizeBytes != null ? (
+          <div className="ov-bar">
+            <div
+              className={`size-fill-${comp.sizeBand ?? "moderate"}`}
+              style={{ width: `${sizeFillPct(comp.sizeBytes)}%` }}
             />
-          ) : null}
-        </>
-      ) : null}
+          </div>
+        ) : null,
+    },
+    {
+      k: "instructions",
+      tip: "Instruction handlers, from the IDL or recovered from the binary.",
+      v: comp.instructions.length || program.instructionCount || <span className="cell-dim">—</span>,
+    },
+    {
+      k: "deploy cost",
+      tip: "SOL locked as rent to hold the program on-chain.",
+      v: program.deployCostSol != null ? `${program.deployCostSol} SOL` : <span className="cell-dim">—</span>,
+    },
+  ];
 
-      <SectionHeader title="Conviction" info="Skin in the game — who funded the deployer and how." />
-      <div className="facts-panel">
-        <Row label="Deployer funded by">
-          {program.funderAddress ? (
-            <>
-              <Ext
-                href={orbAddress(program.funderAddress)}
-                text={truncateAddress(program.funderAddress)}
-              />
-              {program.deployerFundingSource && program.deployerFundingSource !== "unknown" ? (
-                <span className="cell-dim"> · {program.deployerFundingSource}</span>
-              ) : null}
-            </>
-          ) : program.deployerFundingSource ? (
-            program.deployerFundingSource
+  // security.txt as a receipt: the same eight lines every time, dashes where
+  // the developer wrote nothing, so the block never changes size
+  const sec = program.securityTxt ?? (program.pmpSecurityTxt?.counts ? program.pmpSecurityTxt.fields : null);
+  const secFields = sec ? withoutDeadRepo(sec, program.repoUrlDeclared) : null;
+  const secWhere = [program.securityTxt ? "in binary" : null, program.pmpSecurityTxt?.counts ? "in PMP account" : null]
+    .filter(Boolean)
+    .join(" + ");
+  const RECEIPT: [keyof SecurityTxt | "found", string][] = [
+    ["found", "found"],
+    ["name", "name"],
+    ["project_url", "project url"],
+    ["contacts", "contacts"],
+    ["policy", "policy"],
+    ["source_code", "source code"],
+    ["source_revision", "revision"],
+    ["auditors", "auditors"],
+  ];
+  const receiptValue = (key: keyof SecurityTxt, raw: string): ReactNode => {
+    if (key === "contacts" || key === "auditors") {
+      const parts = key === "contacts" ? parseContacts(raw) : parseAuditors(raw);
+      return parts.map((p, i) => (
+        <span key={i}>
+          {i > 0 ? ", " : ""}
+          {p.kind === "link" ? (
+            <a className="receipt-link" href={p.href} target={p.href.startsWith("mailto:") ? undefined : "_blank"} rel="noopener noreferrer">
+              {p.text}
+            </a>
           ) : (
-            <span className="cell-dim">untraced</span>
+            p.text
           )}
-          {program.fundingAmountSol != null ? (
-            <span className="cell-dim"> · {program.fundingAmountSol} SOL</span>
-          ) : null}
+        </span>
+      ));
+    }
+    return /^https?:\/\/\S+$/i.test(raw) ? (
+      <a className="receipt-link" href={raw} target="_blank" rel="noopener noreferrer">
+        {shortUrl(raw)}
+      </a>
+    ) : (
+      raw
+    );
+  };
+
+
+  const lifecycle = deriveLifecycle(program);
+  const botClass = botKind(program); // 'sniper' | 'throwaway' | 'duplicate' | null
+
+  // Code: the place a program's source will live. Today that's what can be
+  // recovered from the binary — its own source tree first, then its versions
+  // and relatives, then what the bytes contain, then its security.txt.
+  const crateName = program.crate ?? comp.crate;
+  // crate versions read from the full binary (the API) first, then whatever
+  // the page's string sample adds; the sample alone can't prove there are none
+  const deps = [
+    ...new Set([...(build?.crates ?? []).map((c) => `${c.name}-${c.version}`), ...comp.deps]),
+  ];
+  const compositionPanel = (
+    <>
+      <SectionHeader
+        title="Source"
+        info="The developer's own Rust source structure, recovered from panic paths and symbols left in the binary. Rust standard-library paths are filtered out."
+      />
+      <div className="facts-panel">
+        <Row label="Crate">
+          {crateName ? <span className="crate-name">{crateName}</span> : <span className="cell-dim">not in the binary</span>}
         </Row>
-        <Row label="Deploy cost">
-          {program.deployCostSol != null ? (
-            <>
-              ≈ {program.deployCostSol} SOL{" "}
-              <span className="cell-dim">rent locked on-chain</span>
-            </>
+        <Row label="Dependencies">
+          {deps.length ? (
+            <span className="chip-inline">
+              {deps.map((d) => (
+                <span className="dep-chip" key={d}>
+                  {d}
+                </span>
+              ))}
+            </span>
           ) : (
             <span className="cell-dim">—</span>
           )}
         </Row>
       </div>
-    </>
-  );
+      {comp.moduleGroups.length ? (
+        <div className="mod-map">
+          {comp.moduleGroups.map((g) => (
+            <div className="mod-group" key={g.dir}>
+              <span className="mod-group-dir">{g.dir}/</span>
+              <span className="mod-group-files">
+                {g.files.map((f) => (
+                  <span className="mod-chip" key={f}>
+                    {f}
+                  </span>
+                ))}
+              </span>
+            </div>
+          ))}
+        </div>
+      ) : null}
 
-  const comp = deriveComposition(program);
-  const lifecycle = deriveLifecycle(program);
-  const botClass = botKind(program); // 'sniper' | 'throwaway' | 'duplicate' | null
-  const SIZE_BAND_LABEL: Record<string, string> = {
-    lean: "lean",
-    moderate: "moderate",
-    heavy: "heavy",
-  };
-
-  const compositionPanel = (
-    <>
       {/* MATCH is a measurement, so it mostly explains itself. This says what
           is being measured, and covers the two cases where a word appears in
           place of a figure. */}
@@ -743,258 +598,22 @@ export default async function ProgramDossierPage({
       <Lineage program={program} family={family} />
 
       <SectionHeader
-        title="Framework"
-        info="Read off the ELF — the syscall ABI and marker strings. Confidence: 'confirmed' = provable on-chain (Anchor); 'inferred' = read from binary shape; 'from source' = the program's own repo names it, where the binary can't. New to a framework? Expand the explainer at the bottom of this tab."
-      />
-      <SectionExplainer
-        title={`What's ${comp.framework.label}?`}
-        summary={
-          <div className="fw-stat fw-stat-summary">
-            <span className="fw-stat-value">{comp.framework.label}</span>
-            <span
-              className={`fw-conf fw-conf-${comp.confidence}`}
-              title={comp.framework.detection}
-            >
-              {comp.confidence === "source" ? "from source" : comp.confidence}
-            </span>
-            {comp.publishesIdl ? (
-              <span className="fw-tag" title="Ships an on-chain Anchor IDL — the program describes itself">
-                self-describing IDL
-              </span>
-            ) : null}
-            {program.anchor ? (
-              <span className="fw-tag fw-line" title={ANCHOR_LINE[program.anchor.line].note}>
-                {ANCHOR_LINE[program.anchor.line].label}
-              </span>
-            ) : null}
-            <span className="fw-pos">{comp.framework.positioning}</span>
-          </div>
-        }
-      >
-        {/* A label from source carries its evidence the same way: which repo,
-            which crate declares this address, and what it depends on. */}
-        {program.frameworkSource === "source" && program.sourceFramework ? (
-          <div className="fw-line-detail">
-            <h4 className="explainer-h">Why {comp.framework.label}</h4>
-            <p>
-              The binary reads as Pinocchio. The program&apos;s repo says otherwise: the crate
-              that declares this address depends on quasar-lang.
-            </p>
-            <ul className="fw-evidence">
-              <li>
-                <Ext
-                  href={`https://github.com/${program.sourceFramework.repo}`}
-                  text={program.sourceFramework.repo}
-                />{" "}
-                <span className="cell-dim">
-                  ·{" "}
-                  {program.sourceFramework.repoFrom === "linked"
-                    ? "found by searching for the address"
-                    : program.sourceFramework.repoFrom === "pmp-security"
-                      ? "named in its PMP security account"
-                      : "declared by the program"}
-                </span>
-              </li>
-              {program.sourceFramework.crates
-                .filter((c) => c.framework === program.sourceFramework!.framework)
-                .map((c) => (
-                  <li key={c.manifest}>
-                    {c.manifest} <span className="cell-dim">· depends on quasar-lang</span>
-                  </li>
-                ))}
-            </ul>
-            <p className="cell-dim">
-              Nobody rebuilt the source to prove these bytes came from it — treat it as strong
-              evidence, not a verified build.
-            </p>
-          </div>
-        ) : null}
-        {/* The line is a verdict, so the markers it rests on travel with it —
-            anyone pressing on "v2" can check each one against the binary. */}
-        {program.anchor ? (
-          <div className="fw-line-detail">
-            <h4 className="explainer-h">Which Anchor: {ANCHOR_LINE[program.anchor.line].label}</h4>
-            <p>{ANCHOR_LINE[program.anchor.line].note}</p>
-            <ul className="fw-evidence">
-              {program.anchor.evidence.map((e) => (
-                <li key={e}>{e}</li>
-              ))}
-            </ul>
-          </div>
-        ) : null}
-        <p className="explainer-read">{comp.framework.read}</p>
-        <p className="explainer-tradeoff">{comp.framework.tradeoff}</p>
-        <p className="explainer-lead">{comp.framework.explainer.author}</p>
-
-        <h4 className="explainer-h">What it is</h4>
-        <p>{comp.framework.explainer.whatIs}</p>
-
-        <h4 className="explainer-h">When to pick it</h4>
-        <p>{comp.framework.explainer.whenToPick}</p>
-
-        <h4 className="explainer-h">How it looks on-chain</h4>
-        <p>{comp.framework.explainer.onChain}</p>
-
-        <p className="explainer-note">{OTHER_FRAMEWORKS_NOTE}</p>
-
-        {comp.framework.explainer.docsUrl ? (
-          <a
-            className="explainer-docs"
-            href={comp.framework.explainer.docsUrl}
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            {comp.framework.label} docs
-            <span aria-hidden="true"> ↗</span>
-          </a>
-        ) : null}
-      </SectionExplainer>
-
-      <SectionHeader
-        title="Footprint"
-        info="The physical cost of the build — what the framework choice put on-chain."
-      />
-      <div className="comp-metrics">
-        <div className="comp-metric">
-          <span className="comp-metric-v">{formatBytes(comp.sizeBytes)}</span>
-          <span className="comp-metric-k">
-            image size
-            {comp.sizeBand ? (
-              <span className={`size-band size-band-${comp.sizeBand}`}>
-                {" "}· {SIZE_BAND_LABEL[comp.sizeBand]}
-              </span>
-            ) : null}
-          </span>
-          {comp.sizeBytes != null ? (
-            <div className="fp-track">
-              <div
-                className={`fp-fill size-fill-${comp.sizeBand ?? "moderate"}`}
-                style={{ width: `${sizeFillPct(comp.sizeBytes)}%` }}
-              />
-            </div>
-          ) : null}
-        </div>
-        <div className="comp-metric">
-          <span className="comp-metric-v">
-            {comp.rentSol != null ? `${comp.rentSol} SOL` : "—"}
-          </span>
-          <span className="comp-metric-k">rent locked</span>
-        </div>
-        <div className="comp-metric">
-          <span className="comp-metric-v">{comp.syscallCount ?? "—"}</span>
-          <span className="comp-metric-k">syscalls imported</span>
-        </div>
-        <div className="comp-metric">
-          <span className="comp-metric-v">
-            {comp.instructions.length ||
-              (program.instructionCount != null ? program.instructionCount : "—")}
-          </span>
-          <span className="comp-metric-k">instructions</span>
-        </div>
-      </div>
-      {comp.primitives.items.length ? (
-        <div className="facts-panel" style={{ marginTop: 8 }}>
-          <div className="fact-row">
-            <span className="fact-label">Primitives</span>
-            <div className="fact-value">
-              <div className="prim-groups">
-                {TIER_ORDER.map((tier) => {
-                  const inTier = comp.primitives.items.filter((p) => p.tier === tier);
-                  if (!inTier.length) return null;
-                  return (
-                    <div className="prim-group" key={tier}>
-                      <span className={`prim-group-tier tier-${tier}`}>{tier}</span>
-                      <span className="chip-inline">
-                        {inTier.map((p) => (
-                          <span className="ix-chip" key={p.label} title={p.explain}>
-                            {p.label}
-                          </span>
-                        ))}
-                      </span>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-          </div>
-        </div>
-      ) : null}
-
-      {/* Footprint is what the build put on-chain; this is what a call costs to
-          run. Same tab, next section — the runtime half of the same question. */}
-      <SectionHeader
-        title="Compute"
-        info="Compute units burned by transactions this program appears in. The figures cover the whole transaction, including every other program in it."
-      />
-      <ComputeSection
-        programId={program.id}
-        initialCompute={program.compute ?? null}
-        initialRank={program.computeRank ?? null}
-      />
-
-      {comp.crate || comp.moduleGroups.length || comp.instructions.length ? (
-        <>
-          <SectionHeader
-            title="Recovered architecture"
-            info="The developer's own Rust source structure, recovered from panic paths and symbols left in the binary. Rust standard-library paths are filtered out."
-          />
-          <div className="facts-panel">
-            {comp.crate ? (
-              <Row label="Crate">
-                <span className="crate-name">{comp.crate}</span>
-              </Row>
-            ) : null}
-            {comp.instructions.length ? (
-              <Row label={comp.instructionsApprox ? "Instructions ~" : "Instructions"}>
-                <span className="chip-inline">
-                  {comp.instructions.map((ix) => (
-                    <span className="mod-chip" key={ix}>
-                      {ix}
-                    </span>
-                  ))}
-                </span>
-              </Row>
-            ) : null}
-            {comp.toolchain || comp.deps.length ? (
-              <Row label="Built with">
-                {comp.deps.length ? (
-                  <span className="chip-inline">
-                    {comp.deps.map((d) => (
-                      <span className="dep-chip" key={d}>
-                        {d}
-                      </span>
-                    ))}
-                  </span>
-                ) : (
-                  <span className="cell-dim">solana toolchain</span>
-                )}
-              </Row>
-            ) : null}
-          </div>
-          {comp.moduleGroups.length ? (
-            <div className="mod-map">
-              {comp.moduleGroups.map((g) => (
-                <div className="mod-group" key={g.dir}>
-                  <span className="mod-group-dir">{g.dir}/</span>
-                  <span className="mod-group-files">
-                    {g.files.map((f) => (
-                      <span className="mod-chip" key={f}>
-                        {f}
-                      </span>
-                    ))}
-                  </span>
-                </div>
-              ))}
-            </div>
-          ) : null}
-        </>
-      ) : null}
-
-      <SectionHeader
-        title="Reach"
-        info="What it plugs into. Embedded = a program id found verbatim in the bytecode (confirmed). Named in source = a protocol named in the recovered source paths (strong hint, confirmable against the live CPI graph)."
+        title="Contents"
+        info="What the bytes contain. Syscalls are the runtime services it imports. Embedded = a program id found verbatim in the bytecode (confirmed). Named in source = a protocol named in the recovered source paths (a strong hint, not proof of a call)."
       />
       <div className="facts-panel">
+        <Row label="Syscalls">
+          {comp.syscallCount ?? <span className="cell-dim">—</span>}
+          {program.syscalls?.length ? (
+            <span className="chip-inline" style={{ marginLeft: 10 }}>
+              {program.syscalls.slice(0, 12).map((sc) => (
+                <span className="ix-chip ix-chip-soft" key={sc}>
+                  {sc.replace(/^sol_/, "")}
+                </span>
+              ))}
+            </span>
+          ) : null}
+        </Row>
         <Row label="Embedded">
           {comp.embeddedIntegrations.length ? (
             <span className="chip-inline">
@@ -1005,11 +624,11 @@ export default async function ProgramDossierPage({
               ))}
             </span>
           ) : (
-            <span className="cell-dim">no known program id embedded</span>
+            <span className="cell-dim">no known program id</span>
           )}
         </Row>
-        {comp.sourceReach.length ? (
-          <Row label="Named in source">
+        <Row label="Named in source">
+          {comp.sourceReach.length ? (
             <span className="chip-inline">
               {comp.sourceReach.map((it) => (
                 <span className="ix-chip ix-chip-soft" key={it}>
@@ -1017,97 +636,189 @@ export default async function ProgramDossierPage({
                 </span>
               ))}
             </span>
-          </Row>
-        ) : null}
+          ) : (
+            <span className="cell-dim">—</span>
+          )}
+        </Row>
+      </div>
+      {/* closed by default: the rarity tiers are a corpus statistic dressed as
+          a game, useful to whoever opens them and noise on a first read */}
+      {comp.primitives.items.length ? (
+        <details className="prim-more">
+          <summary>Syscalls by how rare they are</summary>
+          <div className="facts-panel" style={{ marginTop: 8 }}>
+            <div className="fact-row">
+              <span className="fact-label">Primitives</span>
+              <div className="fact-value">
+                <div className="prim-groups">
+                  {TIER_ORDER.map((tier) => {
+                    const inTier = comp.primitives.items.filter((p) => p.tier === tier);
+                    if (!inTier.length) return null;
+                    return (
+                      <div className="prim-group" key={tier}>
+                        <span className={`prim-group-tier tier-${tier}`}>{tier}</span>
+                        <span className="chip-inline">
+                          {inTier.map((p) => (
+                            <span className="ix-chip" key={p.label} title={p.explain}>
+                              {p.label}
+                            </span>
+                          ))}
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            </div>
+          </div>
+        </details>
+      ) : null}
+
+      {/* security.txt is text the developer embedded in the binary (or a PMP
+          account): what we read out of it, like the rest of this tab */}
+      <SectionHeader
+        title="Security.txt"
+        info="The developer's own contact block, published in the binary (the Neodyme convention) or in a Program Metadata account. Self-declared: a claim, not proof."
+      />
+      <div className="receipt">
+        {RECEIPT.map(([key, label]) => {
+          const raw = key === "found" ? secWhere : secFields?.[key]?.trim();
+          return (
+            <div className="receipt-line" key={key} title={raw || undefined}>
+              <span className="receipt-kcol">
+                <span className="receipt-k">{label}</span>
+                <i className="receipt-dots" aria-hidden="true" />
+              </span>
+              <span className={`receipt-v${raw ? "" : " cell-dim"}`}>
+                {raw ? (key === "found" ? raw : receiptValue(key, raw)) : key === "found" ? "nowhere" : "—"}
+              </span>
+            </div>
+          );
+        })}
       </div>
     </>
   );
 
-  const activityPanel = (
+  // Traction: the rows and the 7-day graph. One
+  // plain line instead of a panel of dashes when there's nothing; a missing
+  // counter is not a zero, so "no transactions" only when the counters ran,
+  // read zero, and no compute sample found any either.
+  const series = program.activity && program.activity.length >= 2 ? program.activity : null;
+  const counted = program.momentum != null || series != null || program.earlySigners != null;
+  const allZero =
+    (program.momentum?.txns24h ?? 0) === 0 && !(series ?? []).some((p) => p.c > 0) && !program.earlySigners;
+  const quietLine = !counted
+    ? "Traffic not counted yet."
+    : allZero && !(program.compute?.n ?? 0)
+      ? "No transactions sampled in the last 7 days."
+      : null;
+  const tractionStrip = quietLine ? (
+    <p className="activity-quiet cell-dim">{quietLine}</p>
+  ) : (
+    <div className="facts-panel" style={{ marginBottom: 18 }}>
+      {program.momentum ? (
+        <Row label="Last 24h">
+          {program.momentum.txns24h.toLocaleString("en-US")}
+          {program.momentum.txns24hTruncated ? "+" : ""} txns
+          {program.momentum.growth != null ? (
+            <span className="cell-dim"> · ×{program.momentum.growth} vs prior day</span>
+          ) : null}
+        </Row>
+      ) : null}
+      {series ? (
+        <Row label="Activity (7d)">
+          <Sparkline points={series} title="hourly transactions, last 7 days" />
+        </Row>
+      ) : null}
+      {program.earlySigners != null ? (
+        <Row label="Early activity">
+          {`${program.earlySigners >= 1000 && program.earlySigners % 1000 === 0 ? `${program.earlySigners.toLocaleString("en-US")}+` : program.earlySigners.toLocaleString("en-US")} txns in the first 24h`}
+        </Row>
+      ) : null}
+    </div>
+  );
+
+  const overviewPanel = (
     <>
+      <div className="ov-grid">
+        {cells.map((c) => (
+          <div className="ov-cell" key={c.k}>
+            <span className="ov-k tip" data-tip={c.tip} tabIndex={0}>
+              {c.k}
+            </span>
+            <span className="ov-v">{c.v}</span>
+            {c.bar}
+          </div>
+        ))}
+      </div>
+
+      <SectionHeader
+        title="Deploys and upgrades"
+        info="Every loader event on this program id, each with the transaction that proves it. The same id can be deployed on both clusters; each keeps its own history."
+      />
+      <ClusterSwitch
+        initial={mainnetTimeline.length || !devnetTimeline.length ? "mainnet" : "devnet"}
+        mainnet={
+          mainnetTimeline.length ? (
+            <RecordTable
+              events={mainnetTimeline}
+              trail={trail}
+              verification={verification?.versions}
+              rebuilt={
+                rebuild
+                  ? { hash: rebuild.hash, from: `${rebuild.repo.replace("https://github.com/", "")} at ${rebuild.commit.slice(0, 7)}` }
+                  : null
+              }
+            />
+          ) : (
+            <p className="ov-none cell-dim">No mainnet deploys on record.</p>
+          )
+        }
+        devnet={
+          devnetTimeline.length ? (
+            <RecordTable events={devnetTimeline} trail={trail} />
+          ) : (
+            <p className="ov-none cell-dim">No devnet deploys on record.</p>
+          )
+        }
+      />
+    </>
+  );
+
+  // Usage: is it used (Traction), which instructions get called, and what a
+  // call costs to run
+  const usagePanel = (
+    <>
+      <SectionHeader title="Traction" info="Is it used? Counted from sampled transactions, and accrues over time." />
+      {tractionStrip}
       <UsageSection
         programId={program.id}
         initialUsage={usage}
         initialSampledAt={usageSampledAt}
         compact
       />
-      <SectionHeader title="Traction" info="Does it actually get used? Accrues over time." />
-      <div className="facts-panel">
-        {program.momentum ? (
-          <Row label="Last 24h">
-            {program.momentum.txns24h.toLocaleString("en-US")}
-            {program.momentum.txns24hTruncated ? "+" : ""} txns
-            {program.momentum.growth != null ? (
-              <span className="cell-dim"> · ×{program.momentum.growth} vs prior day</span>
-            ) : null}
-          </Row>
-        ) : null}
-        {program.activity && program.activity.length >= 2 ? (
-          <Row label="Activity (7d)">
-            <Sparkline
-              points={program.activity}
-              title="hourly transactions, last 7 days"
-            />
-          </Row>
-        ) : null}
-        <Row label="Early activity">
-          {program.earlySigners != null ? (
-            `${program.earlySigners >= 1000 && program.earlySigners % 1000 === 0 ? `${program.earlySigners.toLocaleString("en-US")}+` : program.earlySigners.toLocaleString("en-US")} txns in the first 24h`
-          ) : (
-            <span className="cell-dim">—</span>
-          )}
-        </Row>
-      </div>
-      {primaryEvents.length > 0 || otherEvents.length > 0 ? (
-        <>
-          <SectionHeader
-            title="The record"
-            info="Every loader event on this program id — deploy, upgrade, authority change, close — with the transaction that proves it. The same program id can be deployed to both clusters, so each cluster's history is listed separately. Related programs live under Lineage."
-          />
-          <ClusterRecord
-            cluster={program.network}
-            events={primaryEvents}
-            program={program}
-            isPrimary
-            trail={trail}
-            verification={program.network === "mainnet" ? verification : null}
-          />
-          {otherEvents.length > 0 ? (
-            <ClusterRecord
-              cluster={otherCluster}
-              events={otherEvents}
-              program={program}
-              isPrimary={false}
-              trail={trail}
-              verification={otherCluster === "mainnet" ? verification : null}
-            />
-          ) : null}
-        </>
-      ) : null}
+      <SectionHeader
+        title="Compute"
+        info="Compute units burned by transactions this program appears in. The figures cover the whole transaction, including every other program in it."
+      />
+      <ComputeSection
+        programId={program.id}
+        initialCompute={program.compute ?? null}
+        initialRank={program.computeRank ?? null}
+      />
     </>
   );
 
-  const idlExplainer = (
-    <SectionExplainer title="What's an IDL?">
-      <p className="explainer-read">
-        An <strong>IDL</strong> — Interface Description Language — is a JSON spec
-        that describes how to talk to a program: its instructions, the accounts
-        each one needs, argument and account types, events, and errors.
-      </p>
-      <p className="explainer-tradeoff">
-        Anchor auto-generates it at build time. A program can publish it
-        on-chain at a PDA derived from its id, so any client or explorer can
-        decode the program&apos;s transactions without its source code.
-      </p>
-      <h4 className="explainer-h">Why it&apos;s often missing</h4>
-      <p>
-        Publishing is opt-in — a courtesy, not a requirement. Many programs
-        never do, and non-Anchor frameworks (Pinocchio, native, Steel)
-        don&apos;t produce one at all; their interface lives in an off-chain
-        Shank/Codama artifact, or nowhere public. Absence means you can&apos;t
-        auto-decode it — not that anything is wrong.
-      </p>
-    </SectionExplainer>
+  // Where to read up, as links rather than paragraphs on the page
+  const idlLearn = (
+    <Row label="Learn">
+      <span className="learn-links">
+        <Ext href="https://www.anchor-lang.com/docs/basics/idl" text="Anchor IDL" />
+        <Ext href="https://github.com/codama-idl/codama" text="Codama" />
+        <Ext href="https://github.com/metaplex-foundation/shank" text="Shank" />
+        <Ext href="https://github.com/solana-program/program-metadata" text="Program Metadata" />
+      </span>
+    </Row>
   );
 
   const interfacePanel = idl ? (
@@ -1118,40 +829,34 @@ export default async function ProgramDossierPage({
       />
       <UsageSection programId={program.id} initialUsage={usage} initialSampledAt={usageSampledAt} />
       <IdlViewer idl={idl} />
-      {idlExplainer}
+      <div className="facts-panel" style={{ marginTop: 12 }}>{idlLearn}</div>
     </>
   ) : (
     <>
       <SectionHeader
-        title="No IDL published"
-        info="An IDL (Interface Description Language) is the JSON that names a program's instructions, accounts, and types so a client can decode it without the source."
+        title="Interface"
+        info="An IDL is the JSON that names a program's instructions, accounts and types, so a client can decode it without the source. Publishing one is opt-in: many teams never do, and non-Anchor programs (Pinocchio, native, Steel) have no built-in IDL at all. A missing IDL isn't a red flag."
       />
-      <div className="no-idl">
-        <p className="no-idl-lead">
-          This program hasn&apos;t published an <strong>IDL</strong> — the
-          interface spec that would let its instructions be auto-decoded here.
-        </p>
-        <p>
-          <strong>That&apos;s normal, not a red flag.</strong> Publishing an IDL
-          on-chain is opt-in — closer to a courtesy than a requirement. Anchor
-          can write one to a PDA derived from the program id, but plenty of
-          teams never do. And non-Anchor programs —{" "}
-          {comp.framework.key === "anchor" ? "Pinocchio, native, Steel" : `like this ${comp.framework.label} one`}{" "}
-          — have no built-in IDL at all; their interface lives in an off-chain
-          Shank/Codama artifact, or nowhere public.
-        </p>
-        {comp.instructions.length ? (
-          <p>
-            We still recovered{" "}
-            <strong>{comp.instructions.length} instruction handler(s)</strong>{" "}
-            straight from the binary — see the{" "}
-            <span className="no-idl-ptr">Composition</span> tab. That&apos;s the
-            on-chain-first answer to a missing IDL: read the program, not its
-            paperwork.
-          </p>
-        ) : null}
+      <div className="facts-panel">
+        <Row label="IDL">
+          none on-chain{" "}
+          <span className="cell-dim">· opt-in, often skipped</span>
+        </Row>
+        <Row label={comp.instructionsApprox ? "Handlers ~" : "Handlers"}>
+          {comp.instructions.length ? (
+            <span className="chip-inline">
+              {comp.instructions.map((ix) => (
+                <span className="mod-chip" key={ix}>
+                  {ix}
+                </span>
+              ))}
+            </span>
+          ) : (
+            <span className="cell-dim">none recovered from the binary</span>
+          )}
+        </Row>
+        {idlLearn}
       </div>
-      {idlExplainer}
     </>
   );
 
@@ -1163,7 +868,7 @@ export default async function ProgramDossierPage({
     <>
       <SectionHeader
         title="Map"
-        info="Which programs reach for this one, and which it reaches for. Each arrow is a program id compiled into the binary at its tail — a reference, not a proven call."
+        info="Which programs reach for this one, and which it reaches for. Each arrow is a program id compiled into the binary at its tail: proof the code names that program, not that it called it in any transaction. A callee passed in at runtime leaves no id behind, so the map misses links rather than inventing them."
       />
       <ReachMap
         self={{
@@ -1181,15 +886,18 @@ export default async function ProgramDossierPage({
   const reachCount =
     (program.references?.names.length ?? 0) + (program.references?.namedBy.length ?? 0);
 
+  // Overview first: everything known the minute a program is deployed, in a
+  // layout that is the same shape for every program. Usage and code detail
+  // follow.
   const tabs: DossierTab[] = [
-    { id: "composition", label: "Composition", panel: compositionPanel },
-    { id: "trust", label: "Trust", panel: trustPanel },
-    { id: "interface", label: "Interface", panel: interfacePanel, muted: !idl },
+    { id: "overview", label: "Overview", panel: overviewPanel },
+    { id: "usage", label: "Usage", panel: usagePanel },
     // muted, not hidden: an empty map means "nothing on record names this",
     // which is a real answer, and hiding the tab would make the extraction look
     // broken on the programs it simply found nothing for.
     { id: "map", label: "Map", panel: mapPanel, muted: reachCount === 0 },
-    { id: "activity", label: "Activity", panel: activityPanel },
+    { id: "interface", label: "Interface", panel: interfacePanel, muted: !idl },
+    { id: "code", label: "Code", panel: compositionPanel },
   ];
 
   return (

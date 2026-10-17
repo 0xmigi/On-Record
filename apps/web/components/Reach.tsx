@@ -139,11 +139,7 @@ export function ReachMap({
 
   if (!inbound.length && !outbound.length) {
     return (
-      <p className="map-empty">
-        No program on record embeds this program&apos;s id, and its own binary
-        embeds none. Either it sits at the edge of the graph, or its
-        neighbourhood hasn&apos;t been scanned yet.
-      </p>
+      <p className="map-empty">No links on record: nothing embeds this program&apos;s id, and it embeds none.</p>
     );
   }
 
@@ -260,27 +256,25 @@ export function ReachMap({
         </section>
       ) : null}
 
-      <p className="map-note">
-        <strong>Every chart shares one scale</strong>
+      {/* the reading notes, as one legend line; the why is in the section's tooltip */}
+      <p className="map-legend">
+        <span className="tip" data-tip="Every chart uses the same scale, so heights compare across the panel: a flat line is a quiet program. Each chart is that program's own 7-day traffic, not traffic across the link." tabIndex={0}>
+          one scale
+        </span>
         {busiest?.txns24h
-          ? `, set by ${busiest.name ?? truncateAddress(busiest.id)} at ${busiest.txns24h.toLocaleString("en-US")} transactions in 24h`
+          ? ` · top: ${busiest.name ?? truncateAddress(busiest.id)} ${busiest.txns24h.toLocaleString("en-US")}/24h`
           : ""}
-        , so heights are comparable across the panel — a flat line is a quiet
-        program, not a small chart. Each is that program&apos;s <strong>own</strong>{" "}
-        7-day traffic, not traffic across the link it sits next to; flow along an
-        edge needs the inner instructions of parsed transactions, which On Record
-        doesn&apos;t read yet. A <code>+</code> means the sampler hit its page cap
-        and the real figure is higher.
-      </p>
-
-      <p className="map-note">
-        Each link is a 32-byte program id compiled into the binary above it. That
-        proves the code <strong>names</strong> the program it points to — an
-        integration, a dependency, a whitelisted market — not that it called it in
-        any particular transaction. A callee passed in as a runtime account leaves
-        no constant behind, so this map misses links rather than inventing them.
+        {" · "}
+        <span className="tip" data-tip="The sampler hit its page cap; the real figure is higher." tabIndex={0}>
+          + = capped
+        </span>
         {hidden > 0 ? (
-          <> {hidden} link{hidden === 1 ? "" : "s"} to chain infrastructure (SPL Token, Squads and the like) sit under Composition → Embedded instead.</>
+          <>
+            {" · "}
+            <span className="tip" data-tip="Links to chain infrastructure (SPL Token, Squads and the like) are left off the map. They're listed under Contents in the Code tab." tabIndex={0}>
+              {hidden} infra link{hidden === 1 ? "" : "s"} hidden
+            </span>
+          </>
         ) : null}
       </p>
     </div>

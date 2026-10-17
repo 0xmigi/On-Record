@@ -36,7 +36,6 @@ export function UsageSection({
 }) {
   const [usage, setUsage] = useState(initialUsage);
   const [sampledAt, setSampledAt] = useState(initialSampledAt);
-  const [measuring, setMeasuring] = useState(false);
   // React runs effects twice in development; one open must mean one measurement
   const asked = useRef(false);
 
@@ -45,7 +44,6 @@ export function UsageSection({
     if (asked.current || age < STALE_MS) return;
     asked.current = true;
     let live = true;
-    setMeasuring(true);
     fetch(`/api/usage/${encodeURIComponent(programId)}`, { method: "POST" })
       .then((r) => r.json())
       .then((r: { usage: InstructionUsage | null; sampledAt: string | null }) => {
@@ -53,10 +51,7 @@ export function UsageSection({
         setUsage(r.usage ?? null);
         setSampledAt(r.sampledAt ?? null);
       })
-      .catch(() => {})
-      .finally(() => {
-        if (live) setMeasuring(false);
-      });
+      .catch(() => {});
     return () => {
       live = false;
     };
@@ -69,14 +64,8 @@ export function UsageSection({
       </div>
     );
   }
-  // Only while a measurement is actually running. A program with no IDL, or no
-  // transactions yet, falls through to nothing — same as before.
-  if (measuring) {
-    return (
-      <div style={{ marginBottom: 18 }} className="usage-measuring">
-        <span className="cell-dim">measuring how it&apos;s used…</span>
-      </div>
-    );
-  }
+  // Nothing until there is something. A floating "measuring…" line above
+  // Traction read as broken on programs that already show traffic, and for a
+  // program with no IDL the measurement ends in nothing anyway.
   return null;
 }

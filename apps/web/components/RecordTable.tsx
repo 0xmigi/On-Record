@@ -191,7 +191,22 @@ const repoName = (url?: string) => url?.match(/github\.com[/:]([^/\s]+\/[^/\s#?]
 /** Verification belongs to a version, so each row is labelled by the hash of
  *  the bytes it put on chain. Only the live version can read "not verified";
  *  an older one without a label just has no verified build on record. */
-function VerifyCell({ label }: { label?: ApiVersionVerification }) {
+function VerifyCell({ label, rebuilt }: { label?: ApiVersionVerification; rebuilt?: string | null }) {
+  // OtterSec's verdict wins when it has one; otherwise On Record's own rebuild
+  // of these exact bytes is the answer, not a red "not verified" under an
+  // orange badge
+  if (rebuilt && label?.state !== "verified") {
+    return (
+      <span
+        className="vfy vfy-or tip vfy-tip"
+        data-tip={`On Record rebuilt ${rebuilt} and got exactly these bytes. OtterSec has no verified build of them.`}
+        tabIndex={0}
+        role="note"
+      >
+        ✓ On Record
+      </span>
+    );
+  }
   // no label is left blank, not dashed: a column of dashes reads as a column
   // of "no", and for an older version it only means nothing is on record
   if (!label) return null;
@@ -224,11 +239,14 @@ export function RecordTable({
   events,
   trail,
   verification,
+  rebuilt,
 }: {
   events: ApiProgramDetail["events"];
   trail: Trail;
   /** hash → label, mainnet only; absent renders the table as it always was */
   verification?: Record<string, ApiVersionVerification> | null;
+  /** On Record's byte-for-byte rebuild: the hash it reproduced, and "repo at commit" */
+  rebuilt?: { hash: string; from: string } | null;
 }) {
   const [open, setOpen] = useState<Set<string>>(new Set());
   const toggle = (id: string) =>
@@ -263,7 +281,7 @@ export function RecordTable({
               <th scope="col">
                 <span
                   className="tip vfy-tip"
-                  data-tip="Whether OtterSec rebuilt each version from its published source and got the same bytes. Only the live version can read not verified; a blank older version just has no verified build on record, since OtterSec keeps only its latest build per uploader."
+                  data-tip="Whether each version was rebuilt from its published source to the same bytes — by OtterSec, or by On Record where marked. Only the live version can read not verified; a blank older version just has no verified build on record, since OtterSec keeps only its latest build per uploader."
                   tabIndex={0}
                 >
                   Verified
@@ -355,7 +373,14 @@ export function RecordTable({
                 </td>
                 {hasVerify ? (
                   <td className="vfy-cell">
-                    <VerifyCell label={ev.sha256After ? verification[ev.sha256After] : undefined} />
+                    {/* verification is a mainnet fact: a devnet row with the
+                        same bytes was never checked under that program id */}
+                    {ev.network === "mainnet" ? (
+                      <VerifyCell
+                        label={ev.sha256After ? verification[ev.sha256After] : undefined}
+                        rebuilt={rebuilt && ev.sha256After === rebuilt.hash ? rebuilt.from : null}
+                      />
+                    ) : null}
                   </td>
                 ) : null}
               </tr>,

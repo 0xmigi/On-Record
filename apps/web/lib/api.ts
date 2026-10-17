@@ -249,6 +249,14 @@ export interface ApiProgramDetail extends ApiProgram {
   neighbors: ApiNeighbor[]; // nearest bytecode fingerprints
   idlInstructions: string[];
   strings: string[]; // notable printable strings from bytecode
+  /** compiler download + crate versions read from paths in the binary.
+   *  Older API builds omit it. */
+  build?: {
+    download: "mac" | "linux" | null;
+    downloadEvidence: string | null;
+    home?: "mac" | "linux" | null;
+    crates: { name: string; version: string }[];
+  } | null;
   syscalls: string[]; // sol_* imports read off the ELF (the capability evidence)
   /** how the syscall set was read: dynamic imports, hashed static calls, or a scan */
   syscallSource?: "dynsym" | "static" | "strings" | null;
