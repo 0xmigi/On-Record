@@ -6521,6 +6521,19 @@ a.copy-addr-text:hover {
   -webkit-mask-image: linear-gradient(98deg, transparent 0%, transparent 38%, #000 66%);
   mask-image: linear-gradient(98deg, transparent 0%, transparent 38%, #000 66%);
 }
+/* the hero's field thins out at the bottom, so the page carries on without a
+   rule. A wash rather than a second mask layer: Chrome drops the whole canvas
+   when two mask layers are composited. */
+.about-hero::after {
+  content: "";
+  position: absolute;
+  inset: 45% 0 0;
+  background: linear-gradient(180deg, transparent, var(--bg));
+  pointer-events: none;
+}
+.about-hero .about-hero-in {
+  z-index: 1;
+}
 
 /* ---- type: one loud thing per section, the rest quiet ---- */
 .about-title {
@@ -6553,20 +6566,22 @@ a.copy-addr-text:hover {
   display: inline-flex;
   align-items: center;
   gap: 12px;
-  padding: 14px 22px;
+  padding: 13px 21px;
+  border: 1.5px solid var(--a-ink);
   border-radius: 10px;
-  background: var(--a-ink);
-  color: var(--bg);
+  background: var(--bg);
+  color: var(--a-ink);
   font-family: var(--font-mono);
   font-size: 15px;
   font-weight: 500;
   text-decoration: none;
-  transition: background-color 0.2s ease;
+  transition: background-color 0.2s ease, border-color 0.2s ease, color 0.2s ease;
 }
 .about-cta a span {
   transition: transform 0.2s ease;
 }
 .about-cta a:hover {
+  border-color: var(--a-red);
   background: var(--a-red);
   color: #fff;
 }
@@ -6843,16 +6858,14 @@ a.copy-addr-text:hover {
   width: min(1160px, calc(100vw - 40px));
   margin: 0 auto;
 }
-.about-hero {
-  border-bottom: 1px solid var(--border);
-}
 .about-hero-in {
   display: flex;
   flex-direction: column;
   justify-content: center;
-  /* what is left of the first screen under the top bar */
-  min-height: min(100vh - 93px, 960px);
-  min-height: min(100svh - 93px, 960px);
+  /* all of the first screen under the top bar, at any window height, so
+     the problem section only arrives once you scroll */
+  min-height: calc(100vh - 93px);
+  min-height: calc(100svh - 93px);
   padding: clamp(80px, 11vh, 150px) 0;
 }
 .about-title-line {
@@ -7528,6 +7541,9 @@ a.copy-addr-text:hover {
   .about-bitfield {
     -webkit-mask-image: linear-gradient(180deg, transparent 0%, transparent 58%, #000 88%);
     mask-image: linear-gradient(180deg, transparent 0%, transparent 58%, #000 88%);
+  }
+  .about-hero::after {
+    top: 80%;
   }
   .about-close .about-bitfield {
     -webkit-mask-image: radial-gradient(ellipse 120% 44% at 100% 100%, #000 0%, #000 34%, transparent 82%);
