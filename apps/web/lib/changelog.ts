@@ -246,6 +246,70 @@ export function describe(d: Delta, opts: { max?: number } = {}): Statement[] {
   return out.slice(0, max);
 }
 
+// ── one line per version, the way a commit log reads ────────────────
+// Facts, not prose: what was added or removed, named by the program's own
+// identifiers. The row truncates it to one line; the detail lists everything.
+const CAP_SHORT: Record<string, string> = {
+  cpi: "CPI",
+  pda: "PDA derivation",
+  hashing: "hashing",
+  "advanced-crypto": "signature verification",
+  "return-data": "return data",
+  sysvars: "sysvar reads",
+};
+
+function names(items: string[], noun: string): string {
+  if (items.length <= 2) return items.join(", ");
+  return `${items.length} ${noun}s: ${items.slice(0, 2).join(", ")}, …`;
+}
+
+export function commitLine(d: Delta): Statement {
+  const parts: string[] = [];
+  let tone: Statement["tone"] = "neutral";
+
+  if (d.integrations?.added.length) {
+    parts.push(`Integrate ${names(d.integrations.added, "program")}`);
+    tone = "add";
+  }
+  if (d.integrations?.removed.length) {
+    parts.push(`Drop ${names(d.integrations.removed, "program")}`);
+    if (tone === "neutral") tone = "remove";
+  }
+
+  const ia = d.instructions?.added ?? [];
+  const ir = d.instructions?.removed ?? [];
+  if (ia.length && ir.length) {
+    parts.push(`Add ${ia.length}, remove ${ir.length} instruction${ia.length + ir.length > 1 ? "s" : ""}`);
+    if (tone === "neutral") tone = "add";
+  } else if (ia.length) {
+    parts.push(`Add ${names(ia, "instruction")}`);
+    if (tone === "neutral") tone = "add";
+  } else if (ir.length) {
+    parts.push(`Remove ${names(ir, "instruction")}`);
+    if (tone === "neutral") tone = "remove";
+  }
+
+  const caps = (d.capabilities?.added ?? []).map((c) => CAP_SHORT[c]).filter(Boolean);
+  if (caps.length && parts.length < 2) {
+    parts.push(`Add ${caps.join(", ")}`);
+    if (tone === "neutral") tone = "add";
+  }
+
+  if (parts.length) return { text: parts.slice(0, 2).join("; "), tone };
+
+  // nothing at the interface: say which of the author's own files changed,
+  // or that nothing did
+  const mine = (d.sourcePaths?.added ?? []).filter(isProgramPath);
+  const named = mine
+    .map((p) => p.split("/").pop()!)
+    .filter((n) => !BOILERPLATE_FILES.has(n.replace(/\.rs$/, "").toLowerCase()));
+  if (named.length) return { text: `Change ${names(named, "file")}`, tone: "neutral" };
+  if (changedAny(d.accounts)) return { text: "Change account layouts", tone: "neutral" };
+  if (mine.length && d.instructions?.removedHidden)
+    return { text: `Change ${mine.length} source file${mine.length > 1 ? "s" : ""}`, tone: "neutral" };
+  return { text: "Rebuild, same interface", tone: "neutral" };
+}
+
 function capitalise(s: string): string {
   return s.charAt(0).toUpperCase() + s.slice(1);
 }

@@ -5419,10 +5419,14 @@ a.copy-addr-text:hover {
    Qualified with .record-table because `.record-table td { white-space: nowrap }`
    is more specific than a lone class and silently wins otherwise — which is
    exactly how the sentences ended up forcing a horizontal scroll. */
+/* The message is one line that truncates, so the column can take whatever
+   width the table has spare: width 100% + max-width 0 is the table idiom for
+   "fill the remaining space, never grow past it". */
 .record-table td.trail-cell {
   white-space: normal;
   min-width: 24ch;
-  max-width: 46ch;
+  width: 100%;
+  max-width: 0;
 }
 .record-table td.trail-detail-cell {
   white-space: normal;
@@ -5470,8 +5474,22 @@ a.copy-addr-text:hover {
   color: var(--ink-faint);
 }
 
+/* one line per version, like a commit log: the message truncates, the size
+   change and markers stay visible after it */
 .trail-sum {
+  display: flex;
+  align-items: baseline;
   min-width: 0;
+  white-space: nowrap;
+}
+.trail-sum .trail-said {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.trail-sum .trail-delta,
+.trail-sum .trail-warn {
+  flex: none;
 }
 
 /* Inline, not right-aligned: the cell is shrink-to-fit, so there is no free

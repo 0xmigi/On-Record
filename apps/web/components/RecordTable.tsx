@@ -10,7 +10,7 @@ import {
   type VersionTrail,
 } from "@/lib/api";
 import { isSyntheticSignature, relativeTime, truncateAddress } from "@/lib/format";
-import { describe, isProgramPath, type Statement } from "@/lib/changelog";
+import { commitLine, isProgramPath } from "@/lib/changelog";
 import { Chevron } from "@/components/Chevron";
 
 /**
@@ -55,15 +55,6 @@ function fmtDelta(n: number): string {
 // the crate prefix repeats on every path and buys nothing in a list
 const shortPath = (p: string) => p.replace(/^programs?\/[a-z0-9_-]+\//i, "");
 
-/** the counting fallback, only used when nothing could be said in words */
-function countSummary(t: TrailEntry): string {
-  const n = (t.instructions?.added.length ?? 0) + (t.instructions?.removed.length ?? 0);
-  const f = (t.sourcePaths?.added ?? []).filter(isProgramPath).length;
-  if (n) return `${n} instruction${n > 1 ? "s" : ""} changed`;
-  if (f) return `${f} source file${f > 1 ? "s" : ""} changed`;
-  return "rebuilt — no change to the interface";
-}
-
 function Chips({ names, tone }: { names: string[]; tone: "add" | "rem" }) {
   if (!names.length) return null;
   const shown = names.slice(0, MAX_CHIPS);
@@ -81,7 +72,7 @@ function Chips({ names, tone }: { names: string[]; tone: "add" | "rem" }) {
   );
 }
 
-function Detail({ t, said }: { t: TrailEntry; said: Statement[] }) {
+function Detail({ t }: { t: TrailEntry }) {
   // vendor paths are the Rust standard library compiled into the image, not
   // the author's code — listing them as changed files is simply wrong
   const paths = [
@@ -96,16 +87,6 @@ function Detail({ t, said }: { t: TrailEntry; said: Statement[] }) {
 
   return (
     <div className="trail-detail">
-      {said.length > 1 ? (
-        <ul className="trail-said-list">
-          {said.slice(1).map((s) => (
-            <li key={s.text} className={`trail-said trail-said-${s.tone}`}>
-              {s.text}
-            </li>
-          ))}
-        </ul>
-      ) : null}
-
       {hasIx ? (
         <div className="trail-grp">
           <span className="trail-lbl">Instructions</span>
@@ -296,7 +277,7 @@ export function RecordTable({
             const isOpen = open.has(ev.id);
             const expandable = !!t && t.kind !== "genesis";
             // the sentence(s) this version earns — empty for a plain rebuild
-            const said = t && t.kind !== "genesis" ? describe(t) : [];
+            const line = t && t.kind !== "genesis" ? commitLine(t) : null;
             return [
               <tr
                 key={ev.id}
@@ -324,20 +305,18 @@ export function RecordTable({
                       onClick={() => toggle(ev.id)}
                     >
                       <Chevron className={isOpen ? "chev-open" : undefined} />
-                      {/* one inline run, so a long summary wraps as text
-                          instead of each flex child landing on its own line */}
+                      {/* one line, like a commit message: the full text on
+                          hover, everything else in the expanded detail */}
                       <span className="trail-sum">
-                        <span className={said.length ? `trail-said trail-said-${said[0].tone}` : undefined}>
-                          {said.length ? said[0].text : countSummary(t)}
+                        <span className={`trail-said trail-said-${line!.tone}`} title={line!.text}>
+                          {line!.text}
                         </span>
-                        {said.length > 1 ? (
-                          <span className="trail-plus">+{said.length - 1} more</span>
+                        {t.sizeDelta ? (
+                          <span className={`trail-delta ${t.sizeDelta > 0 ? "up" : "down"}`}>{fmtDelta(t.sizeDelta)}</span>
                         ) : null}
                         {/* one marker per flag, and the two mean different
                             things: `!` is "part of this diff is missing", `~`
-                            is "part of it is cosmetic". A single glyph for both
-                            left the reader unable to tell whether the sentence
-                            they just read was affected. */}
+                            is "part of it is cosmetic". */}
                         {(t.flags ?? []).map((f) => (
                           <span
                             key={f.label}
@@ -354,7 +333,7 @@ export function RecordTable({
                     </button>
                   ) : (
                     <span className="cell-dim">
-                      first version on record — {t.counts?.instructions ?? 0} instructions
+                      First on record · {t.counts?.instructions ?? 0} instructions
                     </span>
                   )}
                 </td>
@@ -387,7 +366,7 @@ export function RecordTable({
               isOpen && t ? (
                 <tr key={`${ev.id}-d`} className="trail-detail-row">
                   <td colSpan={cols}>
-                    <Detail t={t} said={said} />
+                    <Detail t={t} />
                   </td>
                 </tr>
               ) : null,

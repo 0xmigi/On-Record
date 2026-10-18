@@ -343,7 +343,27 @@ export default async function ProgramDossierPage({
     "verified-older-build": "Verified, but for an older build.",
   };
   const upgrades = program.upgradeCount ?? timeline.filter((e) => e.type === "upgrade").length;
-  const sourceFound = !program.repoUrl && program.repoLink ? program.repoLink : null;
+
+  // Toolchain: the Solana release (whose cargo-build-sbf picks the compiler)
+  // that reproduced these bytes. Exact only where a rebuild matched; otherwise
+  // the SDK crate version if the binary names one, which is what the code was
+  // written against, not what built it — labelled as such.
+  const sdk = build?.crates.find((c) => c.name === "solana-program");
+  const toolchainValue: ReactNode = rebuild ? (
+    `Solana ${rebuild.solana}`
+  ) : sdk ? (
+    <>
+      {sdk.version}
+      <span className="ov-note">sdk</span>
+    </>
+  ) : (
+    <span className="cell-dim">—</span>
+  );
+  const toolchainTip = rebuild
+    ? `The Solana release whose cargo-build-sbf reproduced these bytes, byte for byte, in On Record's rebuild on ${machineLabel(rebuild.machine)}. The release picks the compiler (platform-tools) by default.`
+    : sdk
+      ? `The binary was compiled against solana-program ${sdk.version}, read from its dependency paths. That's the SDK the code uses, not the Solana release that built it.`
+      : "The Solana release and compiler that built it. Known exactly for programs On Record has rebuilt; reading the compiler straight from the binary is next.";
 
   // Twelve cells, the same twelve on every program, in the same places. What
   // isn't known reads "—"; nothing appears or disappears. Explanations live in
@@ -413,29 +433,14 @@ export default async function ProgramDossierPage({
       ),
     },
     {
-      k: "source",
-      tip: program.repoUrl
-        ? "Declared by the program itself, in its security.txt."
-        : sourceFound
-          ? `Not declared. Found by searching public code for this program id: ${sourceFound.method === "declared" ? "the repo declares this id as its own" : "the repo carries the crate path the binary leaked"}${sourceFound.crateConfirmed ? ", confirmed both ways" : ""}. ${sourceFound.matchCount} file${sourceFound.matchCount === 1 ? "" : "s"} contain the address${sourceFound.otherCandidates > 0 ? `; ${sourceFound.otherCandidates} other repo${sourceFound.otherCandidates === 1 ? "" : "s"} could also claim it` : ""}. A lead, not a verified build.`
-          : "No source declared, and none found.",
-      v: program.repoUrl ? (
-        <Ext
-          href={program.repoUrl}
-          text={program.repoUrl.match(/github\.com\/([^/\s]+\/[^/\s#?]+)/i)?.[1]?.replace(/\.git$/i, "") ?? shortUrl(program.repoUrl)}
-        />
-      ) : sourceFound ? (
-        <>
-          <Ext href={sourceFound.repoUrl} text={sourceFound.repo} /> <span className="cell-dim">found</span>
-        </>
-      ) : (
-        <span className="cell-dim">—</span>
-      ),
+      k: "build machine",
+      tip: machineFrom,
+      v: machine === "mac" ? "Mac" : machine === "linux" ? "Linux or Docker" : <span className="cell-dim">—</span>,
     },
     {
-      k: "compiled on",
-      tip: machineFrom,
-      v: machine === "mac" ? "a Mac" : machine === "linux" ? "Linux or Docker" : <span className="cell-dim">—</span>,
+      k: "toolchain",
+      tip: toolchainTip,
+      v: toolchainValue,
     },
     {
       k: "upgrades",
@@ -1000,8 +1005,17 @@ export default async function ProgramDossierPage({
               <IconLink href={orbAddress(program.id)} label="Open in Orb explorer">
                 <OrbIcon />
               </IconLink>
+              {/* the declared repo, or else one our search found — labelled as
+                  found, since nobody declared it and nobody rebuilt it from it */}
               {program.repoUrl ? (
                 <IconLink href={program.repoUrl} label="Source code">
+                  <CodeIcon />
+                </IconLink>
+              ) : program.repoLink ? (
+                <IconLink
+                  href={program.repoLink.repoUrl}
+                  label={`Source code: ${program.repoLink.repo}, found by searching public code for this program id (not declared)`}
+                >
                   <CodeIcon />
                 </IconLink>
               ) : null}
