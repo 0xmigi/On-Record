@@ -134,8 +134,8 @@ export function ProgramRow({
           {program.verified ? (
             <VerifiedBadge size={13} />
           ) : rebuiltForRow(program.id, program.deployedSlot) ? (
-            <span className="tip verified-badge-tip" data-tip="Verified by On Record, not OtterSec: rebuilt from public source, byte for byte">
-              <VerifiedBadge size={13} issuer="onrecord" title="Verified by On Record" />
+            <span className="tip verified-badge-tip" data-tip="Verified by On Record: rebuilt from public source, byte for byte">
+              <VerifiedBadge size={13} issuer="onrecord" title={null} />
             </span>
           ) : null}
           {showNetwork ? <ClusterBadge program={program} /> : null}

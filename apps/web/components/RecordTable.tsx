@@ -180,7 +180,7 @@ function VerifyCell({ label, rebuilt }: { label?: ApiVersionVerification; rebuil
     return (
       <span
         className="vfy vfy-or tip vfy-tip"
-        data-tip={`On Record rebuilt ${rebuilt} and got exactly these bytes. OtterSec has no verified build of them.`}
+        data-tip={`On Record rebuilt ${rebuilt} and got exactly these bytes.`}
         tabIndex={0}
         role="note"
       >

@@ -14,7 +14,9 @@ export function VerifiedBadge({
   issuer = "ottersec",
 }: {
   size?: number;
-  title?: string;
+  /** null when a wrapper shows its own tooltip — an svg <title> would pop the
+   *  browser's native one on top of it */
+  title?: string | null;
   issuer?: "ottersec" | "onrecord";
 }) {
   return (
@@ -27,7 +29,7 @@ export function VerifiedBadge({
       aria-label="Verified build"
       focusable="false"
     >
-      <title>{title}</title>
+      {title ? <title>{title}</title> : null}
       <path
         className="verified-badge-disc"
         d="M9.33 2.77Q12.05 -1.57 14.77 2.77Q19.41 0.59 19.36 5.72Q24.44 6.39 21.62 10.67Q25.53 13.99 20.84 16.07Q22.34 20.97 17.28 20.18Q15.89 25.12 12.05 21.72Q8.21 25.12 6.82 20.18Q1.75 20.97 3.25 16.07Q-1.43 13.99 2.48 10.67Q-0.34 6.39 4.74 5.72Q4.68 0.59 9.33 2.77Z"

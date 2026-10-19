@@ -987,13 +987,9 @@ export default async function ProgramDossierPage({
                   href={`/p/${id}/rebuild`}
                   prefetch={false}
                   className="verified-badge-link tip"
-                  data-tip="Verified by On Record, not OtterSec: rebuilt from public source and matched the deployed bytes exactly. Click to see the comparison."
+                  data-tip="Verified by On Record: rebuilt from public source and matched the deployed bytes exactly. Click to see the comparison."
                 >
-                  <VerifiedBadge
-                    size={19}
-                    issuer="onrecord"
-                    title="Verified by On Record: rebuilt from public source, byte for byte"
-                  />
+                  <VerifiedBadge size={19} issuer="onrecord" title={null} />
                 </Link>
               ) : null}
             </h1>
