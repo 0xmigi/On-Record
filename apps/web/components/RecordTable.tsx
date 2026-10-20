@@ -243,6 +243,9 @@ export function RecordTable({
   // hold nothing for AND the window where the web deploys ahead of the API —
   // in both cases the record renders exactly as it did before this feature.
   const hasTrail = Object.keys(trail).length > 0;
+  // a version is keyed by the first slot that carried its bytes, so a later
+  // redeploy of the same image has no entry of its own — it is still known
+  const versionShas = new Set(Object.values(trail).map((v) => v.sha256));
   // Last column, after Receipt: the phone layout picks cells by position, and
   // everything it already styles keeps its index this way.
   const hasVerify = !!verification;
@@ -290,7 +293,15 @@ export function RecordTable({
                 <td>slot {ev.slot.toLocaleString("en-US")}</td>
                 {hasTrail ? (
                 <td className="trail-cell">
-                  {!t ? (
+                  {!t && ev.type === "set_authority" ? (
+                    <span className="cell-dim">{ev.authorityAfter ? "Authority changed" : "Made immutable"}</span>
+                  ) : !t && ev.type === "close" ? (
+                    <span className="cell-dim">Program closed</span>
+                  ) : !t && ev.sha256After && versionShas.has(ev.sha256After) ? (
+                    <span className="cell-dim" title="The deployed bytes are identical to an earlier version on this record">
+                      Same bytes as an earlier version
+                    </span>
+                  ) : !t ? (
                     <span
                       className="cell-dim"
                       title="This event predates fingerprinting, so there is no description of the program at this version"

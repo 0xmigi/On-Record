@@ -13,6 +13,7 @@ export * from "./lineage.js";
 export * from "./sourcetree.js";
 export * from "./usage.js";
 export * from "./versiondiff.js";
+export * from "./history.js";
 export * from "./traffic.js";
 export * from "./minhash.js";
 export {

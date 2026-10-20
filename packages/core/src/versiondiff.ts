@@ -1,5 +1,6 @@
 import { and, asc, eq, isNotNull } from "drizzle-orm";
 import { db, schema } from "./db/client.js";
+import { loadHistory } from "./history.js";
 
 /**
  * What changed between two versions of a program.
@@ -120,38 +121,80 @@ function toSet(v: unknown): Set<string> {
  * earliest slot that carried it is the one that counts.
  */
 export async function loadSnapshots(programId: string): Promise<Snapshot[]> {
-  const rows = await db
-    .select({
-      sha256: schema.events.sha256After,
-      slot: schema.events.slot,
-      signature: schema.events.signature,
-      blockTime: schema.events.blockTime,
-      enrichment: schema.events.enrichment,
-    })
-    .from(schema.events)
-    .where(and(eq(schema.events.programId, programId), isNotNull(schema.events.sha256After)))
-    .orderBy(asc(schema.events.slot));
+  const [rows, history] = await Promise.all([
+    db
+      .select({
+        sha256: schema.events.sha256After,
+        slot: schema.events.slot,
+        signature: schema.events.signature,
+        blockTime: schema.events.blockTime,
+        network: schema.events.network,
+        enrichment: schema.events.enrichment,
+      })
+      .from(schema.events)
+      .where(and(eq(schema.events.programId, programId), isNotNull(schema.events.sha256After)))
+      .orderBy(asc(schema.events.slot)),
+    loadHistory(programId),
+  ]);
 
-  const bySha = new Map<string, Snapshot>();
+  // Inside the backfill's range the rebuilt versions are the record: every one
+  // is keyed to its real deploy/upgrade slot, where the live poller's rows can
+  // carry an extend's slot or a neighbouring version's bytes (59 of 36,150
+  // checked did). Live rows supply only what lies outside the range.
+  const covered = (slot: bigint, network: string) =>
+    history !== null &&
+    network === "mainnet" &&
+    slot >= BigInt(history.coverage.first_slot) &&
+    slot <= BigInt(history.coverage.last_slot);
+
+  // One name source for the whole changelog. Rebuilt versions have no IDL, so
+  // when they are in it every version is compared on the names recovered from
+  // the bytecode — mixing IDL names with recovered ones would read as every
+  // instruction being replaced at the seam — and account names (IDL-only) are
+  // left out.
+  const mixed = history !== null && history.versions.some((v) => v.sha256);
+
+  const all: Snapshot[] = [];
   for (const r of rows) {
+    const slot = BigInt(r.slot as unknown as string | number);
+    if (covered(slot, r.network)) continue;
     const e = (r.enrichment ?? {}) as Record<string, any>;
     const fp = e.fingerprint;
     if (!fp || !r.sha256) continue;
-    // first slot wins — a later redeploy of the same image is not a new version
-    if (bySha.has(r.sha256)) continue;
-    bySha.set(r.sha256, {
+    all.push({
       sha256: r.sha256,
-      slot: BigInt(r.slot as unknown as string | number),
+      slot,
       signature: r.signature ?? null,
       blockTime: r.blockTime ?? null,
       sizeBytes: Number(fp.sizeBytes ?? 0),
-      instructions: toSet(fp.idl?.instructions ?? e.profile?.instructionNames),
-      accounts: toSet(fp.idl?.accounts),
+      instructions: toSet(mixed ? e.profile?.instructionNames : (fp.idl?.instructions ?? e.profile?.instructionNames)),
+      accounts: toSet(mixed ? [] : fp.idl?.accounts),
       paths: pathsFrom(fp.strings),
       integrations: toSet(e.profile?.integrations),
       capabilities: toSet(e.profile?.capabilities),
     });
   }
+  for (const v of history?.versions ?? []) {
+    if (!v.sha256) continue;
+    all.push({
+      sha256: v.sha256,
+      slot: BigInt(v.slot),
+      signature: v.signature,
+      blockTime: v.at ? new Date(v.at) : null,
+      sizeBytes: Number(v.sizeBytes ?? v.size),
+      instructions: toSet(v.instructionNames),
+      accounts: new Set(),
+      // already filtered to source paths when the history was built
+      paths: new Set((v.sourcePaths ?? []).filter(isProgramPath)),
+      integrations: toSet(v.integrations),
+      capabilities: toSet(v.capabilities),
+    });
+  }
+
+  all.sort((a, b) => (a.slot < b.slot ? -1 : a.slot > b.slot ? 1 : 0));
+  // first slot wins — a later redeploy of the same image is not a new version
+  const bySha = new Map<string, Snapshot>();
+  for (const s of all) if (!bySha.has(s.sha256)) bySha.set(s.sha256, s);
   return [...bySha.values()].sort((a, b) => (a.slot < b.slot ? -1 : a.slot > b.slot ? 1 : 0));
 }
 

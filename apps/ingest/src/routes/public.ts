@@ -31,6 +31,7 @@ import {
   serializeProgramDetail,
   type NearestMeta,
 } from "../serialize.js";
+import { timelineWithHistory } from "../history-events.js";
 import { computeWindowFunnel, windowHoursFor } from "../funnel.js";
 import { buildDossier } from "../dossier.js";
 import { buildBuilderProfile } from "../builder.js";
@@ -473,6 +474,14 @@ export function registerPublicRoutes(app: FastifyInstance): void {
       order by slot, outer_index limit 1
     `)) as unknown as { fee_payer: string }[];
 
+    // the record table: live rows, with the backfilled history's own record in
+    // its range (history-events.ts). The fingerprint-derived fields below still
+    // read the live rows — the history's versions carry no IDL.
+    const timeline = await timelineWithHistory(row.id, events, 100);
+    const historyDeployer = timeline.history
+      ? (timeline.history.loader.find((l) => l.signature === timeline.history?.first_deploy?.signature)?.fee_payer ?? null)
+      : null;
+
     return {
       ...serializeProgramDetail(
         row,
@@ -485,7 +494,8 @@ export function registerPublicRoutes(app: FastifyInstance): void {
         similarityTo,
         computeRank,
       ),
-      deployer: genesis?.fee_payer ?? null,
+      events: timeline.events.map(serializeEvent),
+      deployer: genesis?.fee_payer ?? historyDeployer,
     };
   });
 
