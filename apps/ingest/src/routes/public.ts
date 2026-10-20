@@ -9,6 +9,7 @@ import {
   readUsage,
   sampleUsageNow,
   buildVersionDiffs,
+  loadHistory,
   looksLikeProgramId,
   escapeLike,
   lineageSizeWindow,
@@ -32,6 +33,7 @@ import {
   type NearestMeta,
 } from "../serialize.js";
 import { timelineWithHistory } from "../history-events.js";
+import { archiveDetail, searchArchive, type ApiArchivedProgram } from "../archive.js";
 import { computeWindowFunnel, windowHoursFor } from "../funnel.js";
 import { buildDossier } from "../dossier.js";
 import { buildBuilderProfile } from "../builder.js";
@@ -689,6 +691,16 @@ export function registerPublicRoutes(app: FastifyInstance): void {
     return reply.type("image/png").header("cache-control", "public, max-age=300").send(png);
   });
 
+  // --- a program known only from the archive --------------------------------
+  // Deployed or closed since 2023-07-18 and never seen live (archive.ts). One
+  // index row plus one R2 read; 404 when the archive holds nothing for it.
+  app.get<{ Params: { id: string } }>("/api/archive/:id", async (req, reply) => {
+    if (!looksLikeProgramId(req.params.id)) return reply.code(400).send({ error: "not an address" });
+    const detail = await archiveDetail(req.params.id);
+    if (!detail) return reply.code(404).send({ error: "not in the archive" });
+    return detail;
+  });
+
   // --- what changed between versions -------------------------------------
   // Pure DB read over the per-version descriptions already in events.enrichment.
   // No RPC, no bytecode, so it costs nothing per request and needs no sweep.
@@ -697,7 +709,8 @@ export function registerPublicRoutes(app: FastifyInstance): void {
       .select({ id: schema.subjects.id })
       .from(schema.subjects)
       .where(eq(schema.subjects.id, req.params.id));
-    if (!rows[0]) return reply.code(404).send({ error: "unknown program" });
+    // an archive-only program has no subjects row; its history alone is the record
+    if (!rows[0] && !(await loadHistory(req.params.id))) return reply.code(404).send({ error: "unknown program" });
     const versions = await buildVersionDiffs(req.params.id);
     return { versions };
   });
@@ -838,7 +851,9 @@ export function registerPublicRoutes(app: FastifyInstance): void {
   // identifiers in programs whose developers published nothing at all.
   app.get<{ Querystring: { q?: string; network?: string; limit?: string; sort?: string } }>(
     "/api/search",
-    async (req): Promise<{ items: ApiProgram[]; query: string; truncated: boolean }> => {
+    async (
+      req,
+    ): Promise<{ items: ApiProgram[]; query: string; truncated: boolean; archived?: ApiArchivedProgram[] }> => {
       const raw = (req.query.q ?? "").trim();
       const limit = parseLimit(req.query.limit, 20, 50);
       const sort = req.query.sort === "recent" ? "recent" : "relevance";
@@ -861,7 +876,8 @@ export function registerPublicRoutes(app: FastifyInstance): void {
             truncated: false,
           };
         }
-        return { items: [], query: raw, truncated: false };
+        // not seen live — the archive may still hold it (deployed and closed since 2023)
+        return { items: [], query: raw, truncated: false, archived: await searchArchive(raw, 1) };
       }
 
       const q = escapeLike(raw.toLowerCase());
@@ -931,6 +947,8 @@ export function registerPublicRoutes(app: FastifyInstance): void {
         ),
         query: raw,
         truncated: rows.length > limit,
+        // programs never seen live that the archive holds, matched on name or address prefix
+        archived: await searchArchive(raw, Math.min(limit, 20)),
       };
     },
   );

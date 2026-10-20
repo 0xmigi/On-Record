@@ -1,7 +1,8 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { ProgramRow } from "@/components/ProgramRow";
-import { fetchSearch, looksLikeProgramId, type SearchSort } from "@/lib/api";
+import { fetchSearch, looksLikeProgramId, type ApiArchivedProgram, type SearchSort } from "@/lib/api";
+import { dayStamp, truncateAddress } from "@/lib/format";
 
 export const metadata: Metadata = {
   title: "Search",
@@ -18,7 +19,7 @@ export default async function SearchPage({
   const sort: SearchSort = params.sort === "recent" ? "recent" : "relevance";
   // deliberately unscoped: search spans both clusters whatever mode you came
   // from, with devnet rows badged and ranked below their mainnet equivalents
-  const { items, truncated } = await fetchSearch(q, { limit: 50, sort });
+  const { items, truncated, archived = [] } = await fetchSearch(q, { limit: 50, sort });
   const devnetCount = items.filter((p) => p.network === "devnet").length;
 
   return (
@@ -34,7 +35,7 @@ export default async function SearchPage({
             how programs that published nothing at all still turn up.
           </p>
         </div>
-      ) : items.length === 0 ? (
+      ) : items.length === 0 && archived.length === 0 ? (
         <div className="empty-state" style={{ marginTop: 24 }}>
           <p className="empty-title">
             No match for <strong>{q}</strong>
@@ -87,8 +88,37 @@ export default async function SearchPage({
               </li>
             ))}
           </ol>
+          {archived.length ? <ArchivedResults items={archived} /> : null}
         </>
       )}
     </>
+  );
+}
+
+/** Programs never seen live that the archive holds — deployed, upgraded or
+ *  closed since 18 Jul 2023. A plain list: there is no score or activity to
+ *  rank them by, only what the loader record says. */
+function ArchivedResults({ items }: { items: ApiArchivedProgram[] }) {
+  return (
+    <section className="archive-results">
+      <p className="saved-hint">
+        {items.length} from the archive · never seen live, read from the Old Faithful record since 18 Jul 2023
+      </p>
+      <ol className="radar-list">
+        {items.map((p) => (
+          <li key={p.id}>
+            <Link className="archive-row" href={`/p/${encodeURIComponent(p.id)}`} prefetch={false}>
+              <span className="archive-name">{p.name ?? truncateAddress(p.id)}</span>
+              <span className="cell-dim">
+                {p.framework === "unknown" ? "" : `${p.framework} · `}
+                {p.versions} version{p.versions === 1 ? "" : "s"}
+                {p.firstDeployAt ? ` · deployed ${dayStamp(p.firstDeployAt)}` : ""}
+              </span>
+              {p.closedAt ? <span className="closed-chip">closed {dayStamp(p.closedAt)}</span> : null}
+            </Link>
+          </li>
+        ))}
+      </ol>
+    </section>
   );
 }

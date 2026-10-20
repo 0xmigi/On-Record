@@ -494,6 +494,44 @@ export interface ApiSearchResult {
   items: ApiProgram[];
   query: string;
   truncated: boolean; // more matches exist than the limit returned
+  /** programs never seen live that the archive holds — most were closed again */
+  archived?: ApiArchivedProgram[];
+}
+
+/** A program known only from the archive: deployed, upgraded or closed since
+ *  2023-07-18 (the Old Faithful backfill), never seen by the live poller. */
+export interface ApiArchivedProgram {
+  id: string;
+  name: string | null;
+  framework: string;
+  firstDeployAt: string | null;
+  lastChangeAt: string | null;
+  versions: number;
+  upgrades: number;
+  closedAt: string | null;
+  deployer: string | null;
+}
+
+export interface ApiArchiveDetail extends ApiArchivedProgram {
+  programDataAddress: string;
+  authority: string | null;
+  sizeBytes: number | null;
+  sha256: string | null;
+  crate: string | null;
+  instructionNames: string[];
+  integrations: string[];
+  firstDeploySignature: string | null;
+  closedSignature: string | null;
+  coverage: { first_slot: number; last_slot: number; source: string };
+  events: ApiRawEvent[];
+}
+
+export async function fetchArchive(id: string): Promise<ApiArchiveDetail | null> {
+  try {
+    return await getJson<ApiArchiveDetail>(`/api/archive/${encodeURIComponent(id)}`, DOSSIER_REVALIDATE);
+  } catch {
+    return null;
+  }
 }
 
 /** "relevance" ranks by interest score inside a match tier; "recent" ranks by

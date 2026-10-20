@@ -17,6 +17,7 @@ import { ComputeSection } from "@/components/ComputeSection";
 import { DossierTabs, type DossierTab } from "@/components/DossierTabs";
 import { ClusterSwitch } from "@/components/ClusterSwitch";
 import { RecordTable } from "@/components/RecordTable";
+import { ArchivedProgram } from "@/components/ArchivedProgram";
 import { rebuiltFromSource, machineLabel } from "@/lib/rebuilds";
 import { SignalHex } from "@/components/SignalHex";
 import { Sparkline } from "@/components/Sparkline";
@@ -38,6 +39,7 @@ import {
   fetchUsage,
   fetchVerification,
   fetchVersions,
+  fetchArchive,
   versionsBySlot,
   builderHref,
   orbAddress,
@@ -247,7 +249,12 @@ export default async function ProgramDossierPage({
 }) {
   const { id } = await params;
   const program = await fetchProgram(id);
-  if (!program) notFound();
+  if (!program) {
+    // never seen live: the archive may still hold its record (closed programs, mostly)
+    const archived = await fetchArchive(id);
+    if (!archived) notFound();
+    return <ArchivedProgram program={archived} trail={versionsBySlot(await fetchVersions(id))} />;
+  }
 
   // The interface (IDL) + its real usage. Always ask rather than trusting
   // idlPresent: that flag is a snapshot taken once at ingest, and teams often

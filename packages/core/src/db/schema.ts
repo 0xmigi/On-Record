@@ -543,6 +543,24 @@ export const loaderTxns = pgTable(
 );
 
 // ---------------------------------------------------------------------------
+// history_programs — the archive index (drizzle/0015). One row per program the
+// Old Faithful backfill holds a loader history for, so search can find programs
+// On Record never saw live. The history itself lives in R2 (history.ts).
+// ---------------------------------------------------------------------------
+export const historyPrograms = pgTable("history_programs", {
+  programId: text("program_id").primaryKey(),
+  name: text("name"),
+  framework: text("framework").notNull(),
+  firstDeployAt: timestamp("first_deploy_at", { withTimezone: true }),
+  lastChangeAt: timestamp("last_change_at", { withTimezone: true }),
+  versions: integer("versions").notNull(),
+  upgrades: integer("upgrades").notNull(),
+  closedAt: timestamp("closed_at", { withTimezone: true }),
+  authority: text("authority"),
+  deployer: text("deployer"),
+});
+
+// ---------------------------------------------------------------------------
 // loader_walks — what the loader record covers, one row per program walked.
 // Every finding states its coverage ("measured on Y of Z"), and this is where
 // Y comes from: a program missing here was never read, a truncated walk's
