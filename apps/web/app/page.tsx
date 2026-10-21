@@ -369,15 +369,20 @@ export default async function RadarPage({
    *  its FIRST sighting in the window — CLOSED OR NOT. Later duplicates only
    *  bump the ×N; and if the window's first entry is already closed, the whole
    *  family belongs to the graveyard — a fresher still-alive sibling never
-   *  re-floats it into the feed. */
-  const collapseBuckets = (items: ApiProgram[]): ApiProgram[] => {
+   *  re-floats it into the feed.
+   *
+   *  The upgrade stream anchors on the LATEST change instead: a family there is
+   *  one assignment pushed by twenty students, and the card should front the
+   *  newest push, not the first. */
+  const collapseBuckets = (items: ApiProgram[], anchor: "first" | "latest" = "first"): ApiProgram[] => {
+    const at = anchor === "first" ? ts : (p: ApiProgram) => -(p.lastEventAt ? Date.parse(p.lastEventAt) : 0);
     const families = new Map<string, ApiProgram>();
     const seen = new Map<string, number>();
     for (const p of items) {
       const k = familyKeyOf(p);
       seen.set(k, (seen.get(k) ?? 0) + 1);
       const cur = families.get(k);
-      if (!cur || ts(p) < ts(cur)) families.set(k, p);
+      if (!cur || at(p) < at(cur)) families.set(k, p);
     }
     const out: ApiProgram[] = [];
     for (const [k, rep] of families) {
@@ -426,8 +431,11 @@ export default async function RadarPage({
   const notable = collapseBuckets(
     [...novelPage.items, ...variantPage.items].sort(interest),
   );
+  // Upgrades collapse by family too. Every student in a cohort deploying the
+  // same assignment (one crate, a fresh id each) used to stack up here as a
+  // dozen identical cards, because this stream skipped the grouping.
   const mainItems = !isDeploy
-    ? upgradePage.items
+    ? collapseBuckets(upgradePage.items, "latest")
     : view === "novel"
       ? novelPage.items
       : view === "variant"
@@ -514,10 +522,11 @@ export default async function RadarPage({
           </ol>
           {/* Deploys already declare their true totals in the tier counts above
               (novel · variant · recycled), so the cut is visible there. The
-              upgrade stream has no such header and no collapsing, which is why
-              it read as the whole record when it was 50 of 5,185. */}
+              upgrade stream has no such header, which is why it read as the
+              whole record when it was 50 of 5,185. It counts upgrades, not the
+              family cards they collapse into. */}
           {!isDeploy && !facetsActive ? (
-            <ListTail shown={mainItems.length} total={upgradePage.total} noun="upgrades" />
+            <ListTail shown={upgradePage.items.length} total={upgradePage.total} noun="upgrades" />
           ) : null}
         </>
       )}

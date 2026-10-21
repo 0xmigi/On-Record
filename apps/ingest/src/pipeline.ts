@@ -589,7 +589,23 @@ export async function classifyStage(eventId: string): Promise<void> {
   const network = event.network as Network;
   const fp = enrichment.fingerprint;
 
-  if (event.type === "deploy" && fp) {
+  // Upgrades inherit identity — except a program's FIRST sighting. Devnet polls
+  // hourly, so a program deployed and upgraded inside one hour is first seen as
+  // an upgrade (identify relabels the capture and seeds a bytes-less genesis
+  // row), and the gate never graded it. A cohort deploying the same assignment
+  // landed as N unrelated "variant" cards with no family. Mainnet's reclassify
+  // cron masked this; devnet has no such cron. A null band = never graded.
+  const ungraded =
+    event.type === "upgrade" &&
+    fp != null &&
+    (
+      await db
+        .select({ band: schema.subjects.noveltyBand })
+        .from(schema.subjects)
+        .where(and(eq(schema.subjects.id, event.programId), eq(schema.subjects.network, network)))
+    )[0]?.band == null;
+
+  if ((event.type === "deploy" || ungraded) && fp) {
     const classification = await classifyFingerprint(network, event.programId, fp, {
       authority: event.authorityAfter,
     });
@@ -767,7 +783,10 @@ export async function scoreStage(eventId: string): Promise<void> {
   await db
     .update(schema.subjects)
     .set({
-      noveltyBand: keep(schema.subjects.noveltyBand, band),
+      // an event the gate didn't grade (a later upgrade) keeps the band it has —
+      // `band` here is only the bare "variant" default, and stamping it reset
+      // every graded clone/novel program to variant on its next upgrade
+      noveltyBand: cls ? band : sql`coalesce(${schema.subjects.noveltyBand}, ${band})`,
       category,
       instructionCount,
       idlPresent,
