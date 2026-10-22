@@ -13,6 +13,14 @@ import { loadOgFont } from "@/lib/og";
 // on the platform's surface, not ours; one deliberate look beats guessing).
 // ---------------------------------------------------------------------------
 
+// Cached, like the page. Uncached, every crawler and link unfurl drew the PNG
+// from scratch — the most CPU-hungry render the site does. Ingest's rebuild
+// push (app/api/revalidate) refreshes it when the record changes.
+export const revalidate = 604800;
+export async function generateStaticParams() {
+  return [];
+}
+
 export const size = { width: 1200, height: 630 };
 export const contentType = "image/png";
 export const alt = "Program signal card — On Record";

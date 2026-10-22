@@ -32,6 +32,7 @@ export async function POST(req: Request) {
   for (const id of ids) {
     revalidatePath(`/p/${id}`);
     revalidatePath(`/p/${id}/dossier.md`);
+    revalidatePath(`/p/${id}/opengraph-image`);
   }
   return NextResponse.json({ revalidated: ids.length });
 }

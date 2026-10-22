@@ -31,6 +31,7 @@ import { SectionHeader } from "@/components/SectionHeader";
 import { SaveButton } from "@/components/SaveButton";
 import { Lineage, lineageSummary } from "@/components/Lineage";
 import { ReachMap } from "@/components/Reach";
+import { RenderedAgo } from "@/components/RenderedAgo";
 import {
   categoryLabel,
   fetchCluster,
@@ -78,10 +79,12 @@ function sizeFillPct(bytes: number): number {
 // be a fresh server render, which is what let crawlers burn the Vercel CPU
 // allowance (see app/robots.ts). An empty list still opts the route into ISR:
 // pages render on first visit, then serve from cache.
-// An hour, not a day: ingest pushes a rebuild when the record changes
-// (app/api/revalidate), but "Last 24h" and the "ago" times only move with
-// the clock, and a day-old count must not read as current.
-export const revalidate = 3600;
+// A day: ingest pushes a rebuild when the record changes (app/api/revalidate).
+// At an hour, crawlers walking the corpus re-rendered ~9K pages a day, which
+// spent the Vercel Hobby CPU and ISR-write allowances and paused the site
+// (22 Oct 2026). "Last 24h" only moves with the clock, so it carries the age
+// of the render (<RenderedAgo>) and a day-old count never reads as current.
+export const revalidate = 86400;
 export async function generateStaticParams() {
   return [];
 }
@@ -255,6 +258,7 @@ export default async function ProgramDossierPage({
     if (!archived) notFound();
     return <ArchivedProgram program={archived} trail={versionsBySlot(await fetchVersions(id))} />;
   }
+  const renderedAt = new Date().toISOString();
 
   // The interface (IDL) + its real usage. Always ask rather than trusting
   // idlPresent: that flag is a snapshot taken once at ingest, and teams often
@@ -735,6 +739,7 @@ export default async function ProgramDossierPage({
           {program.momentum.growth != null ? (
             <span className="cell-dim"> · ×{program.momentum.growth} vs prior day</span>
           ) : null}
+          <RenderedAgo at={renderedAt} />
         </Row>
       ) : null}
       {series ? (
