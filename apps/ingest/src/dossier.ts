@@ -7,7 +7,6 @@ import {
   readPmpSecurity,
   primitiveTier,
   readTraffic,
-  sampleTrafficNow,
   sharedPathCount,
   pathOverlap,
   isSourceRelative,
@@ -21,6 +20,7 @@ import {
 } from "@onrecord/core";
 import { familyFor } from "./interest.js";
 import { rankUtilisation, sampleComputeOnDemand, type ComputeSample } from "./compute.js";
+import { LIVE_STALE_MS, liveTraffic, type LiveDecline } from "./traffic-live.js";
 
 // ---------------------------------------------------------------------------
 // The LLM dossier: one program, as plain text, with the provenance attached.
@@ -197,7 +197,10 @@ async function sourceKin(row: SubjectRow): Promise<{ id: string; name: string | 
 export interface DossierOptions {
   /** where the traffic section comes from.
    *    "stored"  the last sample the sweep took, rendered with its timestamp (default)
-   *    "live"    re-measure now and write through — metered, seconds per program
+   *    "live"    re-measure now and write through — metered, seconds per program.
+   *              Bounded: a sample under an hour old is reused, and there is an
+   *              hourly ceiling (traffic-live.ts); past either, the stored one
+   *              is rendered and the dossier says it is not live
    *    "off"     omit it, and say so rather than quietly leaving it out
    *  `true`/`false` are accepted as the old boolean spelling of stored/off. */
   sample?: "stored" | "live" | "off" | boolean;
@@ -285,9 +288,15 @@ export async function buildDossier(programId: string, opts: DossierOptions = {})
   let traffic: TrafficSample | null = null;
   let trafficAt: Date | null = null;
   let trafficError: string | null = null;
+  let liveDeclined: LiveDecline | null = null;
   if (mode !== "off") {
     try {
-      const stored = mode === "live" ? await sampleTrafficNow(network, row.id) : await readTraffic(row.id);
+      let stored;
+      if (mode === "live") {
+        const live = await liveTraffic(network, row.id);
+        stored = live.sample;
+        liveDeclined = live.declined;
+      } else stored = await readTraffic(row.id);
       traffic = stored.value;
       trafficAt = stored.sampledAt;
     } catch (err) {
@@ -679,6 +688,23 @@ export async function buildDossier(programId: string, opts: DossierOptions = {})
       "transactions._",
   );
   out.push("");
+  if (liveDeclined === "fresh") {
+    out.push(
+      fact(
+        "Live sample",
+        "not taken",
+        `the stored sample is under ${Math.round(LIVE_STALE_MS / 60_000)} minutes old — it is served instead`,
+      ),
+    );
+  } else if (liveDeclined === "budget") {
+    out.push(
+      fact(
+        "Live sample",
+        "not taken (hourly budget spent)",
+        "the stored sample is served instead — try ?sample=live again within the hour",
+      ),
+    );
+  }
   if (trafficError) {
     out.push(fact("Sample", "FAILED", `sampling errored: ${trafficError} — make no usage claim`));
   } else if (mode === "off") {

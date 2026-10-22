@@ -4,8 +4,8 @@ import {
   db,
   schema,
   rpc,
+  logger,
   findProgramAddress,
-  getSignaturesForAddress,
   LOADER_PROGRAM_ID,
   MAX_TX_VERSION,
   type Network,
@@ -177,6 +177,20 @@ export interface WalkFrom {
   slot: number;
 }
 
+/** One JSON-RPC call against the walk's network. Helius in production; a fake
+ *  in tests. */
+export type RpcCall = <T>(method: string, params: unknown[]) => Promise<T>;
+
+type SigInfo = { signature: string; slot: number };
+
+/** One getSignaturesForAddress page, newest first. */
+const SIG_PAGE = 1000;
+const sigPage = (call: RpcCall, address: string, opts: { before?: string; until?: string }) =>
+  call<SigInfo[]>("getSignaturesForAddress", [
+    address,
+    { limit: SIG_PAGE, before: opts.before, until: opts.until, commitment: "confirmed" },
+  ]);
+
 /** Read one program's loader record. Never throws: a failed listing comes back
  *  as an 'error' walk so the coverage table says so.
  *
@@ -185,12 +199,18 @@ export interface WalkFrom {
  *  longer one is read in bulk, oldest first: the first full run spent 140k of
  *  its 270k credits on 7 programs whose ProgramData is passed into every call,
  *  for 4 loader rows between them. `maxBulkCalls` caps a bulk read below
- *  BULK_CAP; a walk that hits it is 'truncated'. */
+ *  BULK_CAP; a walk that hits it is 'truncated'.
+ *
+ *  The bulk read needs Helius Developer or above. On a plan that refuses it,
+ *  the long history is read one getTransaction at a time instead (walkPaged).
+ *
+ *  `rpc` stands in for Helius in tests. */
 export async function walkLoaderHistory(
   network: Network,
   programId: string,
-  opts: { from?: WalkFrom; maxBulkCalls?: number } = {},
+  opts: { from?: WalkFrom; maxBulkCalls?: number; rpc?: RpcCall } = {},
 ): Promise<Walk> {
+  const call: RpcCall = opts.rpc ?? ((method, params) => rpc(network, method, params));
   const programData = programDataOf(programId);
   const walk: Walk["walk"] = {
     network,
@@ -208,13 +228,29 @@ export async function walkLoaderHistory(
     walkedAt: new Date(),
   };
 
-  let sigs: { signature: string; slot: number }[];
+  let sigs: SigInfo[];
   try {
-    sigs = await getSignaturesForAddress(network, programData, { limit: 1000, until: opts.from?.signature });
+    sigs = await sigPage(call, programData, { until: opts.from?.signature });
   } catch (err) {
     return { walk: { ...walk, status: "error", error: String(err).slice(0, 500) }, rows: [], credits: 1 };
   }
-  if (sigs.length > BULK_OVER) return walkBulk(network, programId, programData, walk, opts.from, opts.maxBulkCalls);
+  if (sigs.length > BULK_OVER) {
+    const maxCalls = opts.maxBulkCalls ?? BULK_CAP;
+    let spent = 1;
+    if (!bulkRefused) {
+      const bulk = await walkBulk(network, programId, programData, { ...walk }, opts.from, maxCalls, call);
+      if (!("refused" in bulk)) return bulk;
+      bulkRefused = true;
+      logger.warn(
+        { programId, err: bulk.refused },
+        "loader history: getTransactionsForAddress refused, reading long histories one transaction at a time",
+      );
+      spent = bulk.credits;
+    }
+    // the same credit ceiling the caller gave the bulk read, never above PAGED_MAX_READS
+    const maxReads = Math.min(PAGED_MAX_READS, maxCalls * BULK_CREDITS);
+    return walkPaged(network, programId, programData, walk, sigs, opts.from, maxReads, call, spent);
+  }
 
   walk.signatures = sigs.length;
   if (!sigs.length) return { walk: { ...walk, status: opts.from ? "complete" : "empty" }, rows: [], credits: 1 };
@@ -223,12 +259,27 @@ export async function walkLoaderHistory(
   walk.oldestSlot = sigs[sigs.length - 1]!.slot;
 
   const rows: LoaderRow[] = [];
-  let credits = 1;
+  const credits = 1 + (await readEach(call, network, programId, programData, walk, sigs, rows));
+  walk.loaderRows = rows.length;
+  if (walk.unread > 0) walk.status = "partial";
+  return { walk, rows, credits };
+}
+
+/** getTransaction each signature into `rows`, 1 credit each; returns the
+ *  credits. An unreadable transaction is counted in `walk.unread`, not fatal. */
+async function readEach(
+  call: RpcCall,
+  network: Network,
+  programId: string,
+  programData: string,
+  walk: Walk["walk"],
+  sigs: SigInfo[],
+  rows: LoaderRow[],
+): Promise<number> {
   for (const { signature } of sigs) {
-    credits++;
     let tx: ParsedTx | null = null;
     try {
-      tx = await rpc<ParsedTx | null>(network, "getTransaction", [
+      tx = await call<ParsedTx | null>("getTransaction", [
         signature,
         { maxSupportedTransactionVersion: MAX_TX_VERSION, encoding: "jsonParsed", commitment: "confirmed" },
       ]);
@@ -236,16 +287,14 @@ export async function walkLoaderHistory(
       tx = null;
     }
     if (!tx) {
-      walk.unread++;
+      walk.unread!++;
       continue;
     }
     const found = loaderRows(network, programId, programData, signature, tx);
-    if (!found.length) walk.nonLoader++;
+    if (!found.length) walk.nonLoader!++;
     rows.push(...found);
   }
-  walk.loaderRows = rows.length;
-  if (walk.unread > 0) walk.status = "partial";
-  return { walk, rows, credits };
+  return sigs.length;
 }
 
 /** Helius getTransactionsForAddress: 100 full transactions per call, 10 credits
@@ -264,25 +313,55 @@ const BULK_OVER = 10;
  *  missing its NEWEST history, never its genesis. */
 const BULK_CAP = 2_000;
 
+/** getTransaction reads per program on the paged path: 500 credits, the live
+ *  pipeline's bulk ceiling (50 calls). Ten times the bulk price per transaction,
+ *  on a plan with a tenth of the credits, so it stops much sooner. */
+const PAGED_MAX_READS = Number(process.env.LOADER_PAGED_MAX_READS ?? 500);
+/** signature pages listed per program on the paged path: 20,000 signatures */
+const PAGED_SIG_PAGES = Number(process.env.LOADER_PAGED_SIG_PAGES ?? 20);
+
+/** Set once Helius refuses getTransactionsForAddress (the Free plan has no
+ *  access to it). Every long history after that goes straight to walkPaged
+ *  instead of paying a refused call first. Lasts for the process: a plan
+ *  change takes a restart, which a deploy is. */
+let bulkRefused = false;
+export const bulkHistoryRefused = (): boolean => bulkRefused;
+/** for tests */
+export function resetBulkRefusal(): void {
+  bulkRefused = false;
+}
+
+/** Is this error Helius saying the plan doesn't include the method, as opposed
+ *  to a transient failure worth an 'error' walk and a retry later? rpc() throws
+ *  `HTTP <status>` for a non-2xx and the JSON-RPC message otherwise. 429, 5xx
+ *  and timeouts never match. */
+export function isPlanRefusal(err: unknown): boolean {
+  const msg = String(err instanceof Error ? err.message : err);
+  return /HTTP 40[13]\b|\bplans?\b|upgrade|not (available|supported|allowed|enabled)|method not found|forbidden|unauthori[sz]ed/i.test(
+    msg,
+  );
+}
+
 async function walkBulk(
   network: Network,
   programId: string,
   programData: string,
   walk: Walk["walk"],
   from: WalkFrom | undefined,
-  maxCalls = BULK_CAP,
-): Promise<Walk> {
+  maxCalls: number,
+  call: RpcCall,
+): Promise<Walk | { refused: string; credits: number }> {
   const rows: LoaderRow[] = [];
   let credits = 1; // the signature page that sent us here
   let token: string | null = null;
   try {
-    for (let call = 0; ; call++) {
-      if (call === maxCalls) {
+    for (let n = 0; ; n++) {
+      if (n === maxCalls) {
         walk.status = "truncated";
         break;
       }
       const page: { data: (ParsedTx & { transaction: { signatures: string[] } })[]; paginationToken: string | null } =
-        await rpc(network, "getTransactionsForAddress", [
+        await call("getTransactionsForAddress", [
           programData,
           {
             transactionDetails: "full",
@@ -309,11 +388,66 @@ async function walkBulk(
       if (!token || page.data.length === 0) break;
     }
   } catch (err) {
+    // the caller starts over on the paged path; what was read here is dropped
+    if (isPlanRefusal(err)) return { refused: String(err).slice(0, 500), credits };
     // a bulk walk that dies halfway keeps nothing: the rows would be real, but
     // the coverage row could not say what was missed
     return { walk: { ...walk, status: "error", error: String(err).slice(0, 500) }, rows: [], credits };
   }
   walk.loaderRows = rows.length;
+  return { walk, rows, credits };
+}
+
+/** A long history without getTransactionsForAddress: list the signatures, then
+ *  read them oldest first with getTransaction. Oldest first for the bulk path's
+ *  reason: a walk that hits `maxReads` is 'truncated' and missing its NEWEST
+ *  history, never its genesis. One that hits PAGED_SIG_PAGES is 'truncated'
+ *  too, and there the oldest signature was never listed, so the genesis is
+ *  unread as well. `first` is the page already fetched; `spent` the credits
+ *  already paid for this walk. */
+async function walkPaged(
+  network: Network,
+  programId: string,
+  programData: string,
+  walk: Walk["walk"],
+  first: SigInfo[],
+  from: WalkFrom | undefined,
+  maxReads: number,
+  call: RpcCall,
+  spent: number,
+): Promise<Walk> {
+  let credits = spent;
+  const sigs = [...first];
+  let truncated = false;
+  try {
+    for (let page = first, pages = 1; page.length === SIG_PAGE; pages++) {
+      if (pages === PAGED_SIG_PAGES) {
+        truncated = true;
+        break;
+      }
+      page = await sigPage(call, programData, { before: sigs[sigs.length - 1]!.signature, until: from?.signature });
+      credits++;
+      sigs.push(...page);
+    }
+  } catch (err) {
+    // same rule as a bulk walk that dies halfway: keep nothing
+    return { walk: { ...walk, status: "error", error: String(err).slice(0, 500) }, rows: [], credits };
+  }
+
+  const queue = sigs.reverse();
+  if (queue.length > maxReads) {
+    truncated = true;
+    queue.length = maxReads;
+  }
+  walk.signatures = queue.length;
+  walk.oldestSlot = queue[0]!.slot;
+  walk.newestSlot = queue[queue.length - 1]!.slot;
+  walk.newestSignature = queue[queue.length - 1]!.signature;
+
+  const rows: LoaderRow[] = [];
+  credits += await readEach(call, network, programId, programData, walk, queue, rows);
+  walk.loaderRows = rows.length;
+  walk.status = truncated ? "truncated" : walk.unread! > 0 ? "partial" : "complete";
   return { walk, rows, credits };
 }
 

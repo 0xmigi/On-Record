@@ -786,7 +786,9 @@ export function registerPublicRoutes(app: FastifyInstance): void {
   //   ?sample=0     omit the traffic section entirely
   //   ?sample=live  re-measure now and write through. Metered, seconds per
   //                 program — for when a claim is about to be published and
-  //                 "as of 9 hours ago" is not good enough.
+  //                 "as of 9 hours ago" is not good enough. Bounded like the
+  //                 usage filler: stale-only, one-flight and an hourly ceiling
+  //                 (traffic-live.ts), because this is an unauthenticated GET.
   app.get<{ Params: { id: string }; Querystring: { sample?: string } }>(
     "/api/programs/:id/dossier.md",
     async (req, reply) => {
