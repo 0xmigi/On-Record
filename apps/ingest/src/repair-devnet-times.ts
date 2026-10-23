@@ -46,10 +46,20 @@ async function repairDevnetTimes(apply: boolean): Promise<void> {
     return;
   }
 
+  // Anchor only the STEP-wide buckets that hold events, at both edges. The
+  // record reaches back to slot ~96M through a few seeded landmarks, and
+  // sampling that whole span cost ~8k anchors for buckets with nothing in them.
   const current = await getSlot("devnet");
-  const slots: number[] = [];
-  for (let s = Math.floor(lo / STEP) * STEP; s < hi; s += STEP) slots.push(s);
-  slots.push(Math.min(hi + STEP, current - 100)); // close the range above the newest event
+  const buckets = await db.execute<{ b: string }>(sql`
+    select distinct slot / ${STEP} as b from events
+    where network = 'devnet' and (signature like 'poll:%' or signature like 'backfill:%')
+  `);
+  const edges = new Set<number>();
+  for (const { b } of buckets) {
+    edges.add(Number(b) * STEP);
+    edges.add(Math.min((Number(b) + 1) * STEP, current - 100));
+  }
+  const slots = [...edges].sort((a, b) => a - b);
 
   const anchors: [number, number][] = [];
   for (let i = 0; i < slots.length; i += 8) {
@@ -74,6 +84,9 @@ async function repairDevnetTimes(apply: boolean): Promise<void> {
       cross join lateral (select s, t from a where a.s <= e.slot order by s desc limit 1) lo
       cross join lateral (select s, t from a where a.s > e.slot order by s asc limit 1) hi
       where e.network = 'devnet' and (e.signature like 'poll:%' or e.signature like 'backfill:%')
+        -- a wide gap (anchors the node couldn't date) would interpolate badly,
+        -- and could overwrite a real time with a worse one: leave those rows
+        and hi.s - lo.s <= ${2 * STEP + 40}
     )
     select * from interp
     where old_t is null or abs(extract(epoch from new_t - old_t)) > ${TOLERANCE_SECS}
