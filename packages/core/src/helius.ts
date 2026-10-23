@@ -243,6 +243,20 @@ export async function getBlockTime(network: Network, slot: number): Promise<numb
   }
 }
 
+/** Rough slots per second, for estimates only. Devnet runs ~1.6× faster than
+ *  mainnet (4.1/s measured 2026-10-23); dating devnet at the mainnet rate put
+ *  every devnet deploy ~1.6× further in the past than it happened. */
+export const SLOTS_PER_SECOND: Record<Network, number> = { mainnet: 2.5, devnet: 4.1 };
+
+/** When a slot was produced: the chain's own block time, or — when the node
+ *  can't say (pruned, or the call failed) — an estimate from the slot gap to
+ *  `currentSlot`. */
+export async function slotDate(network: Network, slot: number, currentSlot: number): Promise<Date> {
+  const t = await getBlockTime(network, slot);
+  if (t != null) return new Date(t * 1000);
+  return new Date(Date.now() - (currentSlot - slot) * (1000 / SLOTS_PER_SECOND[network]));
+}
+
 export interface ProgramAccountRef {
   programId: string;
   programDataAddress: string;

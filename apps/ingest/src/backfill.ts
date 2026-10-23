@@ -5,6 +5,8 @@ import {
   newId,
   logger,
   getSlot,
+  slotDate,
+  SLOTS_PER_SECOND,
   enumerateProgramAccounts,
   enumerateProgramData,
   type EventEnrichment,
@@ -22,8 +24,6 @@ import { fingerprintStage, identifyStage, classifyStage, scoreStage } from "./pi
 //
 // Populates the Radar on first run without waiting for live webhook traffic.
 // ---------------------------------------------------------------------------
-
-const SLOTS_PER_SECOND = 2.5; // ~400ms/slot
 
 interface Options {
   network: Network;
@@ -50,7 +50,7 @@ export async function runBackfill(opts: Options): Promise<{ scanned: number; ing
   await assertTlshAvailable();
 
   const currentSlot = await getSlot(network);
-  const cutoffSlot = currentSlot - Math.floor(windowHours * 3600 * SLOTS_PER_SECOND);
+  const cutoffSlot = currentSlot - Math.floor(windowHours * 3600 * SLOTS_PER_SECOND[network]);
   logger.info({ network, currentSlot, cutoffSlot, windowHours }, "backfill: enumerating loader state");
 
   // two enumerations of loader-owned accounts, joined on the ProgramData address
@@ -74,8 +74,7 @@ export async function runBackfill(opts: Options): Promise<{ scanned: number; ing
   let ingested = 0;
   for (const h of recent) {
     const programId = pdToProgram.get(h.programDataAddress)!;
-    // block time is approximate from slot delta; good enough for windowing
-    const blockTime = new Date(Date.now() - (currentSlot - h.deployedSlot) * (1000 / SLOTS_PER_SECOND));
+    const blockTime = await slotDate(network, h.deployedSlot, currentSlot);
     try {
       const eventId = await recordDeploy(network, programId, h, blockTime);
       if (!eventId) continue; // already ingested

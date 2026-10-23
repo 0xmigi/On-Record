@@ -6,6 +6,8 @@ import {
   newId,
   logger,
   getSlot,
+  slotDate,
+  SLOTS_PER_SECOND,
   enumerateProgramAccounts,
   enumerateProgramData,
   type ChainEventType,
@@ -30,7 +32,6 @@ import { fingerprintStage, identifyStage, classifyStage, scoreStage } from "./pi
 // 'extend' once the loader record shows nothing else landed at that slot.
 // ---------------------------------------------------------------------------
 
-const SLOTS_PER_SECOND = 2.5; // ~400ms/slot; block time is approximate from slot delta
 
 export interface PollOptions {
   network: Network;
@@ -95,7 +96,7 @@ export async function pollDeploys(opts: PollOptions): Promise<PollResult> {
         ),
       );
     const lastSlot = Number(hw[0]?.maxSlot ?? 0);
-    const bootstrapSlot = currentSlot - Math.floor(bootstrapHours * 3600 * SLOTS_PER_SECOND);
+    const bootstrapSlot = currentSlot - Math.floor(bootstrapHours * 3600 * SLOTS_PER_SECOND[network]);
     // Trust the recorded high-water mark whenever one exists — clamping it to
     // the bootstrap window silently skips everything deployed while the
     // process was down (that exact gap happened on 2026-07-24: the first tick
@@ -168,9 +169,7 @@ export async function pollDeploys(opts: PollOptions): Promise<PollResult> {
       continue;
     }
     const type: ChainEventType = known.has(programId) ? "upgrade" : "deploy";
-    const blockTime = new Date(
-      Date.now() - (currentSlot - h.deployedSlot) * (1000 / SLOTS_PER_SECOND),
-    );
+    const blockTime = await slotDate(network, h.deployedSlot, currentSlot);
     try {
       const rec = await recordEvent(network, type, programId, h, blockTime);
       if (TERMINAL_STAGES.has(rec.stage)) {
