@@ -107,6 +107,12 @@ export function startCron(): void {
  *  The poller has had this guard since it was written (poller.ts); the cron
  *  jobs never got it. Skipping a tick is always safe here — every job picks its
  *  own work from the database when it next runs. */
+/** First passes are spread out, one job every 30s from 15s after boot. They
+ *  used to all fire at 15s, on top of the pollers' own boot ticks, and that
+ *  burst is what took the heap past its cap in the 2026-10-22 crash loop. */
+let bootSlot = 0;
+const BOOT_STAGGER_MS = 30_000;
+
 function every(ms: number, name: string, fn: () => Promise<unknown>): void {
   let running = false;
   const run = async () => {
@@ -123,7 +129,7 @@ function every(ms: number, name: string, fn: () => Promise<unknown>): void {
       running = false;
     }
   };
-  setTimeout(run, 15_000); // first pass shortly after boot
+  setTimeout(run, 15_000 + bootSlot++ * BOOT_STAGGER_MS);
   setInterval(run, ms);
 }
 

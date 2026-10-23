@@ -333,7 +333,9 @@ async function recordEvent(
 
 /** Start the poll loop. Runs the pipeline inline (no Redis) so the whole live
  *  path fits in one process. First tick fires shortly after boot. */
-export function startPolling(opts: PollOptions & { intervalMs: number }): void {
+export function startPolling(
+  opts: PollOptions & { intervalMs: number; firstRunDelayMs?: number },
+): void {
   process.env.INLINE_PIPELINE = "1";
   let running = false; // a stalled tick must not stack a concurrent enumeration
   const run = async () => {
@@ -350,7 +352,7 @@ export function startPolling(opts: PollOptions & { intervalMs: number }): void {
       running = false;
     }
   };
-  setTimeout(run, 5_000);
+  setTimeout(run, opts.firstRunDelayMs ?? 5_000);
   setInterval(run, opts.intervalMs);
   logger.info(
     { network: opts.network, intervalMs: opts.intervalMs },

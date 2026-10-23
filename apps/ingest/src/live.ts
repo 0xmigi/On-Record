@@ -47,10 +47,17 @@ if (process.env.LIVE_POLL_ENABLED !== "0") {
 // Devnet lineage feed (ROADMAP §1) — opt-in via env. Hourly is plenty: a
 // devnet lineage only has to be on record before its mainnet debut, and the
 // census measured ~300 programs touched/day (≈60–90K credits/mo all-in).
+//
+// Its first tick waits until the boot burst is over. On 2026-10-22 every
+// restart ran the mainnet catch-up, the devnet tick and all the cron jobs'
+// first passes inside the same 40 seconds, the heap hit its 256MB cap, and the
+// container crash-looped until devnet was switched off. Nothing about devnet
+// needs to happen in the first minutes after a deploy.
 if (process.env.DEVNET_POLL_ENABLED === "1") {
   startPolling({
     network: "devnet",
     intervalMs: Number(process.env.DEVNET_POLL_INTERVAL_MS ?? 3_600_000),
+    firstRunDelayMs: Number(process.env.DEVNET_POLL_FIRST_DELAY_MS ?? 10 * 60_000),
     bootstrapHours: Number(process.env.DEVNET_POLL_BOOTSTRAP_HOURS ?? 2),
     max: Number(process.env.DEVNET_POLL_MAX ?? 400),
   });
