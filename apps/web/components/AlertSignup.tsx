@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
+import { track } from "@vercel/analytics";
 import { ProgramAvatar } from "@/components/ProgramAvatar";
 import { relativeTime } from "@/lib/format";
 
@@ -135,6 +136,7 @@ export function AlertSignup() {
       });
       const d = (await res.json()) as { error?: string; who?: string | null; already?: boolean };
       if (!res.ok || d.error) throw new Error(d.error ?? "sign-up failed");
+      track("alert_signup", { channel: String(body.channel ?? "webhook"), repeat: !!d.already });
       setDone(
         body.channel === "telegram"
           ? `${d.already ? "Already set" : "You're set"}${d.who ? `, ${d.who}` : ""}. Check Telegram for the first message.`

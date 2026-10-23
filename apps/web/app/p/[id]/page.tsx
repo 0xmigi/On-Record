@@ -197,6 +197,9 @@ function IconLink({ href, label, children }: { href: string; label: string; chil
   );
 }
 
+// verified gets screenshotted as a trust signal for tokens; say what it isn't
+const NOT_ENDORSED = "It's not an audit or an endorsement.";
+
 const ICON = {
   viewBox: "0 0 16 16",
   width: 15,
@@ -383,9 +386,9 @@ export default async function ProgramDossierPage({
     {
       k: "verified",
       tip: otterMatched
-        ? "OtterSec rebuilt the published source and got exactly the deployed bytes."
+        ? `OtterSec rebuilt the published source and got exactly the deployed bytes. ${NOT_ENDORSED}`
         : rebuild
-          ? `On Record rebuilt ${rebuild.repo.replace("https://github.com/", "")} @ ${rebuild.commit.slice(0, 7)} with Solana ${rebuild.solana} and got exactly the deployed bytes.${vcur && OTTER_SHORT[vcur.status] ? ` OtterSec: ${OTTER_SHORT[vcur.status]}` : ""}`
+          ? `On Record rebuilt ${rebuild.repo.replace("https://github.com/", "")} @ ${rebuild.commit.slice(0, 7)} with Solana ${rebuild.solana} and got exactly the deployed bytes.${vcur && OTTER_SHORT[vcur.status] ? ` OtterSec: ${OTTER_SHORT[vcur.status]}` : ""} ${NOT_ENDORSED}`
           : !onMainnet
             ? "OtterSec's verifier only covers mainnet."
             : (vcur?.diagnosis ?? "No verified build on record."),
@@ -999,7 +1002,7 @@ export default async function ProgramDossierPage({
                   href={`/p/${id}/rebuild`}
                   prefetch={false}
                   className="verified-badge-link tip"
-                  data-tip="Verified by On Record: rebuilt from public source and matched the deployed bytes exactly. Click to see the comparison."
+                  data-tip={`Verified by On Record: rebuilt from public source and matched the deployed bytes exactly. ${NOT_ENDORSED} Click to see the comparison.`}
                 >
                   <VerifiedBadge size={19} issuer="onrecord" title={null} />
                 </Link>

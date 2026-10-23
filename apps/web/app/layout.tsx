@@ -3,6 +3,7 @@ import { Suspense } from "react";
 import { IBM_Plex_Mono, IBM_Plex_Sans } from "next/font/google";
 import Link from "next/link";
 import { Analytics } from "@vercel/analytics/next";
+import { ArrivalTracker } from "@/components/ArrivalTracker";
 import { ClusterBanner } from "@/components/ClusterBanner";
 import { Footer } from "@/components/Footer";
 import { Mark } from "@/components/Mark";
@@ -81,6 +82,7 @@ export default function RootLayout({
         <Footer />
 
         <Analytics />
+        <ArrivalTracker />
       </body>
     </html>
   );
