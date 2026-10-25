@@ -357,6 +357,8 @@ export interface ApiFunnel {
   lineage?: { novel: number; variant: number; fork: number };
   control?: { mutable: number; frozen: number; verified: number };
   conviction?: { knownEntity: number; funderTraced: number; untraced: number };
+  /** machine that compiled each program, read from paths in its bytes; unread = no reading stored */
+  buildMachine?: { mac: number; linux: number; unknown: number; unread: number };
   churn?: { redeploys: number; pumpfun: number; closed: number };
   // time series over the window — the stream, bucketed
   series?: {

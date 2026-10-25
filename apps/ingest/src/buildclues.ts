@@ -49,6 +49,17 @@ const REGISTRY_CRATE =
 // the crates that say which Solana and which framework — shown first, in this order
 const KEY_CRATES = ["solana-program", "anchor-lang", "pinocchio", "solana-sdk", "steel", "bolt-lang"];
 
+/** The machine that built the program, as one value: the platform-tools download
+ *  when its paths survived, else the cargo registry's home folder. "unknown"
+ *  is a reading ("nothing in the binary"), not a missing one. Stored on the
+ *  subject as facts.buildMachine so the stats page can count it. */
+export type BuildMachine = "mac" | "linux" | "unknown";
+
+export function buildMachineOf(strings: string[]): BuildMachine {
+  const c = readBuildClues(strings);
+  return c.download ?? c.home ?? "unknown";
+}
+
 export function readBuildClues(strings: string[]): BuildClues {
   const hay = strings.join("\n");
   const mac = hay.match(MAC_DL);

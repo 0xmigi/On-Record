@@ -52,6 +52,7 @@ import { linkIncubation } from "./incubation.js";
 import { recordCounterpart } from "./counterpart.js";
 import { isSyntheticSignature, recordGenesisDeploy } from "./timeline.js";
 import { extendOnlyAt, loaderRecord } from "./loader-history.js";
+import { buildMachineOf } from "./buildclues.js";
 
 /** Bulk calls the live path may spend on one program's first walk: 5,000
  *  transactions, 500 credits. A ProgramData that busy is read oldest first and
@@ -499,6 +500,9 @@ async function upsertSubject(
       ...(bi?.securityTxt ? { securityTxt: bi.securityTxt } : {}),
       ...(dep ? { upgradeCount: dep.upgradeCount, upgradeCountTruncated: dep.upgradeCountTruncated ?? false } : {}),
       ...(fp?.programDataBytes ? { deployCostLamports: deployRentLamports(fp.programDataBytes) } : {}),
+      // the machine that compiled this version, from paths left in the bytes
+      // (buildclues.ts); counted on the stats page
+      ...(fp?.strings ? { buildMachine: buildMachineOf(fp.strings) } : {}),
       ...(md?.idlSource ? { idlSource: md.idlSource } : {}),
       ...(pmpLogo ? { logoUrl: pmpLogo } : {}),
       ...(md?.security ? { pmpSecurity: md.security } : {}),

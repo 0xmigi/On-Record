@@ -682,6 +682,8 @@ export interface ApiFunnel {
   lineage?: { novel: number; variant: number; fork: number };
   control?: { mutable: number; frozen: number; verified: number };
   conviction?: { knownEntity: number; funderTraced: number; untraced: number };
+  /** machine that compiled each program, read from paths in its bytes; unread = no reading stored */
+  buildMachine?: { mac: number; linux: number; unknown: number; unread: number };
   /** throwaway bots — new deploys that are byte-clones of known code (same
    *  program, fresh id: the sniper signature). `pumpfun` = the Pump.fun subset;
    *  `closed` = deploys already closed (rent reclaimed) in the window. */

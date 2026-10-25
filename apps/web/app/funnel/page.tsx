@@ -260,6 +260,25 @@ export default async function FunnelPage({
           </section>
         ) : null}
 
+        {funnel.buildMachine ? (
+          <section className="stat-card">
+            <SectionHeader
+              title="Build machine"
+              info="Machine that compiled each program, read from paths the compiler left in its bytes. A Mac build can't byte-match a Linux or Docker rebuild."
+            />
+            <Breakdown
+              rows={[
+                ["Mac", funnel.buildMachine.mac, "Built with the macOS platform-tools download, or on a Mac home folder."],
+                ["Linux", funnel.buildMachine.linux, "Built with the Linux download. Includes Docker builds."],
+                ["no clue", funnel.buildMachine.unknown, "No machine paths left in the binary: stripped or remapped at build time."],
+                ...(funnel.buildMachine.unread > 0
+                  ? ([["not read", funnel.buildMachine.unread, "No stored bytecode to read yet."]] as BreakdownRow[])
+                  : []),
+              ]}
+            />
+          </section>
+        ) : null}
+
         {funnel.conviction ? (
           <section className="stat-card">
             <SectionHeader title="Funding" info="Where the deployer's SOL was traced to." />

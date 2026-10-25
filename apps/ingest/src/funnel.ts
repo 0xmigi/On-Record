@@ -163,6 +163,10 @@ export async function computeWindowFunnel(
   const lineage = { novel: 0, variant: 0, fork: 0 };
   const control = { mutable: 0, frozen: 0, verified: 0 };
   const conviction = { knownEntity: 0, funderTraced: 0, untraced: 0 };
+  // which machine compiled it (facts.buildMachine, from paths left in the bytes).
+  // `unread` = no reading stored yet, kept apart from `unknown` = the binary
+  // carries no machine paths.
+  const buildMachine = { mac: 0, linux: 0, unknown: 0, unread: 0 };
   // churn / throwaway bots — a new deploy whose bytecode is a byte-clone of one
   // already on record (band=clone) is the same program redeployed under a fresh
   // id: the sniper-bot signature. `pumpfun` is the subset wired to Pump.fun;
@@ -211,6 +215,10 @@ export async function computeWindowFunnel(
     if (s.authorityClass === "none") control.frozen++;
     else if (s.authorityClass) control.mutable++;
     if (s.verified) control.verified++;
+
+    const bm = s.facts?.buildMachine;
+    if (bm === "mac" || bm === "linux" || bm === "unknown") buildMachine[bm]++;
+    else buildMachine.unread++;
 
     if (s.entityKey) conviction.knownEntity++;
     else if (s.deployerFundingSource) conviction.funderTraced++;
@@ -308,6 +316,7 @@ export async function computeWindowFunnel(
     byFramework,
     byIntegration,
     byCapability,
+    buildMachine,
     volume,
     volumeByNetwork,
     recordStartsAt,
