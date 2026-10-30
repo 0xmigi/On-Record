@@ -25,12 +25,23 @@ const ANSWER_ENGINES = [
   "PerplexityBot",
   "Perplexity-User",
 ];
+// Link-preview bots fetch a page only when someone shares its link, and they
+// honour robots.txt: blocking /p/ for them means no card on X, Slack etc. Same
+// list as the "Link preview bots pass" rule in the Vercel firewall.
+const LINK_PREVIEWS = [
+  "Twitterbot",
+  "facebookexternalhit",
+  "Slackbot",
+  "Discordbot",
+  "TelegramBot",
+  "LinkedInBot",
+];
 
 export default function robots(): MetadataRoute.Robots {
   const closed = ["/api/", "/admin/", "/saved", "/search"];
   return {
     rules: [
-      { userAgent: [...SEARCH, ...ANSWER_ENGINES], allow: "/", disallow: closed },
+      { userAgent: [...SEARCH, ...ANSWER_ENGINES, ...LINK_PREVIEWS], allow: "/", disallow: closed },
       { userAgent: "*", disallow: ["/p/", ...closed] },
     ],
     sitemap: "https://on-record.azuolas.xyz/sitemap.xml",
