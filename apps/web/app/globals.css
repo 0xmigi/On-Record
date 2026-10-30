@@ -6260,15 +6260,95 @@ a.copy-addr-text:hover {
   background: var(--bg);
   border: 1px solid var(--border-strong);
 }
+/* alerts under the guide: the question on the left, the ways to connect on
+   the right; the webhook form takes the full width when it opens */
 .alerts-block {
-  margin-top: 18px;
-  padding-top: 14px;
-  border-top: 1px solid var(--border);
-}
-.page .alerts-block .related-title {
   display: flex;
-  align-items: center;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px 16px;
+  margin-top: 24px;
+}
+.alerts-ask {
+  flex: 1 1 240px;
+  min-width: 0;
+}
+.alerts-q {
+  margin: 0 0 4px;
+  font-size: 14px;
+  font-weight: 600;
+}
+.alerts-q-end {
+  white-space: nowrap;
+}
+.alerts-q .info-dot {
+  margin-left: 6px;
+  vertical-align: 1px;
+}
+.page .alerts-block .watch-list-head {
+  margin: 0;
+}
+/* one icon per channel; the picked webhook stays pressed */
+.alerts-connect {
+  display: flex;
   gap: 6px;
+}
+.alerts-icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 7px 10px;
+}
+.alerts-icon-btn[aria-pressed="true"] {
+  border-color: var(--ink-faint);
+}
+.alerts-block .alerts-webhook {
+  flex-basis: 100%;
+  margin-top: 0;
+}
+.alerts-block .alert-signup-done,
+.alerts-block .alert-signup-error {
+  flex-basis: 100%;
+  margin: 0;
+}
+
+/* from the input down to the result: a line, and what the address is */
+.page .lookup-link {
+  margin: 0 0 0 18px;
+  padding: 12px 0 12px 12px;
+  border-left: 1px solid var(--border-strong);
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  color: var(--ink-faint);
+}
+.lookup-link + .vguide,
+.lookup-link + .lookup-card {
+  margin-top: 0;
+}
+/* a program's name in the list opens its own check */
+.watch-list-open {
+  padding: 0;
+  font: inherit;
+  color: inherit;
+  background: none;
+  border: 0;
+  cursor: pointer;
+  text-align: left;
+}
+/* an authority's programs, in a card like a program's */
+.lookup-card {
+  padding: 2px 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+/* the card is the frame: rules between rows only */
+.page .watch-list.lookup-card > ul {
+  margin: 0;
+  border-top: 0;
+}
+.page .watch-list.lookup-card > ul > li:last-child {
+  border-bottom: 0;
 }
 
 /* --- verification guide (VerifyGuide) -------------------------------------- */
@@ -6316,15 +6396,17 @@ a.copy-addr-text:hover {
 .vguide-seg-done {
   background: var(--green);
 }
+/* rules between the steps only; space does the rest */
 .page .vguide-steps {
   list-style: none;
   margin: 0;
   padding: 0;
-  border-top: 1px solid var(--border);
 }
 .page .vguide-step {
   margin: 0;
-  border-bottom: 1px solid var(--border);
+}
+.page .vguide-step + .vguide-step {
+  border-top: 1px solid var(--border);
 }
 /* number · the step, with its gate line under it */
 .vguide-step summary {
@@ -6390,8 +6472,9 @@ a.copy-addr-text:hover {
   border-bottom: 1px dotted var(--border-strong);
   transform: translateY(-3px);
 }
-/* this program's value, read from the chain: the only coloured text in the
-   row; the one part that gives way when a line runs long */
+/* this program's value, read from the chain: in ink, set apart by the mono
+   face and its place after the leader (red is kept for problems); the one
+   part that gives way when a line runs long */
 .vguide-value {
   flex: 0 1 auto;
   min-width: 0;
@@ -6402,7 +6485,7 @@ a.copy-addr-text:hover {
   font-family: var(--font-mono);
   font-size: 12px;
   font-weight: 400;
-  color: var(--accent);
+  color: var(--ink);
 }
 /* a repo it found: same text, a link on hover */
 a.vguide-value {
