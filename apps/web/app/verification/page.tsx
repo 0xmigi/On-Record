@@ -5,16 +5,16 @@ import { ArticleList } from "@/components/ArticleList";
 import { articlesFor } from "@/lib/writing";
 
 /**
- * Verification alerts: the tool. The writing behind it lives in /writing and
+ * Verification: check a program, then get alerts. The tool. The writing behind it lives in /writing and
  * shows up here as Related (anything tagged `topic: verification`).
  * Plan: research/verification-feed-plan.md.
  */
 export const dynamic = "force-static";
 
 export const metadata: Metadata = {
-  title: "Verification alerts for Solana programs",
+  title: "Check and keep your Solana program verified",
   description:
-    "Get notified when your Solana program's verification fails, with the reason and the fix.",
+    "See whether your Solana program's build is verified, why not, and the fix. Get alerted when an upgrade breaks it.",
   alternates: { canonical: "/verification" },
 };
 
@@ -22,9 +22,9 @@ export default function VerificationPage() {
   const related = articlesFor("verification");
   return (
     <div>
-      <h1 className="funnel-title">Verification alerts</h1>
+      <h1 className="funnel-title">Verification</h1>
       <p className="tool-lede">
-        Paste your deploy address. Get alerted when an upgrade breaks your verification.
+        Paste a program or its upgrade authority. See what&apos;s verified, why not, and the fix.
       </p>
       {/* the tool in the main column; reading and radar links beside it, so the
           program list can grow without moving anything */}

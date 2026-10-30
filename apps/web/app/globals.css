@@ -6251,6 +6251,261 @@ a.copy-addr-text:hover {
 .alert-signup > .alert-signup-btn {
   margin-top: 12px;
 }
+.alert-signup-form {
+  margin-top: 0;
+}
+/* alerts come after the check: the Check button keeps the accent */
+.alert-signup-btn-quiet {
+  color: var(--ink);
+  background: var(--bg);
+  border: 1px solid var(--border-strong);
+}
+.alerts-block {
+  margin-top: 18px;
+  padding-top: 14px;
+  border-top: 1px solid var(--border);
+}
+.page .alerts-block .related-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* --- verification guide (VerifyGuide) -------------------------------------- */
+.vguide {
+  margin-top: 14px;
+}
+/* the feed card, inside the sign-up box */
+.vguide-card {
+  margin: 0 0 16px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
+}
+.vguide-card .radar-row {
+  border-bottom: 0;
+}
+.page .vguide-off {
+  margin: 0;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--ink-faint);
+}
+.vguide-progress {
+  margin-bottom: 10px;
+}
+.page .vguide-count {
+  margin: 0 0 8px;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--ink);
+}
+.page .vguide-count-done {
+  color: var(--green);
+}
+.vguide-bar {
+  display: flex;
+  gap: 4px;
+}
+.vguide-seg {
+  flex: 1;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--border);
+}
+.vguide-seg-done {
+  background: var(--green);
+}
+.page .vguide-steps {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  border-top: 1px solid var(--border);
+}
+.page .vguide-step {
+  margin: 0;
+  border-bottom: 1px solid var(--border);
+}
+/* number · the step, with its gate line under it */
+.vguide-step summary {
+  display: grid;
+  grid-template-columns: 1ch minmax(0, 1fr);
+  align-items: center;
+  gap: 4px 8px;
+  padding: 12px 0;
+  cursor: pointer;
+  list-style: none;
+}
+.vguide-step summary::-webkit-details-marker {
+  display: none;
+}
+.vguide-num {
+  align-self: start;
+  font-family: var(--font-mono);
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.5;
+  color: var(--ink-soft);
+}
+.vguide-text {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+.vguide-title {
+  font-size: 14px;
+  font-weight: 600;
+}
+/* this program's own state for the step, in one right-aligned column so the
+   values line up down the list: a tiny icon and key, the value under it. The
+   value is read from the chain and is the only coloured text in the row. */
+/* under the title: key · dotted leader · value, on one line like a receipt */
+.vguide-row {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  min-width: 0;
+}
+.vguide-key {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: 4px;
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  color: var(--ink-faint);
+}
+.vguide-glyph {
+  flex: none;
+  align-self: center;
+}
+.vguide-leader {
+  /* gives way before the value does */
+  flex: 1 1 0;
+  min-width: 16px;
+  border-bottom: 1px dotted var(--border-strong);
+  transform: translateY(-3px);
+}
+/* this program's value, read from the chain: the only coloured text in the
+   row; the one part that gives way when a line runs long */
+.vguide-value {
+  flex: 0 1 auto;
+  min-width: 0;
+  text-align: right;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-weight: 400;
+  color: var(--accent);
+}
+/* a repo it found: same text, a link on hover */
+a.vguide-value {
+  text-decoration: none;
+}
+a.vguide-value:hover {
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+/* the title line: the step on the left; on the right a green check once it
+   passes, else what it needs in small gray */
+.vguide-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  min-width: 0;
+}
+.vguide-pass {
+  flex: none;
+  font-family: var(--font-mono);
+  font-size: 13px;
+  color: var(--green);
+}
+.vguide-need {
+  flex: none;
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  white-space: nowrap;
+  color: var(--ink-faint);
+}
+/* the opened step: what to do, its commands, and what earns the check */
+.vguide-body {
+  margin: 0 0 14px 16px;
+  padding: 2px 0 2px 14px;
+  border-left: 2px solid var(--border);
+}
+.page .vguide-label {
+  margin: 0 0 6px;
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+}
+.page .vguide-how {
+  margin: 0 0 4px;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--ink);
+}
+.page .vguide-when {
+  margin: 12px 0 0;
+  font-size: 12.5px;
+  color: var(--ink-soft);
+}
+.vguide-when-check {
+  margin-right: 2px;
+  color: var(--green);
+}
+/* one command per line, cut to fit; copy takes the whole thing */
+.vcmd {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 6px 0 0;
+  padding: 6px 6px 6px 10px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+.vcmd code {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+}
+.vcmd-copy {
+  flex: none;
+  padding: 3px 8px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--ink-soft);
+  background: var(--card);
+  border: 1px solid var(--border-strong);
+  border-radius: 5px;
+  cursor: pointer;
+}
+.vcmd-copy:hover {
+  color: var(--ink);
+}
+@media (max-width: 520px) {
+  .vguide-body {
+    margin-left: 0;
+  }
+  /* phones: no room for what it needs; the check stays */
+  .vguide-need {
+    display: none;
+  }
+}
 
 /* --- tool pages and article lists (/verification, /writing) ------------------ */
 .page .tool-lede {
@@ -6304,7 +6559,8 @@ a.copy-addr-text:hover {
 }
 @media (max-width: 860px) {
   .tool-layout {
-    grid-template-columns: 1fr;
+    /* minmax: a long command in the guide scrolls inside its box instead of widening the page */
+    grid-template-columns: minmax(0, 1fr);
     gap: 28px;
   }
   .tool-aside {
@@ -6360,13 +6616,13 @@ a.copy-addr-text:hover {
   font-size: 11.5px;
   color: var(--ink-faint);
 }
-.page .watch-list ul {
+.page .watch-list > ul {
   list-style: none;
   margin: 0 0 4px;
   padding: 0;
   border-top: 1px solid var(--border);
 }
-.page .watch-list li {
+.page .watch-list > ul > li {
   display: grid;
   grid-template-columns: 18px minmax(0, 1fr) auto auto;
   align-items: center;
@@ -6387,6 +6643,24 @@ a.copy-addr-text:hover {
 .page .watch-list-name:hover {
   text-decoration: underline;
 }
+.page .watch-list-toggle {
+  display: inline-flex;
+  gap: 5px;
+  padding: 0;
+  background: none;
+  border: 0;
+  cursor: pointer;
+}
+.watch-list-caret {
+  color: var(--ink-faint);
+}
+/* the row's why-and-fix, under the whole row */
+.page .watch-list-detail {
+  grid-column: 1 / -1;
+}
+.page .watch-list-detail .vguide {
+  margin: 2px 0 8px;
+}
 .watch-list-when {
   min-width: 92px;
   text-align: right;
@@ -6395,7 +6669,7 @@ a.copy-addr-text:hover {
   color: var(--ink-faint);
 }
 @media (max-width: 520px) {
-  .page .watch-list li {
+  .page .watch-list > ul > li {
     grid-template-columns: 18px minmax(0, 1fr) auto;
   }
   .watch-list-when {

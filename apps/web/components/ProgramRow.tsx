@@ -56,6 +56,15 @@ function Fact({ label, value }: { label: string; value: string }) {
   );
 }
 
+/** The facts /verification shows in place of the feed's specs and activity
+ *  rail: what a verified build depends on. */
+export interface VerifyFacts {
+  builtOn: string | null;
+  auth: string;
+  source: string | null;
+  recipe: string | null;
+}
+
 /**
  * One radar row. Leads with the program address (mono, copyable, links to the
  * dossier), then slot/time, then the raw facts, then a novelty gauge. Cluster
@@ -70,10 +79,12 @@ export function ProgramRow({
   program,
   showNetwork = false,
   leadWith = "deploy",
+  verify,
 }: {
   program: ApiProgram;
   showNetwork?: boolean;
   leadWith?: "deploy" | "upgrade";
+  verify?: VerifyFacts;
 }) {
   const inCluster = (program.clusterSize ?? 0) > 1;
   const kind = botKind(program); // 'sniper' | 'throwaway' | 'duplicate' | null
@@ -200,12 +211,12 @@ export function ProgramRow({
               security.txt
             </span>
           ) : null}
-          {isFork && namedMatch?.name ? (
+          {!verify && isFork && namedMatch?.name ? (
             <span className="fork-chip" title={`${Math.round(namedMatch.similarity * 100)}% code match to ${namedMatch.name}`}>
               fork of {namedMatch.name}
             </span>
           ) : null}
-          {kind === "recycled" ? (
+          {verify ? null : kind === "recycled" ? (
             <span className="dup-chip" title="Byte-identical bytecode to other deploys on record — same code, fresh id">
               recycled
             </span>
@@ -221,7 +232,7 @@ export function ProgramRow({
               {BOT_LABEL[kind]}
             </span>
           ) : null}
-          {inCluster ? (
+          {!verify && inCluster ? (
             <span className="cluster-note" title="Byte/structurally similar programs on record — its copy-paste cluster (all-time, not today)">
               ×{program.clusterSize} in cluster
             </span>
@@ -231,7 +242,7 @@ export function ProgramRow({
               closed
             </span>
           ) : null}
-          {program.incubation ? (
+          {!verify && program.incubation ? (
             <span
               className="radar-devnet"
               title={`Seen on devnet ${program.incubation.incubationDays >= 1 ? `${program.incubation.incubationDays} days` : "under a day"} before this mainnet deploy — less likely a throwaway`}
@@ -241,8 +252,19 @@ export function ProgramRow({
           ) : null}
         </div>
 
-        {/* specs row, most-common first: size (always) · cost · built with ·
-            talks to · resembles · auth */}
+        {verify ? (
+          <div className="radar-facts radar-indent">
+            {builtWith(program.framework, program.anchor) ? (
+              <Fact label="built with" value={program.framework === "anchor" && program.anchor?.line ? `anchor ${program.anchor.line}` : builtWith(program.framework, program.anchor)!} />
+            ) : null}
+            <Fact label="built on" value={verify.builtOn ?? "not in the bytes"} />
+            <Fact label="auth" value={verify.auth} />
+            <Fact label="source" value={verify.source ?? "none declared"} />
+            {verify.recipe ? <Fact label="recipe" value={verify.recipe} /> : null}
+          </div>
+        ) : (
+        /* specs row, most-common first: size (always) · cost · built with ·
+           talks to · resembles · auth */
         <div className="radar-facts radar-indent">
           <Fact label="size" value={formatBytes(program.sizeBytes)} />
           {/* devnet rent is faucet SOL — showing a "cost" there would be
@@ -275,8 +297,10 @@ export function ProgramRow({
             <Fact label="auth" value="immutable" />
           ) : null}
         </div>
+        )}
       </div>
 
+      {verify ? null : (
       <div className="radar-rail">
         <SignalHex signals={signals} size={56} />
         {txns24h != null && txns24h > 0 ? (
@@ -288,6 +312,7 @@ export function ProgramRow({
           <Sparkline points={program.activity} width={110} height={22} title="transactions per hour, last 48h" />
         ) : null}
       </div>
+      )}
     </article>
   );
 }
