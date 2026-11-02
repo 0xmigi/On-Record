@@ -40,6 +40,7 @@ const STREAM_FILTERS: { label: string; value: RadarType }[] = [
 
 const WINDOW_FILTERS: { label: string; value: RadarWindow }[] = [
   { label: "LAST 24H", value: "today" },
+  { label: "LAST 48H", value: "48h" },
   { label: "THIS WEEK", value: "week" },
   { label: "THIS MONTH", value: "month" },
   { label: "ALL", value: "all" },
@@ -47,6 +48,7 @@ const WINDOW_FILTERS: { label: string; value: RadarWindow }[] = [
 
 const WINDOW_WORD: Record<RadarWindow, string> = {
   today: "last 24h",
+  "48h": "last 48h",
   week: "this week",
   month: "this month",
   all: "all time",
@@ -56,6 +58,7 @@ const WINDOW_WORD: Record<RadarWindow, string> = {
 // the tier counts so the big number and the novel/variant/recycled split agree.
 const FUNNEL_WINDOW: Record<RadarWindow, string> = {
   today: "24h",
+  "48h": "48h",
   week: "7d",
   month: "30d",
   all: "all",
@@ -156,6 +159,7 @@ function RecycledRow({ rep, count, windowLabel }: { rep: ApiProgram; count: numb
 
 const WINDOW_LABEL: Record<RadarWindow, string> = {
   today: "today",
+  "48h": "in 48h",
   week: "this week",
   month: "this month",
   all: "all time",

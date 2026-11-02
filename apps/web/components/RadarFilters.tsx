@@ -2,7 +2,7 @@
 
 import { useEffect, useState, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
-import type { Category, Framework } from "@/lib/api";
+import type { Category } from "@/lib/api";
 import {
   AUTHORITY_FACETS,
   AUTHORITY_HINT,
@@ -16,6 +16,7 @@ import {
   SIZE_BAND_LABEL,
   buildRadarHref,
   type AuthorityFacet,
+  type FrameworkFacet,
   type RadarParams,
   type SizeBand,
 } from "@/lib/radar-url";
@@ -150,6 +151,15 @@ const ic = {
 // tone per option on the two "meaning" axes (safe → risky, lean → heavy)
 const AUTHORITY_TONE: Record<AuthorityFacet, Tone> = { frozen: "good", multisig: "neutral", hot: "warn" };
 const SIZE_TONE: Record<SizeBand, Tone> = { lean: "good", moderate: "neutral", heavy: "warn" };
+
+const FRAMEWORK_HINT: Record<FrameworkFacet, string> = {
+  anchor: "Anchor, any line — the one framework reliably fingerprinted on-chain",
+  "anchor-v1": "Anchor before v2: 0.x or 1.x — the binary can't separate those two",
+  "anchor-v2": "Anchor 2, the rewrite on Pinocchio — recognised by its account-validation logs",
+  pinocchio: "Pinocchio — inferred from binary shape",
+  quasar: "Quasar — named from the program's source; its binary reads as Pinocchio",
+  native: "Native — inferred from binary shape",
+};
 
 export function RadarFilters({ params }: { params: RadarParams }) {
   const router = useRouter();
@@ -322,16 +332,12 @@ export function RadarFilters({ params }: { params: RadarParams }) {
               </Group>
 
               <Group icon={ic.framework} label="framework">
-                {FILTER_FRAMEWORKS.map((fw: Framework) => (
+                {FILTER_FRAMEWORKS.map((fw: FrameworkFacet) => (
                   <Chip
                     key={fw}
                     active={draft.framework === fw}
                     label={FRAMEWORK_LABEL[fw]}
-                    title={
-                      fw === "anchor"
-                        ? "Anchor — the one framework reliably fingerprinted on-chain"
-                        : `${FRAMEWORK_LABEL[fw]} — inferred from binary shape`
-                    }
+                    title={FRAMEWORK_HINT[fw]}
                     onClick={() => pick("framework", fw)}
                   />
                 ))}

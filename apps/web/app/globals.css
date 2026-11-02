@@ -3403,6 +3403,27 @@ a.copy-addr-text:hover {
 .trend-row:last-child {
   border-bottom: none;
 }
+/* a stats figure that opens the radar filtered to the same slice */
+.trend-row.is-link,
+.cat-bar-row.is-link {
+  color: inherit;
+  text-decoration: none;
+}
+.trend-row.is-link:hover {
+  background: var(--bg);
+}
+.cat-bar-row.is-link {
+  margin: 0 -6px;
+  padding: 0 6px;
+  border-radius: 4px;
+}
+.cat-bar-row.is-link:hover {
+  background: var(--bg);
+}
+.cat-bar-row.is-link:hover .cat-bar-num,
+.trend-row.is-link:hover .trend-name {
+  text-decoration: underline;
+}
 .trend-name {
   font-family: var(--font-mono);
   font-size: 13px;

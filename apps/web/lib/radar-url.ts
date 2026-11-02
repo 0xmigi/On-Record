@@ -27,8 +27,11 @@ export type SizeBand = "lean" | "moderate" | "heavy";
 export type AuthorityFacet = "frozen" | "multisig" | "hot";
 
 // Frameworks we let users filter by — "unknown" is the absence of a label, not
-// a thing to select.
-export const FILTER_FRAMEWORKS: Framework[] = ["anchor", "pinocchio", "quasar", "native"];
+// a thing to select. Anchor splits by line the same way the stats page counts
+// it: v2 apart, and everything before it (0.x or 1.x — the bytes can't tell
+// those two apart) as "anchor-v1". Plain "anchor" keeps both.
+export type FrameworkFacet = Exclude<Framework, "unknown"> | "anchor-v1" | "anchor-v2";
+export const FILTER_FRAMEWORKS: FrameworkFacet[] = ["anchor", "anchor-v1", "anchor-v2", "pinocchio", "quasar", "native"];
 export const SIZE_BANDS: SizeBand[] = ["lean", "moderate", "heavy"];
 export const AUTHORITY_FACETS: AuthorityFacet[] = ["frozen", "multisig", "hot"];
 // "unknown" is the absence of a category, not a selectable facet. Ordered by
@@ -61,13 +64,32 @@ export const SIZE_BAND_HINT: Record<SizeBand, string> = {
   heavy: "256 KB and up",
 };
 
-export const FRAMEWORK_LABEL: Record<Framework, string> = {
+export const FRAMEWORK_LABEL: Record<FrameworkFacet, string> = {
   anchor: "Anchor",
+  "anchor-v1": "Anchor 0.x–1.x",
+  "anchor-v2": "Anchor v2",
   pinocchio: "Pinocchio",
   native: "Native",
   quasar: "Quasar",
-  unknown: "Unknown",
 };
+
+/** The stats page's framework keys (funnel.ts frameworkKey) → the radar facet
+ *  that selects the same programs. Its "anchor" row is pre-v2 only. */
+export const STATS_FRAMEWORK_FACET: Record<string, FrameworkFacet> = {
+  anchor: "anchor-v1",
+  "anchor v2": "anchor-v2",
+  pinocchio: "pinocchio",
+  native: "native",
+  quasar: "quasar",
+};
+
+/** Same split as funnel.ts frameworkKey: a v1-line or unlined Anchor build is
+ *  pre-v2. */
+function matchesFramework(program: ApiProgram, f: FrameworkFacet): boolean {
+  if (f === "anchor-v2") return program.framework === "anchor" && program.anchor?.line === "2.x";
+  if (f === "anchor-v1") return program.framework === "anchor" && program.anchor?.line !== "2.x";
+  return program.framework === f;
+}
 
 export const AUTHORITY_LABEL: Record<AuthorityFacet, string> = {
   frozen: "Frozen",
@@ -124,7 +146,7 @@ export interface RadarParams {
   // single-select groups
   authority: AuthorityFacet | null;
   category: Category | null;
-  framework: Framework | null;
+  framework: FrameworkFacet | null;
   size: SizeBand | null;
 }
 
@@ -132,8 +154,8 @@ export function isView(v: string | undefined): v is View {
   return v === "novel" || v === "variant" || v === "recycled";
 }
 
-export function parseFramework(v: string | undefined): Framework | null {
-  return v && (FILTER_FRAMEWORKS as string[]).includes(v) ? (v as Framework) : null;
+export function parseFramework(v: string | undefined): FrameworkFacet | null {
+  return v && (FILTER_FRAMEWORKS as string[]).includes(v) ? (v as FrameworkFacet) : null;
 }
 
 export function parseSize(v: string | undefined): SizeBand | null {
@@ -211,7 +233,7 @@ export function matchesFacets(program: ApiProgram, p: RadarParams): boolean {
   if (p.active && !programIsActive(program)) return false;
   if (p.authority && authorityFacetOf(program) !== p.authority) return false;
   if (p.category && program.category !== p.category) return false;
-  if (p.framework && program.framework !== p.framework) return false;
+  if (p.framework && !matchesFramework(program, p.framework)) return false;
   if (p.size && sizeBandOf(program.sizeBytes) !== p.size) return false;
   return true;
 }

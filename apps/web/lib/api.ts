@@ -39,7 +39,9 @@ export interface AnchorBuild {
   evidence: string[];
 }
 
-export type RadarWindow = "today" | "week" | "month" | "all";
+/** "48h" is the web's own: the API has no such window (unknown keys fall back
+ *  to 24h), so fetchRadar assembles it from the week — see fetchRadar48h. */
+export type RadarWindow = "today" | "48h" | "week" | "month" | "all";
 export type RadarType = "deploy" | "upgrade";
 
 /** A radar row / program summary. */
@@ -463,6 +465,7 @@ export async function fetchRadar(
     sort?: "interest" | "recent";
   } = {}
 ): Promise<ApiCursorPage<ApiProgram>> {
+  if (opts.window === "48h") return fetchRadar48h(opts);
   const params = new URLSearchParams();
   params.set("window", opts.window ?? "today");
   params.set("type", opts.type ?? "deploy");
@@ -480,6 +483,38 @@ export async function fetchRadar(
     `/api/radar?${params.toString()}`
   );
   return page ?? { ...EMPTY_PAGE };
+}
+
+const H48 = 48 * 3_600_000;
+const H48_MAX_PAGES = 10;
+
+/** The last 48h, read the way the API dates each stream (a deploy by when it
+ *  was first seen, an upgrade by its latest code change): the week's rows,
+ *  newest first, paged until they cross the cutoff. That makes the slice and
+ *  its total complete rather than the top N of the week, which is what lets
+ *  a Stats-page figure link here and land on the same programs. */
+async function fetchRadar48h(
+  opts: Parameters<typeof fetchRadar>[0] & {},
+): Promise<ApiCursorPage<ApiProgram>> {
+  const cutoff = Date.now() - H48;
+  const timeOf = (p: ApiProgram) =>
+    Date.parse((opts.type === "upgrade" ? (p.lastEventAt ?? p.deployedAt) : p.deployedAt) ?? "") || 0;
+  const rows: ApiProgram[] = [];
+  let cursor: string | undefined;
+  for (let i = 0; i < H48_MAX_PAGES; i++) {
+    const page = await fetchRadar({ ...opts, window: "week", sort: "recent", limit: 100, cursor });
+    rows.push(...page.items);
+    const last = page.items[page.items.length - 1];
+    if (!page.nextCursor || !last || timeOf(last) < cutoff) break;
+    cursor = page.nextCursor;
+  }
+  const items = rows.filter((p) => timeOf(p) >= cutoff);
+  if (opts.sort === "interest") {
+    items.sort((a, b) => (b.noveltyScore ?? 0) - (a.noveltyScore ?? 0) || timeOf(b) - timeOf(a));
+  }
+  // uncapped: the whole 48h is already in hand, and capping it would bring
+  // back the gap between the shown rows and the total
+  return { items, total: items.length, nextCursor: null };
 }
 
 export async function fetchProgram(
@@ -887,7 +922,7 @@ export function isBand(value: string | undefined): value is Band {
   return value !== undefined && (BANDS as string[]).includes(value);
 }
 
-const WINDOWS: RadarWindow[] = ["today", "week", "month", "all"];
+const WINDOWS: RadarWindow[] = ["today", "48h", "week", "month", "all"];
 
 export function isWindow(value: string | undefined): value is RadarWindow {
   return value !== undefined && (WINDOWS as string[]).includes(value);

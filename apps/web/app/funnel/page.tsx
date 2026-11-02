@@ -5,8 +5,9 @@ import { Mark } from "@/components/Mark";
 import { SectionHeader } from "@/components/SectionHeader";
 import { FlowChart } from "@/components/FlowChart";
 import { BotExplainer } from "@/components/BotExplainer";
-import { categoryLabel, fetchFunnel, type Category, type Network } from "@/lib/api";
+import { categoryLabel, fetchFunnel, type Category, type Network, type RadarWindow } from "@/lib/api";
 import { groupNum, utcStamp } from "@/lib/format";
+import { buildRadarHref, STATS_FRAMEWORK_FACET, type RadarParams } from "@/lib/radar-url";
 
 const WINDOW_KEYS = ["24h", "48h", "7d", "30d"] as const;
 type WindowKey = (typeof WINDOW_KEYS)[number];
@@ -15,6 +16,14 @@ const WINDOW_SECS: Record<WindowKey, number> = {
   "48h": 172_800,
   "7d": 604_800,
   "30d": 2_592_000,
+};
+
+// each stats window → the radar window covering the same trailing hours
+const RADAR_WINDOW: Record<WindowKey, RadarWindow> = {
+  "24h": "today",
+  "48h": "48h",
+  "7d": "week",
+  "30d": "month",
 };
 
 export const metadata: Metadata = {
@@ -44,8 +53,8 @@ function pct(part: number, whole: number): number {
   return Math.round((part / whole) * 1000) / 10;
 }
 
-// each row is [label, count, optional hover definition]
-type BreakdownRow = [string, number, string?];
+// each row is [label, count, optional hover definition, optional radar link]
+type BreakdownRow = [string, number, string?, string?];
 
 function Breakdown({
   rows,
@@ -57,21 +66,32 @@ function Breakdown({
   const max = Math.max(1, ...rows.map(([, n]) => n));
   return (
     <div className="cat-breakdown">
-      {rows.map(([label, n, tip]) => (
-        <div className="cat-bar-row" key={label}>
-          <span
-            className={`cat-chip${tip ? " has-tip" : ""}`}
-            style={{ minWidth: labelWidth, textAlign: "left" }}
-          >
-            {label}
-            {tip ? <span className="tip-pop">{tip}</span> : null}
-          </span>
-          <div className="cat-bar-track">
-            <div className="cat-bar" style={{ width: `${pct(n, max)}%` }} />
+      {rows.map(([label, n, tip, href]) => {
+        const body = (
+          <>
+            <span
+              className={`cat-chip${tip ? " has-tip" : ""}`}
+              style={{ minWidth: labelWidth, textAlign: "left" }}
+            >
+              {label}
+              {tip ? <span className="tip-pop">{tip}</span> : null}
+            </span>
+            <div className="cat-bar-track">
+              <div className="cat-bar" style={{ width: `${pct(n, max)}%` }} />
+            </div>
+            <span className="cat-bar-num">{n}</span>
+          </>
+        );
+        return href ? (
+          <Link className="cat-bar-row is-link" href={href} key={label}>
+            {body}
+          </Link>
+        ) : (
+          <div className="cat-bar-row" key={label}>
+            {body}
           </div>
-          <span className="cat-bar-num">{n}</span>
-        </div>
-      ))}
+        );
+      })}
     </div>
   );
 }
@@ -117,6 +137,24 @@ export default async function FunnelPage({
   const aggH = funnel.aggregateWindowHours ?? 48;
   const sorted = (m?: Record<string, number>): [string, number][] =>
     Object.entries(m ?? {}).sort((a, b) => b[1] - a[1]);
+
+  // A figure links to the radar view that lists the same slice: new deploys,
+  // this window, this cluster, narrowed by the one facet the figure counts.
+  const radarBase: RadarParams = {
+    type: "deploy",
+    window: RADAR_WINDOW[win],
+    network,
+    verification: null,
+    sectxt: false,
+    idl: false,
+    repo: false,
+    active: false,
+    authority: null,
+    category: null,
+    framework: null,
+    size: null,
+  };
+  const radar = (patch: Partial<RadarParams>) => buildRadarHref({ ...radarBase, ...patch });
 
   return (
     <>
@@ -185,8 +223,9 @@ export default async function FunnelPage({
               {funnel.frameworkTrend.map((t) => {
                 const dir = t.delta > 0.02 ? "up" : t.delta < -0.02 ? "down" : "flat";
                 const arrow = dir === "up" ? "▲" : dir === "down" ? "▼" : "→";
-                return (
-                  <div className="trend-row" key={t.framework}>
+                const facet = STATS_FRAMEWORK_FACET[t.framework];
+                const cells = (
+                  <>
                     <span className="trend-name">{t.framework}</span>
                     <span className="trend-count">{t.current}</span>
                     <span className="trend-share">
@@ -196,6 +235,15 @@ export default async function FunnelPage({
                       {arrow} {t.delta >= 0 ? "+" : ""}
                       {Math.round(t.delta * 100)}pp
                     </span>
+                  </>
+                );
+                return facet ? (
+                  <Link className="trend-row is-link" href={radar({ framework: facet })} key={t.framework}>
+                    {cells}
+                  </Link>
+                ) : (
+                  <div className="trend-row" key={t.framework}>
+                    {cells}
                   </div>
                 );
               })}
@@ -209,7 +257,12 @@ export default async function FunnelPage({
             info="Category from the recovered name or IDL. 'unknown' = not enough to tag."
           />
           <Breakdown
-            rows={CATEGORY_ORDER.map((c) => [categoryLabel(c), funnel.byCategory[c] ?? 0])}
+            rows={CATEGORY_ORDER.map((c) => [
+              categoryLabel(c),
+              funnel.byCategory[c] ?? 0,
+              undefined,
+              c === "unknown" ? undefined : radar({ category: c }),
+            ])}
             labelWidth={80}
           />
         </section>
@@ -227,7 +280,7 @@ export default async function FunnelPage({
             <Breakdown
               rows={[
                 ["named", funnel.identity.named, "A project name was recovered from the binary."],
-                ["has repo", funnel.identity.withRepo, "A source-code repo was found in the binary or a verified build."],
+                ["has repo", funnel.identity.withRepo, "A source-code repo was found in the binary or a verified build.", radar({ repo: true })],
                 ["opaque", funnel.identity.opaque, "No name, repo, or security.txt — anonymous bytecode."],
               ]}
             />
@@ -239,9 +292,9 @@ export default async function FunnelPage({
             <SectionHeader title="Lineage" info="Novel = no known relative. Fork = ≥60% code match to a known program." />
             <Breakdown
               rows={[
-                ["novel", funnel.lineage.novel, "No known code relative on record — genuinely new code."],
-                ["variant", funnel.lineage.variant, "Loosely similar to a known program, but not a direct copy."],
-                ["fork", funnel.lineage.fork, "≥60% code match to a known program — a fork or close derivative."],
+                ["novel", funnel.lineage.novel, "No known code relative on record — genuinely new code.", radar({ view: "novel" })],
+                ["variant", funnel.lineage.variant, "Loosely similar to a known program, but not a direct copy.", radar({ view: "variant" })],
+                ["fork", funnel.lineage.fork, "≥60% code match to a known program — a fork or close derivative.", radar({ view: "recycled" })],
               ]}
             />
           </section>
@@ -253,8 +306,8 @@ export default async function FunnelPage({
             <Breakdown
               rows={[
                 ["mutable", funnel.control.mutable, "Has an upgrade authority — the deployer can still replace the code (including to rug)."],
-                ["frozen", funnel.control.frozen, "Upgrade authority is null — the code can never be changed by anyone."],
-                ["verified build", funnel.control.verified, "The on-chain bytecode reproduces from public source code."],
+                ["frozen", funnel.control.frozen, "Upgrade authority is null — the code can never be changed by anyone.", radar({ authority: "frozen" })],
+                ["verified build", funnel.control.verified, "The on-chain bytecode reproduces from public source code.", radar({ verification: "verified" })],
               ]}
             />
           </section>
