@@ -2,6 +2,7 @@ import { decompress } from "fzstd";
 import { env } from "./config.js";
 import type { Network } from "./types.js";
 import { MAX_TX_VERSION } from "./verify/chain.js";
+import { sbpfVersionOf } from "./profile.js";
 
 // ---------------------------------------------------------------------------
 // Thin Helius RPC client. Everything the pipeline reads from chain goes
@@ -194,6 +195,34 @@ export async function programDataAliveMany(
       if (!acc || acc.lamports === 0) return out.set(address, false);
       const head = Buffer.from(acc.data[0], "base64");
       out.set(address, head.length >= 4 && head.readUInt32LE(0) === 3);
+    });
+  }
+  return out;
+}
+
+/** sBPF version (ELF e_flags) for many ProgramData addresses, read from a
+ *  97-byte slice — the 45-byte ProgramData header plus the ELF header — so a
+ *  whole corpus costs one getMultipleAccounts per hundred. Missing, closed and
+ *  non-ELF accounts are left out of the map. */
+export async function programDataSbpfMany(
+  network: Network,
+  addresses: string[],
+): Promise<Map<string, number>> {
+  const out = new Map<string, number>();
+  for (let i = 0; i < addresses.length; i += 100) {
+    const chunk = addresses.slice(i, i + 100);
+    const result = await rpc<{ value: ((AccountInfo & { lamports: number }) | null)[] }>(
+      network,
+      "getMultipleAccounts",
+      [chunk, { encoding: "base64", dataSlice: { offset: 0, length: 97 }, commitment: "confirmed" }],
+    );
+    chunk.forEach((address, j) => {
+      const acc = result.value[j];
+      if (!acc || acc.lamports === 0) return;
+      const head = Buffer.from(acc.data[0], "base64");
+      if (head.length < 97 || head.readUInt32LE(0) !== 3) return;
+      const v = sbpfVersionOf(head.subarray(45));
+      if (v != null) out.set(address, v);
     });
   }
   return out;

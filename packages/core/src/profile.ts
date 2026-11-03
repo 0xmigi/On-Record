@@ -65,6 +65,8 @@ export interface ProgramProfile {
   instructionCount: number | null;
   instructionNames: string[]; // recovered handler names, discriminant order where known
   instructionSource: InstructionSource | null;
+  /** ELF e_flags: 0–3 = sBPF v0–v3. Absent on profiles written before it existed */
+  sbpfVersion?: number | null;
 }
 
 // --- syscall → capability grouping ------------------------------------------
@@ -680,5 +682,15 @@ export function profileProgram(
     instructionCount: instructionNames.length || null,
     instructionNames,
     instructionSource,
+    sbpfVersion: sbpfVersionOf(bytecode),
   };
+}
+
+/** The sBPF version the build targets: the ELF header's e_flags (0x30), which
+ *  the runtime reads to pick v0–v3 rules. Null when the bytes aren't an ELF64
+ *  header. SIMD-0500 makes 3 the only version accepted for deploys and upgrades. */
+export function sbpfVersionOf(elf: Buffer): number | null {
+  if (elf.length < 0x34 || elf.readUInt32BE(0) !== 0x7f454c46) return null; // \x7fELF
+  if (elf[4] !== 2 || elf[5] !== 1) return null; // ELF64, little-endian
+  return elf.readUInt32LE(0x30);
 }

@@ -695,6 +695,22 @@ export interface ApiFunnel {
     lateShare: number;
     delta: number;
   }[];
+  /** sBPF version (ELF e_flags) of every program whose code changed in the
+   *  window, new deploys and upgrades together, with the same first-half vs
+   *  second-half share change as frameworkTrend. Keys: v3, v2, v1, v0, plus
+   *  "other" and "not read" (profiled before the version was recorded) when
+   *  present. Absent on API builds predating it. */
+  sbpfTrend?: {
+    version: string;
+    current: number;
+    earlyShare: number;
+    lateShare: number;
+    delta: number;
+  }[];
+  /** How many of the window's deploys and upgrades (same set as sbpfTrend)
+   *  published an IDL, a security.txt (binary or PMP) and a verified build.
+   *  Absent on API builds predating it. */
+  disclosure?: { total: number; idl: number; securityTxt: number; verified: number; allThree: number };
   updatedAt: string; // ISO
 }
 

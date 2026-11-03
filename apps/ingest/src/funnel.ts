@@ -1,5 +1,5 @@
 import { and, eq, gte, inArray, lt, sql } from "drizzle-orm";
-import { db, schema, type ApiFunnel, type Network, type ProgramProfile } from "@onrecord/core";
+import { db, schema, securityTxtSource, type ApiFunnel, type Network, type ProgramProfile } from "@onrecord/core";
 
 // ---------------------------------------------------------------------------
 // Funnel / Program Stats (SPEC §1, §6). A windowed view over the loader stream:
@@ -33,6 +33,7 @@ type SubjectLite = {
   repoUrl: string | null;
   authorityClass: string | null;
   verified: boolean;
+  idlPresent: boolean;
   entityKey: string | null;
   deployerFundingSource: string | null;
   profile: ProgramProfile | null;
@@ -102,6 +103,7 @@ export async function computeWindowFunnel(
       repoUrl: schema.subjects.repoUrl,
       authorityClass: schema.subjects.authorityClass,
       verified: schema.subjects.verified,
+      idlPresent: schema.subjects.idlPresent,
       entityKey: schema.subjects.entityKey,
       deployerFundingSource: schema.subjects.deployerFundingSource,
       profile: schema.subjects.profile,
@@ -122,8 +124,20 @@ export async function computeWindowFunnel(
   // upgrades: every program whose code changed inside the window, however long
   // it has been on record. Dated by lastEventAt (falling back to firstSeenAt for
   // rows predating that column) — see the note above the deploy scan.
+  // One row per upgraded program rather than a count: the sBPF panel needs each
+  // one's version and when its code changed.
   const upgradeRows = await db
-    .select({ n: sql<number>`count(*)` })
+    .select({
+      at: sql<string>`coalesce(${schema.subjects.lastEventAt}, ${schema.subjects.firstSeenAt})`,
+      sbpf: sql<number | null>`(${schema.subjects.profile} ->> 'sbpfVersion')::int`,
+      verified: schema.subjects.verified,
+      idlPresent: schema.subjects.idlPresent,
+      // only the three keys securityTxtSource reads, not the whole facts blob
+      sec: sql<{ hasSecurityTxt?: boolean; securityTxt?: unknown; pmpSecurity?: unknown }>`jsonb_build_object(
+        'hasSecurityTxt', ${schema.subjects.facts} -> 'hasSecurityTxt',
+        'securityTxt', ${schema.subjects.facts} -> 'securityTxt',
+        'pmpSecurity', ${schema.subjects.facts} -> 'pmpSecurity')`,
+    })
     .from(schema.subjects)
     .where(
       and(
@@ -134,7 +148,7 @@ export async function computeWindowFunnel(
         live,
       ),
     );
-  const upgrades = Number(upgradeRows[0]?.n ?? 0);
+  const upgrades = upgradeRows.length;
 
   // the closed tail, counted on its own now that the scan above excludes it
   const closedRows = await db
@@ -253,6 +267,59 @@ export async function computeWindowFunnel(
     })
     .sort((a, b) => b.current - a.current);
 
+  // sBPF version of every program whose code changed in the window — new
+  // deploys AND upgrades, the same 'new + upgrades' total as the page header,
+  // since SIMD-0500 gates both. Each program counts once, at its current build.
+  // A profile written before the field existed has no version: "not read".
+  const sbpfOf = (v: number | null | undefined) =>
+    v == null ? "not read" : v >= 0 && v <= 3 ? `v${v}` : "other";
+  const sbpfEvents = [
+    ...subs
+      .filter((s) => s.deployType !== "upgrade")
+      .map((s) => ({ key: sbpfOf(s.profile?.sbpfVersion), t: s.firstSeenAt?.getTime() ?? 0 })),
+    ...upgradeRows.map((r) => ({ key: sbpfOf(r.sbpf), t: new Date(r.at).getTime() })),
+  ];
+  const sbpfAll: Record<string, number> = {};
+  const sbpfEarly: Record<string, number> = {};
+  const sbpfLate: Record<string, number> = {};
+  let sbpfEarlyTotal = 0;
+  let sbpfLateTotal = 0;
+  for (const e of sbpfEvents) {
+    sbpfAll[e.key] = (sbpfAll[e.key] ?? 0) + 1;
+    if (e.t >= midMs) {
+      sbpfLate[e.key] = (sbpfLate[e.key] ?? 0) + 1;
+      sbpfLateTotal++;
+    } else {
+      sbpfEarly[e.key] = (sbpfEarly[e.key] ?? 0) + 1;
+      sbpfEarlyTotal++;
+    }
+  }
+  const SBPF_ORDER = ["v3", "v2", "v1", "v0", "other", "not read"];
+  const sbpfTrend = SBPF_ORDER.filter((k) => k.startsWith("v") || sbpfAll[k])
+    .map((version) => {
+      const earlyShare = sbpfEarlyTotal ? (sbpfEarly[version] ?? 0) / sbpfEarlyTotal : 0;
+      const lateShare = sbpfLateTotal ? (sbpfLate[version] ?? 0) / sbpfLateTotal : 0;
+      return { version, current: sbpfAll[version] ?? 0, earlyShare, lateShare, delta: lateShare - earlyShare };
+    });
+
+  // The three things a deployer publishes alongside the code: an IDL, a
+  // security.txt (in the binary or the PMP account, as on the program page) and
+  // a verified build. Same set as the sBPF panel: everything deployed or
+  // upgraded in the window, each program once, as it stands now.
+  const shipped = [
+    ...subs
+      .filter((s) => s.deployType !== "upgrade")
+      .map((s) => ({ idl: s.idlPresent, sec: securityTxtSource(s.facts ?? {}) != null, verified: s.verified })),
+    ...upgradeRows.map((r) => ({ idl: r.idlPresent, sec: securityTxtSource(r.sec ?? {}) != null, verified: r.verified })),
+  ];
+  const disclosure = {
+    total: shipped.length,
+    idl: shipped.filter((x) => x.idl).length,
+    securityTxt: shipped.filter((x) => x.sec).length,
+    verified: shipped.filter((x) => x.verified).length,
+    allThree: shipped.filter((x) => x.idl && x.sec && x.verified).length,
+  };
+
   // 30-day hourly deploy/upgrade volume for the chart. Grouped BY NETWORK
   // rather than filtered to one: the chart plots mainnet and devnet side by
   // side so the two clusters' volumes are comparable at a glance, while every
@@ -326,6 +393,8 @@ export async function computeWindowFunnel(
     conviction,
     churn,
     frameworkTrend,
+    sbpfTrend,
+    disclosure,
     updatedAt: new Date().toISOString(),
   };
 }
