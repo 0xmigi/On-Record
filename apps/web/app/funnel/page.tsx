@@ -251,34 +251,6 @@ export default async function FunnelPage({
           ) : null}
         </section>
 
-        {funnel.sbpfTrend && funnel.sbpfTrend.some((t) => t.current > 0) ? (
-          <section className="stat-card">
-            <SectionHeader
-              title="sBPF version"
-              info="The sBPF version each program's bytecode targets, read from its ELF header. Counts new deploys and upgrades together, each program once at its current build. SIMD-0500 makes v3 the only version accepted for deploys and upgrades. 'not read' = recorded before the version was. Arrow = share change, first half vs second half of the window."
-            />
-            <div className="trend-list">
-              {funnel.sbpfTrend.map((t) => {
-                const dir = t.delta > 0.02 ? "up" : t.delta < -0.02 ? "down" : "flat";
-                const arrow = dir === "up" ? "▲" : dir === "down" ? "▼" : "→";
-                return (
-                  <div className="trend-row" key={t.version}>
-                    <span className="trend-name">{t.version}</span>
-                    <span className="trend-count">{t.current}</span>
-                    <span className="trend-share">
-                      {Math.round(t.earlyShare * 100)}% → {Math.round(t.lateShare * 100)}%
-                    </span>
-                    <span className={`trend-delta trend-${dir}`}>
-                      {arrow} {t.delta >= 0 ? "+" : ""}
-                      {Math.round(t.delta * 100)}pp
-                    </span>
-                  </div>
-                );
-              })}
-            </div>
-          </section>
-        ) : null}
-
         {funnel.disclosure && funnel.disclosure.total > 0 ? (
           <section className="stat-card">
             <SectionHeader
@@ -401,6 +373,34 @@ export default async function FunnelPage({
                 ["untraced", funnel.conviction.untraced, "Couldn't reach the funding origin."],
               ]}
             />
+          </section>
+        ) : null}
+
+        {funnel.sbpfTrend && funnel.sbpfTrend.some((t) => t.current > 0) ? (
+          <section className="stat-card">
+            <SectionHeader
+              title="sBPF version"
+              info="The sBPF version each program's bytecode targets, read from its ELF header. Counts new deploys and upgrades together, each program once at its current build. SIMD-0500 makes v3 the only version accepted for deploys and upgrades. 'not read' = recorded before the version was. Arrow = share change, first half vs second half of the window."
+            />
+            <div className="trend-list">
+              {funnel.sbpfTrend.map((t) => {
+                const dir = t.delta > 0.02 ? "up" : t.delta < -0.02 ? "down" : "flat";
+                const arrow = dir === "up" ? "▲" : dir === "down" ? "▼" : "→";
+                return (
+                  <div className="trend-row" key={t.version}>
+                    <span className="trend-name">{t.version}</span>
+                    <span className="trend-count">{t.current}</span>
+                    <span className="trend-share">
+                      {Math.round(t.earlyShare * 100)}% → {Math.round(t.lateShare * 100)}%
+                    </span>
+                    <span className={`trend-delta trend-${dir}`}>
+                      {arrow} {t.delta >= 0 ? "+" : ""}
+                      {Math.round(t.delta * 100)}pp
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
           </section>
         ) : null}
       </div>
