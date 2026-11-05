@@ -34,7 +34,7 @@ import {
 } from "../serialize.js";
 import { timelineWithHistory } from "../history-events.js";
 import { archiveDetail, searchArchive, type ApiArchivedProgram } from "../archive.js";
-import { computeWindowFunnel, windowHoursFor } from "../funnel.js";
+import { cachedWindowFunnel } from "../funnel.js";
 import { buildDossier } from "../dossier.js";
 import { buildBuilderProfile } from "../builder.js";
 import { edgesFor } from "../refs.js";
@@ -802,7 +802,7 @@ export function registerPublicRoutes(app: FastifyInstance): void {
   // --- the funnel / program stats (windowed) -------------------------------
   app.get<{ Querystring: { window?: string; network?: string } }>("/api/funnel", async (req) => {
     const network = req.query.network === "devnet" ? "devnet" : "mainnet";
-    return computeWindowFunnel(windowHoursFor(req.query.window), network);
+    return cachedWindowFunnel(req.query.window, network);
   });
 
   // --- a clone cluster -----------------------------------------------------

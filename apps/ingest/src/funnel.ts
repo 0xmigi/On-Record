@@ -2,6 +2,7 @@ import { and, eq, gte, inArray, lt, sql } from "drizzle-orm";
 import {
   db,
   loadHistoryStatsDaily,
+  logger,
   schema,
   securityTxtSource,
   type ApiFunnel,
@@ -41,6 +42,70 @@ const HOURLY_MAX_HOURS = 720;
 export function windowHoursFor(key: string | undefined): number {
   if (key === "all") return ALL_HOURS;
   return WINDOW_HOURS[key ?? ""] ?? 48;
+}
+
+// ---------------------------------------------------------------------------
+// Finished results, kept in memory. Counting a window takes seconds (tens for
+// the long ones), and the page gives up after ten, so a visitor never waits on
+// it: they get the stored result, and one older than FRESH_MS is recounted in
+// the background for the next visitor. Only the first request for a window
+// after a restart waits — warmFunnelCache() runs every window once after boot
+// so that is rare. Counts run one at a time: two long windows at once would
+// not fit the heap. The response's updatedAt says how old it is, and the page
+// prints it.
+// ---------------------------------------------------------------------------
+
+const FRESH_MS = 15 * 60_000;
+type CacheEntry = { at: number; value: ApiFunnel | null; pending: Promise<ApiFunnel> | null };
+const funnelCache = new Map<string, CacheEntry>();
+let queue: Promise<unknown> = Promise.resolve();
+
+function recount(hours: number, network: Network, entry: CacheEntry): Promise<ApiFunnel> {
+  if (entry.pending) return entry.pending;
+  const run = queue.then(async () => {
+    const t0 = Date.now();
+    const value = await computeWindowFunnel(hours, network);
+    logger.info({ hours, network, ms: Date.now() - t0 }, "funnel: counted");
+    entry.value = value;
+    entry.at = Date.now();
+    return value;
+  });
+  entry.pending = run.finally(() => {
+    entry.pending = null;
+  });
+  queue = entry.pending.catch(() => undefined);
+  return entry.pending;
+}
+
+/** The funnel for a window key, from the cache when it holds one. */
+export async function cachedWindowFunnel(key: string | undefined, network: Network): Promise<ApiFunnel> {
+  const hours = windowHoursFor(key);
+  const id = `${network}:${hours}`;
+  let entry = funnelCache.get(id);
+  if (!entry) {
+    entry = { at: 0, value: null, pending: null };
+    funnelCache.set(id, entry);
+  }
+  if (!entry.value) return recount(hours, network, entry);
+  if (Date.now() - entry.at > FRESH_MS) {
+    recount(hours, network, entry).catch((err) =>
+      logger.warn({ err: String(err), hours, network }, "funnel: background recount failed"),
+    );
+  }
+  return entry.value;
+}
+
+/** Count every window the page offers once, so the first visitors after a
+ *  restart get a stored result too. One at a time, through the same queue. */
+export async function warmFunnelCache(): Promise<void> {
+  const keys = ["24h", "48h", "7d", "30d", "90d", "1y", "all"];
+  for (const network of ["mainnet", "devnet"] as const)
+    for (const key of keys) {
+      if (network === "devnet" && key === "1y") continue; // the page offers no devnet 1y
+      await cachedWindowFunnel(key, network).catch((err) =>
+        logger.warn({ err: String(err), key, network }, "funnel: warm failed"),
+      );
+    }
 }
 
 type SubjectLite = {
@@ -93,14 +158,17 @@ export async function computeWindowFunnel(
   // it systematically undercounts. The chart marks it rather than letting the
   // run-up read as a surge in deploys. Derived, never hardcoded: devnet has its
   // own start, and a re-seeded database would move it.
-  const startRows = await db
-    .select({ network: schema.events.network, at: sql<string | null>`min(${schema.events.createdAt})` })
-    .from(schema.events)
-    .groupBy(schema.events.network);
-  const recordStartOf = (n: Network): Date | null => {
-    const at = startRows.find((r) => r.network === n)?.at;
-    return at ? new Date(at) : null;
+  const firstWritten = (n: Network) =>
+    db
+      .select({ at: sql<string | null>`min(${schema.events.createdAt})` })
+      .from(schema.events)
+      .where(eq(schema.events.network, n));
+  const [mainnetStart, devnetStart] = await Promise.all([firstWritten("mainnet"), firstWritten("devnet")]);
+  const startOf: Record<Network, string | null | undefined> = {
+    mainnet: mainnetStart[0]?.at,
+    devnet: devnetStart[0]?.at,
   };
+  const recordStartOf = (n: Network): Date | null => (startOf[n] ? new Date(startOf[n]!) : null);
   const recordStart = recordStartOf(network);
   const recordStartsAt = recordStart ? recordStart.toISOString() : null;
 
@@ -137,9 +205,13 @@ export async function computeWindowFunnel(
   // exceed it.
   const live = sql`(${schema.subjects.facts} ->> 'closedAt') is null`;
 
-  // new-program subjects in the window carry everything the breakdowns need —
-  // only the keys of profile and facts read below, built in SQL, so a 1y window
-  // does not pull every row's whole facts blob into memory
+  // new-program subjects in the window carry everything the breakdowns need.
+  // Up to 30d each row brings its whole profile and facts — one read of each
+  // stored blob, the fast path. Past 30d there are several times as many rows
+  // and the whole blobs would not fit the API's 256 MB heap, so those windows
+  // build only the keys read below in SQL. That costs a decompress per key, so
+  // it is slower; the long windows are served from the cache below anyway.
+  const slim = windowHours > HOURLY_MAX_HOURS;
   const slimProfile = sql<ProgramProfile | null>`case when ${schema.subjects.profile} is null then null else jsonb_build_object(
     'framework', ${schema.subjects.profile} -> 'framework',
     'anchor', jsonb_build_object('line', ${schema.subjects.profile} -> 'anchor' -> 'line'),
@@ -164,10 +236,10 @@ export async function computeWindowFunnel(
       idlPresent: schema.subjects.idlPresent,
       entityKey: schema.subjects.entityKey,
       deployerFundingSource: schema.subjects.deployerFundingSource,
-      profile: slimProfile,
+      profile: slim ? slimProfile : schema.subjects.profile,
       deployType: schema.subjects.deployType,
       firstSeenAt: schema.subjects.firstSeenAt,
-      facts: slimFacts,
+      facts: slim ? slimFacts : schema.subjects.facts,
     })
     .from(schema.subjects)
     .where(

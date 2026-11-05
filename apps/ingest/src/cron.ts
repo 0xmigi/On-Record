@@ -1,7 +1,7 @@
 import { and, eq, gte, sql } from "drizzle-orm";
 import { db, schema, logger, tlshDistance } from "@onrecord/core";
 import { expireWatchlist, refreshTvl } from "@onrecord/enrich";
-import { snapshotFunnel, todayKey } from "./funnel.js";
+import { snapshotFunnel, todayKey, warmFunnelCache } from "./funnel.js";
 import { sampleMomentum } from "./momentum.js";
 import { sweepClosed } from "./closed.js";
 import { reclassifyRecent } from "./reclassify.js";
@@ -26,6 +26,9 @@ export function startCron(): void {
     await snapshotFunnel(todayKey());
   });
   every(3_600_000, "daily-batch", maybeRunDaily);
+  // count every stats window once after boot, once the boot sweeps have run,
+  // so visitors get stored results instead of waiting on a count
+  setTimeout(() => void warmFunnelCache(), 4 * 60_000);
   // refresh band / bucket / nearest-relative as the corpus grows — a late
   // sibling deploy makes an earlier program's stored "nearest" go stale.
   every(6 * 3_600_000, "reclassify-refresh", () => reclassifyRecent("mainnet", 72));
