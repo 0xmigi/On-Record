@@ -1,4 +1,4 @@
-import { and, eq, gte, inArray, lt, sql } from "drizzle-orm";
+import { and, eq, gte, inArray, lt, sql, type SQL } from "drizzle-orm";
 import {
   db,
   loadHistoryStatsDaily,
@@ -48,19 +48,55 @@ export function windowHoursFor(key: string | undefined): number {
 // Finished results, kept in memory. Counting a window takes seconds (tens for
 // the long ones), and the page gives up after ten, so a visitor never waits on
 // it: they get the stored result, and one older than FRESH_MS is recounted in
-// the background for the next visitor. Only the first request for a window
-// after a restart waits — warmFunnelCache() runs every window once after boot
-// so that is rare. Counts run one at a time: two long windows at once would
+// the background for the next visitor. Results outlive restarts (see
+// STORE_PREFIX), so only a window never counted before makes anyone wait.
+// Counts run one at a time: two long windows at once would
 // not fit the heap. The response's updatedAt says how old it is, and the page
 // prints it.
 // ---------------------------------------------------------------------------
 
 const FRESH_MS = 15 * 60_000;
-type CacheEntry = { at: number; value: ApiFunnel | null; pending: Promise<ApiFunnel> | null };
+type CacheEntry = {
+  at: number;
+  value: ApiFunnel | null;
+  pending: Promise<ApiFunnel> | null;
+  /** reading the stored copy (see below); settles once per process */
+  loading: Promise<void> | null;
+};
 const funnelCache = new Map<string, CacheEntry>();
 let queue: Promise<unknown> = Promise.resolve();
 
-function recount(hours: number, network: Network, entry: CacheEntry): Promise<ApiFunnel> {
+// Every finished count is also written to the config table, so a restart (each
+// deploy is one) starts from the last result instead of an empty cache. Without
+// it the long windows answered nothing for the minutes their first count took.
+// The version in the key retires stored copies when the response shape changes.
+const STORE_PREFIX = "funnel-cache:v1:";
+
+async function loadStored(id: string, entry: CacheEntry): Promise<void> {
+  try {
+    const rows = await db
+      .select({ value: schema.config.value, at: schema.config.updatedAt })
+      .from(schema.config)
+      .where(eq(schema.config.key, STORE_PREFIX + id));
+    const row = rows[0];
+    if (row && !entry.value) {
+      entry.value = row.value as ApiFunnel;
+      entry.at = new Date(row.at).getTime();
+    }
+  } catch (err) {
+    logger.warn({ err: String(err), id }, "funnel: stored copy unreadable");
+  }
+}
+
+async function store(id: string, value: ApiFunnel): Promise<void> {
+  const key = STORE_PREFIX + id;
+  await db
+    .insert(schema.config)
+    .values({ key, value, updatedAt: new Date() })
+    .onConflictDoUpdate({ target: schema.config.key, set: { value, updatedAt: new Date() } });
+}
+
+function recount(id: string, hours: number, network: Network, entry: CacheEntry): Promise<ApiFunnel> {
   if (entry.pending) return entry.pending;
   const run = queue.then(async () => {
     const t0 = Date.now();
@@ -68,6 +104,7 @@ function recount(hours: number, network: Network, entry: CacheEntry): Promise<Ap
     logger.info({ hours, network, ms: Date.now() - t0 }, "funnel: counted");
     entry.value = value;
     entry.at = Date.now();
+    await store(id, value).catch((err) => logger.warn({ err: String(err), id }, "funnel: store failed"));
     return value;
   });
   entry.pending = run.finally(() => {
@@ -83,12 +120,16 @@ export async function cachedWindowFunnel(key: string | undefined, network: Netwo
   const id = `${network}:${hours}`;
   let entry = funnelCache.get(id);
   if (!entry) {
-    entry = { at: 0, value: null, pending: null };
+    entry = { at: 0, value: null, pending: null, loading: null };
     funnelCache.set(id, entry);
   }
-  if (!entry.value) return recount(hours, network, entry);
+  if (!entry.value) {
+    entry.loading ??= loadStored(id, entry);
+    await entry.loading;
+  }
+  if (!entry.value) return recount(id, hours, network, entry);
   if (Date.now() - entry.at > FRESH_MS) {
-    recount(hours, network, entry).catch((err) =>
+    recount(id, hours, network, entry).catch((err) =>
       logger.warn({ err: String(err), hours, network }, "funnel: background recount failed"),
     );
   }
@@ -209,89 +250,81 @@ export async function computeWindowFunnel(
   // Up to 30d each row brings its whole profile and facts — one read of each
   // stored blob, the fast path. Past 30d there are several times as many rows
   // and the whole blobs would not fit the API's 256 MB heap, so those windows
-  // build only the keys read below in SQL. That costs a decompress per key, so
-  // it is slower; the long windows are served from the cache below anyway.
+  // take only the keys read below (unpackedSubjects).
   const slim = windowHours > HOURLY_MAX_HOURS;
-  const slimProfile = sql<ProgramProfile | null>`case when ${schema.subjects.profile} is null then null else jsonb_build_object(
-    'framework', ${schema.subjects.profile} -> 'framework',
-    'anchor', jsonb_build_object('line', ${schema.subjects.profile} -> 'anchor' -> 'line'),
-    'integrations', ${schema.subjects.profile} -> 'integrations',
-    'capabilities', ${schema.subjects.profile} -> 'capabilities',
-    'sbpfVersion', ${schema.subjects.profile} -> 'sbpfVersion') end`;
-  const slimFacts = sql<Record<string, unknown> | null>`case when ${schema.subjects.facts} is null then null else jsonb_build_object(
-    'sourceFramework', ${schema.subjects.facts} -> 'sourceFramework',
-    'buildMachine', ${schema.subjects.facts} -> 'buildMachine',
-    'hasSecurityTxt', ${schema.subjects.facts} -> 'hasSecurityTxt',
-    'securityTxt', ${schema.subjects.facts} -> 'securityTxt',
-    'pmpSecurity', ${schema.subjects.facts} -> 'pmpSecurity') end`;
-  const subs = (await db
-    .select({
-      sha256: schema.subjects.sha256,
-      noveltyBand: schema.subjects.noveltyBand,
-      category: schema.subjects.category,
-      name: schema.subjects.name,
-      repoUrl: schema.subjects.repoUrl,
-      authorityClass: schema.subjects.authorityClass,
-      verified: schema.subjects.verified,
-      idlPresent: schema.subjects.idlPresent,
-      entityKey: schema.subjects.entityKey,
-      deployerFundingSource: schema.subjects.deployerFundingSource,
-      profile: slim ? slimProfile : schema.subjects.profile,
-      deployType: schema.subjects.deployType,
-      firstSeenAt: schema.subjects.firstSeenAt,
-      facts: slim ? slimFacts : schema.subjects.facts,
-    })
-    .from(schema.subjects)
-    .where(
-      and(
-        eq(schema.subjects.network, network),
-        eq(schema.subjects.kind, "program"),
-        gte(schema.subjects.firstSeenAt, start),
-        live,
-      ),
-    )) as SubjectLite[];
+  const stages: Record<string, number> = {};
+  let lapAt = Date.now();
+  const lap = (label: string) => {
+    stages[label] = Date.now() - lapAt;
+    lapAt = Date.now();
+  };
+
+  let subs: SubjectLite[];
+  let closedCount: number;
+  const unpacked = slim
+    ? await unpackedSubjects(network, start).catch((err) => {
+        logger.warn({ err: String(err), network }, "funnel: unpacked read failed, reading key by key");
+        return null;
+      })
+    : null;
+  if (unpacked) {
+    subs = unpacked.subs;
+    closedCount = unpacked.closed;
+  } else {
+    subs = (await db
+      .select({
+        sha256: schema.subjects.sha256,
+        noveltyBand: schema.subjects.noveltyBand,
+        category: schema.subjects.category,
+        name: schema.subjects.name,
+        repoUrl: schema.subjects.repoUrl,
+        authorityClass: schema.subjects.authorityClass,
+        verified: schema.subjects.verified,
+        idlPresent: schema.subjects.idlPresent,
+        entityKey: schema.subjects.entityKey,
+        deployerFundingSource: schema.subjects.deployerFundingSource,
+        profile: slim ? slimProfile() : schema.subjects.profile,
+        deployType: schema.subjects.deployType,
+        firstSeenAt: schema.subjects.firstSeenAt,
+        facts: slim ? slimFacts() : schema.subjects.facts,
+      })
+      .from(schema.subjects)
+      .where(
+        and(
+          eq(schema.subjects.network, network),
+          eq(schema.subjects.kind, "program"),
+          gte(schema.subjects.firstSeenAt, start),
+          live,
+        ),
+      )) as SubjectLite[];
+    // the closed tail, counted on its own since the scan above excludes it
+    const closedRows = await db
+      .select({ n: sql<number>`count(*)` })
+      .from(schema.subjects)
+      .where(
+        and(
+          eq(schema.subjects.network, network),
+          eq(schema.subjects.kind, "program"),
+          gte(schema.subjects.firstSeenAt, start),
+          sql`(${schema.subjects.facts} ->> 'closedAt') is not null`,
+        ),
+      );
+    closedCount = Number(closedRows[0]?.n ?? 0);
+  }
+  lap("newPrograms");
 
   // upgrades: every program whose code changed inside the window, however long
   // it has been on record. Dated by lastEventAt (falling back to firstSeenAt for
   // rows predating that column) — see the note above the deploy scan.
   // One row per upgraded program rather than a count: the sBPF panel needs each
   // one's version and when its code changed.
-  const upgradeRows = await db
-    .select({
-      at: sql<string>`coalesce(${schema.subjects.lastEventAt}, ${schema.subjects.firstSeenAt})`,
-      sbpf: sql<number | null>`(${schema.subjects.profile} ->> 'sbpfVersion')::int`,
-      verified: schema.subjects.verified,
-      idlPresent: schema.subjects.idlPresent,
-      // only the three keys securityTxtSource reads, not the whole facts blob
-      sec: sql<{ hasSecurityTxt?: boolean; securityTxt?: unknown; pmpSecurity?: unknown }>`jsonb_build_object(
-        'hasSecurityTxt', ${schema.subjects.facts} -> 'hasSecurityTxt',
-        'securityTxt', ${schema.subjects.facts} -> 'securityTxt',
-        'pmpSecurity', ${schema.subjects.facts} -> 'pmpSecurity')`,
-    })
-    .from(schema.subjects)
-    .where(
-      and(
-        eq(schema.subjects.network, network),
-        eq(schema.subjects.kind, "program"),
-        eq(schema.subjects.deployType, "upgrade"),
-        sql`coalesce(${schema.subjects.lastEventAt}, ${schema.subjects.firstSeenAt}) >= ${start.toISOString()}::timestamptz`,
-        live,
-      ),
-    );
+  const upgradeRows =
+    (await unpackedUpgrades(network, start).catch((err) => {
+      logger.warn({ err: String(err), network }, "funnel: unpacked upgrade read failed, reading key by key");
+      return null;
+    })) ?? (await upgradesKeyByKey(network, start, live));
   const upgrades = upgradeRows.length;
-
-  // the closed tail, counted on its own now that the scan above excludes it
-  const closedRows = await db
-    .select({ n: sql<number>`count(*)` })
-    .from(schema.subjects)
-    .where(
-      and(
-        eq(schema.subjects.network, network),
-        eq(schema.subjects.kind, "program"),
-        gte(schema.subjects.firstSeenAt, start),
-        sql`(${schema.subjects.facts} ->> 'closedAt') is not null`,
-      ),
-    );
+  lap("upgrades");
 
   const uniqueSha = new Set<string>();
   // binaries already counted toward byIntegration (see the loop below)
@@ -315,7 +348,7 @@ export async function computeWindowFunnel(
   // already on record (band=clone) is the same program redeployed under a fresh
   // id: the sniper-bot signature. `pumpfun` is the subset wired to Pump.fun;
   // `closed` is the tail that already reclaimed its rent.
-  const churn = { redeploys: 0, pumpfun: 0, closed: Number(closedRows[0]?.n ?? 0) };
+  const churn = { redeploys: 0, pumpfun: 0, closed: closedCount };
   const fwEarly: Record<string, number> = {};
   const fwLate: Record<string, number> = {};
   let earlyTotal = 0;
@@ -407,7 +440,7 @@ export async function computeWindowFunnel(
     ...subs
       .filter((s) => s.deployType !== "upgrade")
       .map((s) => ({ key: sbpfOf(s.profile?.sbpfVersion), t: s.firstSeenAt?.getTime() ?? 0 })),
-    ...upgradeRows.map((r) => ({ key: sbpfOf(r.sbpf), t: new Date(r.at).getTime() })),
+    ...upgradeRows.map((r) => ({ key: sbpfOf(r.sbpf), t: r.atMs })),
   ];
   const sbpfAll: Record<string, number> = {};
   const sbpfEarly: Record<string, number> = {};
@@ -450,6 +483,8 @@ export async function computeWindowFunnel(
     allThree: shipped.filter((x) => x.idl && x.sec && x.verified).length,
   };
 
+  lap("breakdowns");
+
   // Deploy/upgrade volume for the chart. Grouped BY NETWORK rather than
   // filtered to one: the chart plots mainnet and devnet side by side so the two
   // clusters' volumes are comparable at a glance, while every other panel on
@@ -486,6 +521,7 @@ export async function computeWindowFunnel(
     )
     .groupBy(bucket, schema.events.network)
     .orderBy(bucket);
+  lap("volume");
   const toPoint = (r: (typeof volRows)[number]) => ({
     t: Math.floor(new Date(r.bucket).getTime() / 1000),
     count: Number(r.n),
@@ -535,6 +571,9 @@ export async function computeWindowFunnel(
         }));
     }
   }
+
+  lap("archive");
+  logger.info({ network, windowHours, slim, unpacked: unpacked != null, ...stages }, "funnel: stages");
 
   const raw = deploys + upgrades;
 
@@ -643,4 +682,191 @@ export async function snapshotFunnel(date: string, network: Network = "mainnet")
 function dayBounds(date: string): { start: Date; end: Date } {
   const start = new Date(`${date}T00:00:00.000Z`);
   return { start, end: new Date(start.getTime() + 86_400_000) };
+}
+
+// ---------------------------------------------------------------------------
+// Reading only the keys the stats need out of profile and facts. Each stored
+// blob is compressed, and Postgres decompresses it again for every `->` that
+// touches it: six keys from facts meant six decompressions of the same value
+// per row, which is most of what made the 90d+ counts take minutes.
+// jsonb_to_record unpacks each blob once and hands back all the keys.
+// A JSON null comes back as SQL null, the same as `->>` gave the filters.
+// ---------------------------------------------------------------------------
+
+type UnpackedRow = {
+  sha256: string | null;
+  novelty_band: string | null;
+  category: string | null;
+  name: string | null;
+  repo_url: string | null;
+  authority_class: string | null;
+  verified: boolean;
+  idl_present: boolean;
+  entity_key: string | null;
+  deployer_funding_source: string | null;
+  deploy_type: string | null;
+  first_seen_ms: number | null;
+  has_profile: boolean;
+  framework: unknown;
+  anchor_line: unknown;
+  integrations: unknown;
+  capabilities: unknown;
+  sbpf: unknown;
+  closed: boolean;
+  source_framework: unknown;
+  build_machine: unknown;
+  has_security_txt: unknown;
+  security_txt: unknown;
+  pmp_security: unknown;
+};
+
+/** New programs since `start`, closed ones included and counted apart. */
+async function unpackedSubjects(network: Network, start: Date): Promise<{ subs: SubjectLite[]; closed: number }> {
+  const rows = (await db.execute(sql`
+    select s.sha256, s.novelty_band, s.category, s.name, s.repo_url, s.authority_class,
+      s.verified, s.idl_present, s.entity_key, s.deployer_funding_source, s.deploy_type,
+      (extract(epoch from s.first_seen_at) * 1000)::float8 as first_seen_ms,
+      s.profile is not null as has_profile,
+      p.framework, p.anchor -> 'line' as anchor_line, p.integrations, p.capabilities,
+      p."sbpfVersion" as sbpf,
+      f."closedAt" is not null as closed,
+      f."sourceFramework" as source_framework, f."buildMachine" as build_machine,
+      f."hasSecurityTxt" as has_security_txt, f."securityTxt" as security_txt,
+      f."pmpSecurity" as pmp_security
+    from subjects s
+    left join lateral jsonb_to_record(s.profile) as p(
+      framework jsonb, anchor jsonb, integrations jsonb, capabilities jsonb, "sbpfVersion" jsonb
+    ) on true
+    left join lateral jsonb_to_record(s.facts) as f(
+      "closedAt" jsonb, "sourceFramework" jsonb, "buildMachine" jsonb,
+      "hasSecurityTxt" jsonb, "securityTxt" jsonb, "pmpSecurity" jsonb
+    ) on true
+    where s.network = ${network} and s.kind = 'program'
+      and s.first_seen_at >= ${start.toISOString()}::timestamptz
+  `)) as unknown as UnpackedRow[];
+  let closed = 0;
+  const subs: SubjectLite[] = [];
+  for (const r of rows) {
+    if (r.closed) {
+      closed++;
+      continue;
+    }
+    subs.push({
+      sha256: r.sha256,
+      noveltyBand: r.novelty_band,
+      category: r.category,
+      name: r.name,
+      repoUrl: r.repo_url,
+      authorityClass: r.authority_class,
+      verified: r.verified,
+      idlPresent: r.idl_present,
+      entityKey: r.entity_key,
+      deployerFundingSource: r.deployer_funding_source,
+      deployType: r.deploy_type,
+      firstSeenAt: r.first_seen_ms == null ? null : new Date(r.first_seen_ms),
+      profile: r.has_profile
+        ? ({
+            framework: r.framework,
+            anchor: { line: r.anchor_line },
+            integrations: r.integrations,
+            capabilities: r.capabilities,
+            sbpfVersion: r.sbpf,
+          } as unknown as ProgramProfile)
+        : null,
+      facts: {
+        sourceFramework: r.source_framework,
+        buildMachine: r.build_machine,
+        hasSecurityTxt: r.has_security_txt,
+        securityTxt: r.security_txt,
+        pmpSecurity: r.pmp_security,
+      },
+    });
+  }
+  return { subs, closed };
+}
+
+type UpgradeRow = {
+  atMs: number;
+  sbpf: number | null;
+  verified: boolean;
+  idlPresent: boolean;
+  sec: { hasSecurityTxt?: boolean; securityTxt?: unknown; pmpSecurity?: unknown };
+};
+
+/** Live programs whose code changed since `start`, facts unpacked once. */
+async function unpackedUpgrades(network: Network, start: Date): Promise<UpgradeRow[]> {
+  const rows = (await db.execute(sql`
+    select (extract(epoch from coalesce(s.last_event_at, s.first_seen_at)) * 1000)::float8 as at_ms,
+      (s.profile ->> 'sbpfVersion')::int as sbpf, s.verified, s.idl_present,
+      f."hasSecurityTxt" as has_security_txt, f."securityTxt" as security_txt,
+      f."pmpSecurity" as pmp_security
+    from subjects s
+    left join lateral jsonb_to_record(s.facts) as f(
+      "closedAt" jsonb, "hasSecurityTxt" jsonb, "securityTxt" jsonb, "pmpSecurity" jsonb
+    ) on true
+    where s.network = ${network} and s.kind = 'program' and s.deploy_type = 'upgrade'
+      and coalesce(s.last_event_at, s.first_seen_at) >= ${start.toISOString()}::timestamptz
+      and f."closedAt" is null
+  `)) as unknown as {
+    at_ms: number;
+    sbpf: number | null;
+    verified: boolean;
+    idl_present: boolean;
+    has_security_txt: boolean | undefined;
+    security_txt: unknown;
+    pmp_security: unknown;
+  }[];
+  return rows.map((r) => ({
+    atMs: r.at_ms,
+    sbpf: r.sbpf,
+    verified: r.verified,
+    idlPresent: r.idl_present,
+    sec: { hasSecurityTxt: r.has_security_txt, securityTxt: r.security_txt, pmpSecurity: r.pmp_security },
+  }));
+}
+
+// The earlier per-key reads, kept as the fallback should a stored blob ever
+// not be a JSON object (jsonb_to_record refuses those).
+
+function slimProfile() {
+  return sql<ProgramProfile | null>`case when ${schema.subjects.profile} is null then null else jsonb_build_object(
+    'framework', ${schema.subjects.profile} -> 'framework',
+    'anchor', jsonb_build_object('line', ${schema.subjects.profile} -> 'anchor' -> 'line'),
+    'integrations', ${schema.subjects.profile} -> 'integrations',
+    'capabilities', ${schema.subjects.profile} -> 'capabilities',
+    'sbpfVersion', ${schema.subjects.profile} -> 'sbpfVersion') end`;
+}
+
+function slimFacts() {
+  return sql<Record<string, unknown> | null>`case when ${schema.subjects.facts} is null then null else jsonb_build_object(
+    'sourceFramework', ${schema.subjects.facts} -> 'sourceFramework',
+    'buildMachine', ${schema.subjects.facts} -> 'buildMachine',
+    'hasSecurityTxt', ${schema.subjects.facts} -> 'hasSecurityTxt',
+    'securityTxt', ${schema.subjects.facts} -> 'securityTxt',
+    'pmpSecurity', ${schema.subjects.facts} -> 'pmpSecurity') end`;
+}
+
+async function upgradesKeyByKey(network: Network, start: Date, live: SQL): Promise<UpgradeRow[]> {
+  const rows = await db
+    .select({
+      at: sql<string>`coalesce(${schema.subjects.lastEventAt}, ${schema.subjects.firstSeenAt})`,
+      sbpf: sql<number | null>`(${schema.subjects.profile} ->> 'sbpfVersion')::int`,
+      verified: schema.subjects.verified,
+      idlPresent: schema.subjects.idlPresent,
+      sec: sql<UpgradeRow["sec"]>`jsonb_build_object(
+        'hasSecurityTxt', ${schema.subjects.facts} -> 'hasSecurityTxt',
+        'securityTxt', ${schema.subjects.facts} -> 'securityTxt',
+        'pmpSecurity', ${schema.subjects.facts} -> 'pmpSecurity')`,
+    })
+    .from(schema.subjects)
+    .where(
+      and(
+        eq(schema.subjects.network, network),
+        eq(schema.subjects.kind, "program"),
+        eq(schema.subjects.deployType, "upgrade"),
+        sql`coalesce(${schema.subjects.lastEventAt}, ${schema.subjects.firstSeenAt}) >= ${start.toISOString()}::timestamptz`,
+        live,
+      ),
+    );
+  return rows.map((r) => ({ ...r, atMs: new Date(r.at).getTime() }));
 }
