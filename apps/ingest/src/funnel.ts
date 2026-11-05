@@ -1,5 +1,13 @@
 import { and, eq, gte, inArray, lt, sql } from "drizzle-orm";
-import { db, schema, securityTxtSource, type ApiFunnel, type Network, type ProgramProfile } from "@onrecord/core";
+import {
+  db,
+  loadHistoryStatsDaily,
+  schema,
+  securityTxtSource,
+  type ApiFunnel,
+  type Network,
+  type ProgramProfile,
+} from "@onrecord/core";
 
 // ---------------------------------------------------------------------------
 // Funnel / Program Stats (SPEC §1, §6). A windowed view over the loader stream:
@@ -15,11 +23,21 @@ export function todayKey(): string {
   return new Date().toISOString().slice(0, 10);
 }
 
-const WINDOW_HOURS: Record<string, number> = { "24h": 24, "48h": 48, "7d": 168, "30d": 720 };
+const WINDOW_HOURS: Record<string, number> = {
+  "24h": 24,
+  "48h": 48,
+  "7d": 168,
+  "30d": 720,
+  "90d": 2160,
+  "1y": 8760,
+};
 // "all" = effectively unbounded (10y) so the funnel counts everything on record.
 const ALL_HOURS = 24 * 3650;
+/** Up to this many hours the chart gets the 30-day hourly series; beyond it,
+ *  one point per UTC day over the whole window. */
+const HOURLY_MAX_HOURS = 720;
 
-/** Map the web's window key ("24h".."30d", "all") to hours; default 48h. */
+/** Map the web's window key ("24h".."1y", "all") to hours; default 48h. */
 export function windowHoursFor(key: string | undefined): number {
   if (key === "all") return ALL_HOURS;
   return WINDOW_HOURS[key ?? ""] ?? 48;
@@ -66,8 +84,34 @@ export async function computeWindowFunnel(
   network: Network = "mainnet",
 ): Promise<ApiFunnel> {
   const now = Date.now();
-  const start = new Date(now - windowHours * HOUR);
-  const midMs = now - (windowHours / 2) * HOUR;
+  const windowStart = new Date(now - windowHours * HOUR);
+
+  // When each cluster's record actually begins — the first row we ever WROTE,
+  // not the earliest block time (genesis deploys reach back years). Anything
+  // left of this is either absent or came from a one-off backfill, which can
+  // only recover programs whose ProgramData still points at that old slot, so
+  // it systematically undercounts. The chart marks it rather than letting the
+  // run-up read as a surge in deploys. Derived, never hardcoded: devnet has its
+  // own start, and a re-seeded database would move it.
+  const startRows = await db
+    .select({ network: schema.events.network, at: sql<string | null>`min(${schema.events.createdAt})` })
+    .from(schema.events)
+    .groupBy(schema.events.network);
+  const recordStartOf = (n: Network): Date | null => {
+    const at = startRows.find((r) => r.network === n)?.at;
+    return at ? new Date(at) : null;
+  };
+  const recordStart = recordStartOf(network);
+  const recordStartsAt = recordStart ? recordStart.toISOString() : null;
+
+  // Every count below the chart starts where the record does when the window
+  // reaches back past it (90d+ windows): before the record start the only rows
+  // are seeds and backfills, which would read as a trickle of "new deploys"
+  // from years ago. The response says where they start (statsFrom), and the
+  // page says so whenever that is not the window start.
+  const statsClipped = recordStart != null && recordStart > windowStart;
+  const start = statsClipped ? recordStart! : windowStart;
+  const midMs = (start.getTime() + now) / 2;
 
   // event time = actual deploy time when we have it, else insert time (backfill).
   // Raw-SQL comparisons must bind an ISO string + ::timestamptz cast — the driver
@@ -93,7 +137,21 @@ export async function computeWindowFunnel(
   // exceed it.
   const live = sql`(${schema.subjects.facts} ->> 'closedAt') is null`;
 
-  // new-program subjects in the window carry everything the breakdowns need
+  // new-program subjects in the window carry everything the breakdowns need —
+  // only the keys of profile and facts read below, built in SQL, so a 1y window
+  // does not pull every row's whole facts blob into memory
+  const slimProfile = sql<ProgramProfile | null>`case when ${schema.subjects.profile} is null then null else jsonb_build_object(
+    'framework', ${schema.subjects.profile} -> 'framework',
+    'anchor', jsonb_build_object('line', ${schema.subjects.profile} -> 'anchor' -> 'line'),
+    'integrations', ${schema.subjects.profile} -> 'integrations',
+    'capabilities', ${schema.subjects.profile} -> 'capabilities',
+    'sbpfVersion', ${schema.subjects.profile} -> 'sbpfVersion') end`;
+  const slimFacts = sql<Record<string, unknown> | null>`case when ${schema.subjects.facts} is null then null else jsonb_build_object(
+    'sourceFramework', ${schema.subjects.facts} -> 'sourceFramework',
+    'buildMachine', ${schema.subjects.facts} -> 'buildMachine',
+    'hasSecurityTxt', ${schema.subjects.facts} -> 'hasSecurityTxt',
+    'securityTxt', ${schema.subjects.facts} -> 'securityTxt',
+    'pmpSecurity', ${schema.subjects.facts} -> 'pmpSecurity') end`;
   const subs = (await db
     .select({
       sha256: schema.subjects.sha256,
@@ -106,10 +164,10 @@ export async function computeWindowFunnel(
       idlPresent: schema.subjects.idlPresent,
       entityKey: schema.subjects.entityKey,
       deployerFundingSource: schema.subjects.deployerFundingSource,
-      profile: schema.subjects.profile,
+      profile: slimProfile,
       deployType: schema.subjects.deployType,
       firstSeenAt: schema.subjects.firstSeenAt,
-      facts: schema.subjects.facts,
+      facts: slimFacts,
     })
     .from(schema.subjects)
     .where(
@@ -320,12 +378,24 @@ export async function computeWindowFunnel(
     allThree: shipped.filter((x) => x.idl && x.sec && x.verified).length,
   };
 
-  // 30-day hourly deploy/upgrade volume for the chart. Grouped BY NETWORK
-  // rather than filtered to one: the chart plots mainnet and devnet side by
-  // side so the two clusters' volumes are comparable at a glance, while every
-  // other panel on the page stays scoped to `network`. One scan serves both.
-  const volStart = new Date(now - 30 * 24 * HOUR);
-  const bucket = sql<string>`to_char(date_trunc('hour', ${eventTime}), 'YYYY-MM-DD"T"HH24:00:00"Z"')`;
+  // Deploy/upgrade volume for the chart. Grouped BY NETWORK rather than
+  // filtered to one: the chart plots mainnet and devnet side by side so the two
+  // clusters' volumes are comparable at a glance, while every other panel on
+  // the page stays scoped to `network`. One scan serves both.
+  //   up to 30d: the 30-day hourly series, as before
+  //   beyond:    one point per UTC day over the window, each cluster from its
+  //              own record start — the backfilled rows before it are the
+  //              undercount the chart marks, and on mainnet the archive below
+  //              stands in for them
+  const daily = windowHours > HOURLY_MAX_HOURS;
+  const volStart = daily ? windowStart : new Date(now - 30 * 24 * HOUR);
+  const bucket = daily
+    ? sql<string>`to_char(date_trunc('day', ${eventTime} at time zone 'UTC'), 'YYYY-MM-DD"T00:00:00Z"')`
+    : sql<string>`to_char(date_trunc('hour', ${eventTime}), 'YYYY-MM-DD"T"HH24:00:00"Z"')`;
+  const fromRecordStart = (n: Network) => {
+    const at = recordStartOf(n);
+    return at ? sql`(${schema.events.network} = ${n} and ${eventTimeGte(at)})` : sql`false`;
+  };
   const volRows = await db
     .select({
       bucket,
@@ -335,7 +405,13 @@ export async function computeWindowFunnel(
       upgrades: sql<number>`count(*) filter (where ${schema.events.type} = 'upgrade')`,
     })
     .from(schema.events)
-    .where(and(inArray(schema.events.type, ["deploy", "upgrade"]), eventTimeGte(volStart)))
+    .where(
+      and(
+        inArray(schema.events.type, ["deploy", "upgrade"]),
+        eventTimeGte(volStart),
+        daily ? sql`(${fromRecordStart("mainnet")} or ${fromRecordStart("devnet")})` : undefined,
+      ),
+    )
     .groupBy(bucket, schema.events.network)
     .orderBy(bucket);
   const toPoint = (r: (typeof volRows)[number]) => ({
@@ -352,18 +428,41 @@ export async function computeWindowFunnel(
     devnet: volRows.filter((r) => r.network === "devnet").map(toPoint),
   };
 
-  // When this cluster's record actually begins — the first row we ever WROTE,
-  // not the earliest block time (genesis deploys reach back years). Anything
-  // left of this is either absent or came from a one-off backfill, which can
-  // only recover programs whose ProgramData still points at that old slot, so
-  // it systematically undercounts. The chart marks it rather than letting the
-  // run-up read as a surge in deploys. Derived, never hardcoded: devnet has its
-  // own start, and a re-seeded database would move it.
-  const startRows = await db
-    .select({ at: sql<string | null>`min(${schema.events.createdAt})` })
-    .from(schema.events)
-    .where(eq(schema.events.network, network));
-  const recordStartsAt = startRows[0]?.at ? new Date(startRows[0].at).toISOString() : null;
+  // Mainnet days before the record starts, from the Old Faithful archive: every
+  // deploy and upgrade instruction the loaders executed, 2023-07-18 to the end
+  // of its range. Counted the same way as the live events (one per instruction),
+  // though the archive also sees programs deployed and closed between polls.
+  // Only days strictly before the record-start day, so no day mixes the two.
+  let archiveVolume: ApiFunnel["archiveVolume"];
+  let archiveCoverage: ApiFunnel["archiveCoverage"] = null;
+  if (daily && network === "mainnet" && recordStart) {
+    const days = await loadHistoryStatsDaily();
+    if (days && days.length > 0) {
+      const firstDay = windowStart.toISOString().slice(0, 10);
+      const seamDay = recordStart.toISOString().slice(0, 10);
+      const byDay = new Map<string, { deploys: number; upgrades: number }>();
+      let from = days[0]!.day;
+      let to = days[0]!.day;
+      for (const d of days) {
+        if (d.day < from) from = d.day;
+        if (d.day > to) to = d.day;
+        if (d.day < firstDay || d.day >= seamDay) continue;
+        const cur = byDay.get(d.day) ?? { deploys: 0, upgrades: 0 };
+        cur.deploys += d.deploys;
+        cur.upgrades += d.upgrades;
+        byDay.set(d.day, cur);
+      }
+      archiveCoverage = { from, to };
+      archiveVolume = [...byDay.entries()]
+        .sort((x, y) => (x[0] < y[0] ? -1 : 1))
+        .map(([day, v]) => ({
+          t: Math.floor(Date.parse(`${day}T00:00:00Z`) / 1000),
+          count: v.deploys + v.upgrades,
+          deploys: v.deploys,
+          upgrades: v.upgrades,
+        }));
+    }
+  }
 
   const raw = deploys + upgrades;
 
@@ -386,7 +485,16 @@ export async function computeWindowFunnel(
     buildMachine,
     volume,
     volumeByNetwork,
+    volumeBucket: daily ? "day" : "hour",
     recordStartsAt,
+    recordStartsAtByNetwork: {
+      mainnet: recordStartOf("mainnet")?.toISOString() ?? null,
+      devnet: recordStartOf("devnet")?.toISOString() ?? null,
+    },
+    statsFrom: start.toISOString(),
+    statsClipped,
+    archiveVolume,
+    archiveCoverage,
     identity,
     lineage,
     control,

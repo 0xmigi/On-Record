@@ -152,3 +152,35 @@ export async function loadHistory(programId: string): Promise<ProgramHistory | n
     return null;
   }
 }
+
+/** One UTC day of the archive's loader activity, per framework. */
+export type HistoryStatsDay = {
+  day: string; // YYYY-MM-DD
+  framework: string;
+  deploys: number;
+  upgrades: number;
+  closes: number;
+  deploys_closed_again: number;
+};
+
+let statsCache: { at: number; days: HistoryStatsDay[] | null } | null = null;
+
+/** The archive's per-day counts (v1/stats-daily.json, ~375 KB): every deploy
+ *  and upgrade instruction on mainnet from 2023-07-18 to the end of its range.
+ *  Cached like the shards. Null when history is not configured or the read
+ *  fails — the stats chart then shows the live record alone. */
+export async function loadHistoryStatsDaily(): Promise<HistoryStatsDay[] | null> {
+  if (!historyConfigured()) return null;
+  if (statsCache && Date.now() - statsCache.at < CACHE_TTL_MS) return statsCache.days;
+  try {
+    const raw = await r2Get("v1/stats-daily.json");
+    const days = raw ? (JSON.parse(raw.toString("utf8")) as { days: HistoryStatsDay[] }).days : null;
+    statsCache = { at: Date.now(), days };
+    return days;
+  } catch (err) {
+    logger.warn({ err: String(err) }, "history stats read failed");
+    // retry in five minutes rather than on every request
+    statsCache = { at: Date.now() - CACHE_TTL_MS + 5 * 60_000, days: null };
+    return null;
+  }
+}

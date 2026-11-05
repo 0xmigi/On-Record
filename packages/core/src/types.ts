@@ -678,6 +678,24 @@ export interface ApiFunnel {
   /** ISO — when this cluster's record actually begins (first row written).
    *  Everything left of it is absent or backfilled, and undercounts. */
   recordStartsAt?: string | null;
+  /** each cluster's record start, so the chart can blank a cluster's bars
+   *  before its own record begins */
+  recordStartsAtByNetwork?: Partial<Record<Network, string | null>>;
+  /** "hour" for windows up to 30d (the 30-day hourly series), "day" beyond:
+   *  one point per UTC day over the window, each cluster from its own record
+   *  start onward */
+  volumeBucket?: "hour" | "day";
+  /** ISO — where the header counts and every panel below the chart actually
+   *  start: the window start, or the record start when the window reaches
+   *  back past it. */
+  statsFrom?: string;
+  /** true when statsFrom is the record start rather than the window start */
+  statsClipped?: boolean;
+  /** mainnet days before the record starts, from the Old Faithful archive
+   *  (every deploy and upgrade instruction). Only on day-bucket windows. */
+  archiveVolume?: { t: number; count: number; deploys: number; upgrades: number }[];
+  /** the archive's full span (UTC days, inclusive) when archiveVolume is sent */
+  archiveCoverage?: { from: string; to: string } | null;
   identity?: { named: number; withRepo: number; opaque: number };
   lineage?: { novel: number; variant: number; fork: number };
   control?: { mutable: number; frozen: number; verified: number };
