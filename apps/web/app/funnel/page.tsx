@@ -9,22 +9,36 @@ import { categoryLabel, fetchFunnel, type Category, type Network, type RadarWind
 import { groupNum, utcStamp } from "@/lib/format";
 import { buildRadarHref, STATS_FRAMEWORK_FACET, type RadarParams } from "@/lib/radar-url";
 
-const WINDOW_KEYS = ["24h", "48h", "7d", "30d"] as const;
+const WINDOW_KEYS = ["24h", "48h", "7d", "30d", "90d", "1y", "all"] as const;
 type WindowKey = (typeof WINDOW_KEYS)[number];
-const WINDOW_SECS: Record<WindowKey, number> = {
+/** Windows that reach back past the live record. They need an API that says
+ *  where its counts start (statsFrom); an older build would answer 90d/1y with
+ *  48h and "all" with every seeded program, so the page refuses to read them. */
+const LONG_WINDOWS: readonly WindowKey[] = ["90d", "1y", "all"];
+/** Devnet has no archive, so its 1y would be the same months as "all". */
+const DEVNET_WINDOWS: readonly WindowKey[] = ["24h", "48h", "7d", "30d", "90d", "all"];
+const WINDOW_SECS: Record<Exclude<WindowKey, "all">, number> = {
   "24h": 86_400,
   "48h": 172_800,
   "7d": 604_800,
   "30d": 2_592_000,
+  "90d": 7_776_000,
+  "1y": 31_536_000,
 };
 
-// each stats window → the radar window covering the same trailing hours
-const RADAR_WINDOW: Record<WindowKey, RadarWindow> = {
+// each stats window → the radar window covering the same trailing hours.
+// None covers 90d or 1y, and the radar's "all" includes programs seeded from
+// before the record, so long windows link nowhere rather than to a list that
+// disagrees with the figure.
+const RADAR_WINDOW: Partial<Record<WindowKey, RadarWindow>> = {
   "24h": "today",
   "48h": "48h",
   "7d": "week",
   "30d": "month",
 };
+
+const dayLabel = (iso: string) =>
+  new Date(iso).toLocaleDateString("en-US", { day: "numeric", month: "short", year: "numeric", timeZone: "UTC" });
 
 export const metadata: Metadata = {
   title: "Program Stats",
@@ -102,7 +116,7 @@ export default async function FunnelPage({
   searchParams: Promise<{ window?: string; network?: string }>;
 }) {
   const sp = await searchParams;
-  const win: WindowKey = (WINDOW_KEYS as readonly string[]).includes(sp.window ?? "")
+  let win: WindowKey = (WINDOW_KEYS as readonly string[]).includes(sp.window ?? "")
     ? (sp.window as WindowKey)
     : "48h";
   // Cluster is sticky the same way the radar's is: explicit ?network= wins, else
@@ -118,12 +132,31 @@ export default async function FunnelPage({
         : cookieNetwork === "devnet"
           ? "devnet"
           : "mainnet";
-  const funnel = await fetchFunnel(win, network);
+  const windows = network === "devnet" ? DEVNET_WINDOWS : WINDOW_KEYS;
+  if (!windows.includes(win)) win = "all";
+  const fetched = await fetchFunnel(win, network);
+  const funnel = fetched && (!LONG_WINDOWS.includes(win) || fetched.statsFrom) ? fetched : null;
+
+  const windowNav = (
+    <nav className="chart-windows" aria-label="Time window">
+      {windows.map((k) => (
+        <Link
+          key={k}
+          href={`/funnel?window=${k}${network === "devnet" ? "&network=devnet" : ""}`}
+          className={`chart-win-btn${win === k ? " active" : ""}`}
+          aria-current={win === k ? "page" : undefined}
+        >
+          {k}
+        </Link>
+      ))}
+    </nav>
+  );
 
   if (!funnel) {
     return (
       <>
         <h1 className="funnel-title">Program Stats</h1>
+        {windowNav}
         <div className="empty-state" style={{ marginTop: 24 }}>
           <Mark size={22} />
           <p className="empty-title">No data</p>
@@ -134,7 +167,13 @@ export default async function FunnelPage({
   }
 
   const raw = funnel.raw;
-  const aggH = funnel.aggregateWindowHours ?? 48;
+  // the chart's span: "all" runs from the archive's first day (mainnet) or the
+  // record start (devnet) to now
+  const chartFrom = win === "all" ? (funnel.archiveCoverage?.from ?? funnel.statsFrom ?? null) : null;
+  const windowSecs =
+    win === "all"
+      ? Math.max(86_400, Math.round((Date.now() - (chartFrom ? Date.parse(chartFrom) : Date.now())) / 1000))
+      : WINDOW_SECS[win];
   const sorted = (m?: Record<string, number>): [string, number][] =>
     Object.entries(m ?? {}).sort((a, b) => b[1] - a[1]);
 
@@ -142,7 +181,7 @@ export default async function FunnelPage({
   // this window, this cluster, narrowed by the one facet the figure counts.
   const radarBase: RadarParams = {
     type: "deploy",
-    window: RADAR_WINDOW[win],
+    window: RADAR_WINDOW[win] ?? "all",
     network,
     verification: null,
     sectxt: false,
@@ -154,24 +193,14 @@ export default async function FunnelPage({
     framework: null,
     size: null,
   };
-  const radar = (patch: Partial<RadarParams>) => buildRadarHref({ ...radarBase, ...patch });
+  const radar = (patch: Partial<RadarParams>): string | undefined =>
+    RADAR_WINDOW[win] ? buildRadarHref({ ...radarBase, ...patch }) : undefined;
 
   return (
     <>
       <h1 className="funnel-title">Program Stats</h1>
 
-      <nav className="chart-windows" aria-label="Time window">
-        {WINDOW_KEYS.map((k) => (
-          <Link
-            key={k}
-            href={`/funnel?window=${k}${network === "devnet" ? "&network=devnet" : ""}`}
-            className={`chart-win-btn${win === k ? " active" : ""}`}
-            aria-current={win === k ? "page" : undefined}
-          >
-            {k}
-          </Link>
-        ))}
-      </nav>
+      {windowNav}
 
       <div className="stream-status">
         <span className="stream-dot" aria-hidden="true" />
@@ -179,7 +208,25 @@ export default async function FunnelPage({
             are never read as a mainnet+devnet total */}
         <span className="stream-status-strong">{network}</span>
         <span className="stream-sep">·</span>
-        <span className="stream-status-strong">last {aggH}h</span>
+        <span className="stream-status-strong">{win === "all" ? "all" : `last ${win}`}</span>
+        {/* the window reaches back past the live record: say where the counts
+            actually start, so a 1y figure is never read as a year */}
+        {funnel.statsClipped && funnel.statsFrom ? (
+          <>
+            <span className="stream-sep">·</span>
+            <span className="stream-cap">since {dayLabel(funnel.statsFrom)}</span>
+            <span
+              className="info-dot"
+              data-tip={`On Record's ${network} record starts ${dayLabel(funnel.statsFrom)}. The counts here and every panel below the chart start there.${
+                funnel.archiveVolume?.length ? " The chart before it is the Old Faithful archive." : ""
+              }`}
+              tabIndex={0}
+              role="note"
+            >
+              i
+            </span>
+          </>
+        ) : null}
         <span className="stream-sep">·</span>
         <span>{groupNum(raw)} programs</span>
         <span className="stream-sep">·</span>
@@ -198,7 +245,7 @@ export default async function FunnelPage({
         <section className="stat-card stat-card-wide">
           <SectionHeader
             title="Deploys over time"
-            info="New deploys and upgrades, stacked, per time bucket. This chart is the one panel that shows both clusters — mainnet solid, devnet faded, on a shared scale — so their volumes are comparable; every other panel on this page is the selected cluster only. The window buttons above drive the whole page. Older buckets undercount — the loader only stores each program's last deploy slot."
+            info="New deploys and upgrades, stacked, per time bucket. This chart is the one panel that shows both clusters — mainnet solid, devnet faded, on a shared scale — so their volumes are comparable; every other panel on this page is the selected cluster only. The window buttons above drive the whole page. Older buckets undercount — the loader only stores each program's last deploy slot. On 90d and longer: one bar per day or week, and on mainnet the bars before the record starts come from the Old Faithful archive, every deploy and upgrade instruction since 18 Jul 2023."
           />
           {/* the comparison is mainnet-vs-devnet, so only pair them up while
               viewing mainnet — in devnet mode devnet is already the main series */}
@@ -207,7 +254,9 @@ export default async function FunnelPage({
             devnetVolume={network === "mainnet" ? funnel.volumeByNetwork?.devnet : undefined}
             networkLabel={network}
             recordStartsAt={funnel.recordStartsAt}
-            windowSecs={WINDOW_SECS[win]}
+            devnetStartsAt={network === "mainnet" ? funnel.recordStartsAtByNetwork?.devnet : undefined}
+            archiveVolume={funnel.archiveVolume}
+            windowSecs={windowSecs}
           />
         </section>
       ) : null}
@@ -237,8 +286,9 @@ export default async function FunnelPage({
                     </span>
                   </>
                 );
-                return facet ? (
-                  <Link className="trend-row is-link" href={radar({ framework: facet })} key={t.framework}>
+                const href = facet ? radar({ framework: facet }) : undefined;
+                return href ? (
+                  <Link className="trend-row is-link" href={href} key={t.framework}>
                     {cells}
                   </Link>
                 ) : (

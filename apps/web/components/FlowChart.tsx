@@ -26,7 +26,10 @@ interface Bucket {
   t: number; // bucket start, secs
   deploys: number;
   upgrades: number;
-  devnet: Series | null; // null = not comparing clusters
+  devnet: Series | null; // null = not comparing clusters, or before devnet's record
+  /** days in this bucket that came from the archive, and from the live record */
+  archiveDays: number;
+  liveDays: number;
 }
 
 const H = 220;
@@ -34,13 +37,19 @@ const PAD_L = 34; // y tick gutter
 const PAD_B = 18; // x label gutter
 const PAD_T = 6;
 
-/** bucket seconds per window: 24h→1h, 48h→2h, 7d→6h, 30d→1d */
+const DAY = 86_400;
+const WEEK = 7 * DAY;
+
+/** bucket seconds per window: 24h→1h, 48h→2h, 7d→6h, 30d/90d→1d, longer→1w */
 function bucketSecs(windowSecs: number): number {
   if (windowSecs <= 86_400) return 3_600;
   if (windowSecs <= 172_800) return 7_200;
   if (windowSecs <= 604_800) return 21_600;
-  return 86_400;
+  if (windowSecs <= 90 * DAY) return DAY;
+  return WEEK;
 }
+
+const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
 function niceMax(n: number): number {
   if (n <= 5) return 5;
@@ -65,6 +74,8 @@ export function FlowChart({
   devnetVolume,
   networkLabel = "mainnet",
   recordStartsAt,
+  devnetStartsAt,
+  archiveVolume,
   windowSecs,
 }: {
   volume: VolumePoint[];
@@ -72,6 +83,10 @@ export function FlowChart({
   networkLabel?: string;
   /** ISO — when the record begins. Bars left of it are backfill, not history. */
   recordStartsAt?: string | null;
+  /** ISO — devnet's own record start; devnet bars before it are left blank */
+  devnetStartsAt?: string | null;
+  /** daily points from the Old Faithful archive, before the record starts */
+  archiveVolume?: VolumePoint[];
   windowSecs: number;
 }) {
   const [hover, setHover] = useState<number | null>(null);
@@ -99,23 +114,35 @@ export function FlowChart({
     const bs = bucketSecs(windowSecs);
     const nowB = Math.floor(Date.now() / 1000 / bs) * bs;
     const startB = nowB - Math.ceil(windowSecs / bs) * bs + bs;
+    // a bucket that ends before devnet's record starts has no devnet figure
+    // at all — blank, not zero
+    const devStart = devnetStartsAt ? Date.parse(devnetStartsAt) / 1000 : -Infinity;
     const map = new Map<number, Bucket>();
     for (let t = startB; t <= nowB; t += bs)
-      map.set(t, { t, deploys: 0, upgrades: 0, devnet: comparing ? { deploys: 0, upgrades: 0 } : null });
-    const add = (pts: VolumePoint[], into: (b: Bucket) => Series | Bucket | null) => {
+      map.set(t, {
+        t,
+        deploys: 0,
+        upgrades: 0,
+        devnet: comparing && t + bs > devStart ? { deploys: 0, upgrades: 0 } : null,
+        archiveDays: 0,
+        liveDays: 0,
+      });
+    const add = (pts: VolumePoint[], into: (b: Bucket) => Series | Bucket | null, tally?: (b: Bucket) => void) => {
       for (const p of pts) {
         const b = map.get(Math.floor(p.t / bs) * bs);
         if (!b) continue;
+        tally?.(b);
         const target = into(b);
         if (!target) continue;
         target.deploys += p.deploys ?? p.count;
         target.upgrades += p.upgrades ?? 0;
       }
     };
-    add(volume, (b) => b);
+    add(volume, (b) => b, (b) => b.liveDays++);
+    if (archiveVolume) add(archiveVolume, (b) => b, (b) => b.archiveDays++);
     if (comparing) add(devnetVolume!, (b) => b.devnet);
     return [...map.values()];
-  }, [volume, devnetVolume, comparing, windowSecs]);
+  }, [volume, devnetVolume, archiveVolume, devnetStartsAt, comparing, windowSecs]);
 
   const n = buckets.length;
   // one scale across both clusters — a shared axis is the whole point of
@@ -138,18 +165,25 @@ export function FlowChart({
   const y = (v: number) => plotH * (v / yMax);
   const baseY = PAD_T + plotH;
 
+  // Day and week buckets are UTC days, so they are labelled in UTC — a local
+  // label would put a UTC midnight on the previous evening's date.
+  const fmtDay = (d: Date, year: boolean) =>
+    `${d.getUTCMonth() + 1}/${d.getUTCDate()}${year ? `/${String(d.getUTCFullYear()).slice(2)}` : ""}`;
   const fmtBucket = (t: number): string => {
     const d = new Date(t * 1000);
     const hh = String(d.getHours()).padStart(2, "0");
     if (windowSecs <= 604_800) return `${d.getMonth() + 1}/${d.getDate()} ${hh}:00`;
-    return `${d.getMonth() + 1}/${d.getDate()}`;
+    if (bucketSecs(windowSecs) === WEEK) return `week of ${fmtDay(d, true)}`;
+    return fmtDay(d, windowSecs > 30 * DAY);
   };
   const fmtTick = (t: number): string => {
     const d = new Date(t * 1000);
     const hh = String(d.getHours()).padStart(2, "0");
     if (windowSecs <= 86_400) return `${hh}:00`;
     if (windowSecs <= 172_800) return `${d.getMonth() + 1}/${d.getDate()} ${hh}:00`;
-    return `${d.getMonth() + 1}/${d.getDate()}`;
+    if (windowSecs <= 604_800) return `${d.getMonth() + 1}/${d.getDate()}`;
+    if (bucketSecs(windowSecs) === WEEK) return `${MONTHS[d.getUTCMonth()]} '${String(d.getUTCFullYear()).slice(2)}`;
+    return fmtDay(d, false);
   };
 
   // Where the record begins, in plot coordinates. Bars to the LEFT of it are
@@ -248,6 +282,12 @@ export function FlowChart({
                 height={plotH}
               />
               <line className="flow-record-line" x1={markerX} x2={markerX} y1={PAD_T} y2={baseY} />
+              {/* left of the line is the archive, when there is one to show */}
+              {archiveVolume?.length && markerX - PAD_L > 60 ? (
+                <text className="flow-record-label" x={PAD_L + 6} y={PAD_T + 9}>
+                  archive
+                </text>
+              ) : null}
               <text
                 className="flow-record-label"
                 x={markerX + (markerFlip ? -6 : 6)}
@@ -319,6 +359,9 @@ export function FlowChart({
             }}
           >
             <span className="flow-tip-time">{fmtBucket(hovered.t)}</span>
+            {hovered.archiveDays > 0 ? (
+              <span className="flow-tip-net">{hovered.liveDays > 0 ? "archive + live" : "archive"}</span>
+            ) : null}
             {hasSplit ? (
               <>
                 {comparing ? <span className="flow-tip-net">{networkLabel}</span> : null}
@@ -330,6 +373,7 @@ export function FlowChart({
                   <span className="flow-swatch flow-swatch-upgrade" />
                   {hovered.upgrades} upgrades
                 </span>
+                {comparing && !hovered.devnet ? <span className="flow-tip-net">devnet not recorded yet</span> : null}
                 {comparing && hovered.devnet ? (
                   <>
                     <span className="flow-tip-net">devnet</span>

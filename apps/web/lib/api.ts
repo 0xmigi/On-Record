@@ -354,6 +354,18 @@ export interface ApiFunnel {
   // ISO — when this cluster's record begins; the chart marks it so the run-up
   // before it does not read as a surge. Absent on older API builds.
   recordStartsAt?: string | null;
+  // each cluster's record start (blanks devnet bars before devnet's own start)
+  recordStartsAtByNetwork?: Partial<Record<Network, string | null>>;
+  // "hour" up to 30d; "day" beyond (one point per UTC day). Absent = hour.
+  volumeBucket?: "hour" | "day";
+  // ISO — where the header counts and panels start: the window start, or the
+  // record start when the window reaches back past it. Absent on API builds
+  // predating 90d/1y/all, which those windows must not be read from.
+  statsFrom?: string;
+  statsClipped?: boolean;
+  // mainnet days before the record starts, from the Old Faithful archive
+  archiveVolume?: { t: number; count: number; deploys: number; upgrades: number }[];
+  archiveCoverage?: { from: string; to: string } | null;
   // per-vector aggregates across the window's new deploys
   identity?: { named: number; withRepo: number; opaque: number };
   lineage?: { novel: number; variant: number; fork: number };
