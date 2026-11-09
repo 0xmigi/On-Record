@@ -692,7 +692,7 @@ export function registerPublicRoutes(app: FastifyInstance): void {
   });
 
   // --- a program known only from the archive --------------------------------
-  // Deployed or closed since 2023-07-18 and never seen live (archive.ts). One
+  // Deployed or closed since 2022-03-25 and never seen live (archive.ts). One
   // index row plus one R2 read; 404 when the archive holds nothing for it.
   app.get<{ Params: { id: string } }>("/api/archive/:id", async (req, reply) => {
     if (!looksLikeProgramId(req.params.id)) return reply.code(400).send({ error: "not an address" });
@@ -878,7 +878,7 @@ export function registerPublicRoutes(app: FastifyInstance): void {
             truncated: false,
           };
         }
-        // not seen live — the archive may still hold it (deployed and closed since 2023)
+        // not seen live — the archive may still hold it (deployed and closed since 2022)
         return { items: [], query: raw, truncated: false, archived: await searchArchive(raw, 1) };
       }
 

@@ -166,7 +166,7 @@ export type HistoryStatsDay = {
 let statsCache: { at: number; days: HistoryStatsDay[] | null } | null = null;
 
 /** The archive's per-day counts (v1/stats-daily.json, ~375 KB): every deploy
- *  and upgrade instruction on mainnet from 2023-07-18 to the end of its range.
+ *  and upgrade instruction on mainnet from 2022-03-25 to the end of its range.
  *  Cached like the shards. Null when history is not configured or the read
  *  fails — the stats chart then shows the live record alone. */
 export async function loadHistoryStatsDaily(): Promise<HistoryStatsDay[] | null> {

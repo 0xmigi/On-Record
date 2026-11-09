@@ -537,7 +537,7 @@ export async function computeWindowFunnel(
   };
 
   // Mainnet days before the record starts, from the Old Faithful archive: every
-  // deploy and upgrade instruction the loaders executed, 2023-07-18 to the end
+  // deploy and upgrade instruction the loaders executed, 2022-03-25 to the end
   // of its range. Counted the same way as the live events (one per instruction),
   // though the archive also sees programs deployed and closed between polls.
   // Only days strictly before the record-start day, so no day mixes the two.

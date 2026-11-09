@@ -5,8 +5,8 @@ import { serializeEvent } from "./serialize.js";
 
 // ---------------------------------------------------------------------------
 // Programs known only from the archive — deployed, upgraded or closed since
-// 2023-07-18 but never seen live, so no `subjects` row. Most were closed again
-// (49,866 of 69,162 in the index). Search reads the small index table; a page
+// 2022-03-25 but never seen live, so no `subjects` row. Most were closed again
+// (52,890 of 75,145 in the index). Search reads the small index table; a page
 // reads the program's history from R2. Neither scans anything else.
 // ---------------------------------------------------------------------------
 

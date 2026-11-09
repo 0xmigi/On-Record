@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { ProgramRow } from "@/components/ProgramRow";
-import { fetchSearch, looksLikeProgramId, type ApiArchivedProgram, type SearchSort } from "@/lib/api";
+import { ARCHIVE_FROM, fetchSearch, looksLikeProgramId, type ApiArchivedProgram, type SearchSort } from "@/lib/api";
 import { dayStamp, truncateAddress } from "@/lib/format";
 
 export const metadata: Metadata = {
@@ -96,13 +96,13 @@ export default async function SearchPage({
 }
 
 /** Programs never seen live that the archive holds — deployed, upgraded or
- *  closed since 18 Jul 2023. A plain list: there is no score or activity to
+ *  closed since ARCHIVE_FROM. A plain list: there is no score or activity to
  *  rank them by, only what the loader record says. */
 function ArchivedResults({ items }: { items: ApiArchivedProgram[] }) {
   return (
     <section className="archive-results">
       <p className="saved-hint">
-        {items.length} from the archive · never seen live, read from the Old Faithful record since 18 Jul 2023
+        {items.length} from the archive · never seen live, read from the Old Faithful record since {ARCHIVE_FROM}
       </p>
       <ol className="radar-list">
         {items.map((p) => (

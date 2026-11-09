@@ -5,7 +5,7 @@ import { Mark } from "@/components/Mark";
 import { SectionHeader } from "@/components/SectionHeader";
 import { FlowChart } from "@/components/FlowChart";
 import { BotExplainer } from "@/components/BotExplainer";
-import { categoryLabel, fetchFunnel, type Category, type Network, type RadarWindow } from "@/lib/api";
+import { ARCHIVE_FROM, categoryLabel, fetchFunnel, type Category, type Network, type RadarWindow } from "@/lib/api";
 import { groupNum, utcStamp } from "@/lib/format";
 import { buildRadarHref, STATS_FRAMEWORK_FACET, type RadarParams } from "@/lib/radar-url";
 
@@ -245,7 +245,7 @@ export default async function FunnelPage({
         <section className="stat-card stat-card-wide">
           <SectionHeader
             title="Deploys over time"
-            info="New deploys and upgrades, stacked, per time bucket. This chart is the one panel that shows both clusters — mainnet solid, devnet faded, on a shared scale — so their volumes are comparable; every other panel on this page is the selected cluster only. The window buttons above drive the whole page. Older buckets undercount — the loader only stores each program's last deploy slot. On 90d and longer: one bar per day or week, and on mainnet the bars before the record starts come from the Old Faithful archive, every deploy and upgrade instruction since 18 Jul 2023."
+            info={`New deploys and upgrades, stacked, per time bucket. This chart is the one panel that shows both clusters — mainnet solid, devnet faded, on a shared scale — so their volumes are comparable; every other panel on this page is the selected cluster only. The window buttons above drive the whole page. Older buckets undercount — the loader only stores each program's last deploy slot. On 90d and longer: one bar per day or week, and on mainnet the bars before the record starts come from the Old Faithful archive, every deploy and upgrade instruction since ${ARCHIVE_FROM}.`}
           />
           {/* the comparison is mainnet-vs-devnet, so only pair them up while
               viewing mainnet — in devnet mode devnet is already the main series */}

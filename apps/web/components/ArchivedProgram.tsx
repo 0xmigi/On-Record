@@ -3,7 +3,7 @@ import { BackToRadar } from "@/components/BackToRadar";
 import { CopyAddress } from "@/components/CopyAddress";
 import { RecordTable } from "@/components/RecordTable";
 import { SectionHeader } from "@/components/SectionHeader";
-import { builderHref, orbAddress, type ApiArchiveDetail, type VersionTrail } from "@/lib/api";
+import { ARCHIVE_FROM, ARCHIVE_TO, builderHref, orbAddress, type ApiArchiveDetail, type VersionTrail } from "@/lib/api";
 import { dayStamp, truncateAddress } from "@/lib/format";
 
 /**
@@ -90,7 +90,7 @@ export function ArchivedProgram({ program, trail }: { program: ApiArchiveDetail;
 
       <SectionHeader
         title="Deploys and upgrades"
-        info="Every loader event on this program id from 18 Jul 2023 to 13 Oct 2026, read from the Old Faithful archive, each with the transaction that proves it. On Record never saw this program live, so nothing after that range is on record."
+        info={`Every loader event on this program id from ${ARCHIVE_FROM} to ${ARCHIVE_TO}, read from the Old Faithful archive, each with the transaction that proves it. On Record never saw this program live, so nothing after that range is on record.`}
       />
       <RecordTable events={program.events} trail={trail} />
     </>

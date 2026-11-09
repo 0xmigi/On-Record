@@ -563,8 +563,13 @@ export interface ApiSearchResult {
   archived?: ApiArchivedProgram[];
 }
 
-/** A program known only from the archive: deployed, upgraded or closed since
- *  2023-07-18 (the Old Faithful backfill), never seen by the live poller. */
+/** The span the Old Faithful backfill covers on mainnet (epochs 293–1056) —
+ *  the one place the UI states it. */
+export const ARCHIVE_FROM = "25 Mar 2022";
+export const ARCHIVE_TO = "13 Oct 2026";
+
+/** A program known only from the archive: deployed, upgraded or closed inside
+ *  the Old Faithful backfill's range (ARCHIVE_FROM), never seen by the live poller. */
 export interface ApiArchivedProgram {
   id: string;
   name: string | null;
