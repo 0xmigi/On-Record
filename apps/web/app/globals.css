@@ -2857,9 +2857,22 @@ a.copy-addr-text:hover {
   color: var(--accent);
 }
 
+/* an authority handoff is context on the record, not a code change: quieter
+   than the deploys and upgrades the table is about */
 .evt-set_authority {
-  border-color: var(--ink);
-  color: var(--ink);
+  border-color: var(--border);
+  color: var(--ink-faint);
+  font-weight: 500;
+}
+.trail-row-set_authority td {
+  color: var(--ink-faint);
+}
+.trail-handoff {
+  display: block;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-size: 12px;
 }
 
 .evt-close {
@@ -5741,11 +5754,10 @@ a.copy-addr-text:hover {
     margin-bottom: 6px;
     font-size: 13px;
   }
-  /* event tag, age, slot and receipt collapse into one quiet line */
+  /* event tag, age and receipt collapse into one quiet line */
   .trail-table td:nth-child(1),
   .trail-table td:nth-child(2),
-  .trail-table td:nth-child(3),
-  .trail-table td:nth-child(5) {
+  .trail-table td:nth-child(4) {
     flex: 0 0 auto;
     width: auto;
     font-size: 11px;
@@ -5755,8 +5767,7 @@ a.copy-addr-text:hover {
     flex: 0 0 100%;
   }
   .trail-table td:nth-child(2)::before,
-  .trail-table td:nth-child(3)::before,
-  .trail-table td:nth-child(5)::before {
+  .trail-table td:nth-child(4)::before {
     content: "·";
     padding: 0 6px;
     color: var(--border-strong);

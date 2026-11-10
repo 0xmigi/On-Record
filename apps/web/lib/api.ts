@@ -733,6 +733,12 @@ export interface ApiVersionVerification {
   repoUrl?: string;
   commit?: string;
   verifiedAt?: string | null;
+  /** who uploaded the recipe behind a verified build */
+  signedBy?: string;
+  /** Live version only: OtterSec holds a verified build of exactly these
+   *  bytes, but not signed by the current upgrade authority, so explorers read
+   *  not verified. Typically an authority handoff after the build was verified. */
+  reproduced?: { signedBy?: string; repoUrl?: string; commit?: string; verifiedAt?: string | null };
 }
 
 export interface ApiVerification {

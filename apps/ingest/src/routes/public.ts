@@ -41,6 +41,7 @@ import { edgesFor } from "../refs.js";
 import { composeReply } from "../reply.js";
 import { renderCardFor } from "../card.js";
 import { getVerificationView } from "../verification-view.js";
+import { isSyntheticSignature } from "../timeline.js";
 import type { BreakSummary } from "../verification-stamps.js";
 import {
   isStale,
@@ -382,6 +383,43 @@ export function registerPublicRoutes(app: FastifyInstance): void {
       .orderBy(desc(schema.events.slot))
       .limit(50);
 
+    // Authority handoffs. SetAuthority doesn't move the ProgramData deploy
+    // slot, so the poller never writes them to `events`; the loader record has
+    // each one, decoded, with the key before and after. They belong on the
+    // timeline: a handoff is what turns a verified program "not verified" in
+    // explorers (OtterSec's status only counts the current authority's
+    // signature), and without the row the page can't say where it happened.
+    // The same read gives the code changes' own transactions: a poller
+    // sighting has no signature (it watched account state), but the loader
+    // record holds the deploy or upgrade at that slot, so the row can still
+    // link to its receipt.
+    const loaderRows = await db
+      .select({
+        kind: schema.loaderTxns.kind,
+        network: schema.loaderTxns.network,
+        signature: schema.loaderTxns.signature,
+        outerIndex: schema.loaderTxns.outerIndex,
+        innerIndex: schema.loaderTxns.innerIndex,
+        slot: schema.loaderTxns.slot,
+        blockTime: schema.loaderTxns.blockTime,
+        authorityBefore: schema.loaderTxns.authorityBefore,
+        authorityAfter: schema.loaderTxns.authorityAfter,
+      })
+      .from(schema.loaderTxns)
+      .where(
+        and(
+          eq(schema.loaderTxns.programId, row.id),
+          inArray(schema.loaderTxns.kind, ["deploy", "upgrade", "set_authority", "set_authority_checked"]),
+          eq(schema.loaderTxns.failed, false),
+        ),
+      )
+      .orderBy(desc(schema.loaderTxns.slot))
+      .limit(200);
+    const handoffs = loaderRows.filter((r) => r.kind === "set_authority" || r.kind === "set_authority_checked");
+    const codeTxAt = new Map(
+      loaderRows.filter((r) => r.kind === "deploy" || r.kind === "upgrade").map((r) => [`${r.network}:${r.slot}`, r.signature]),
+    );
+
     // nearest bytecode relatives (size ±20% prefilter, TLSH distance)
     const neighbors: { programId: string; distance: number; name: string | null }[] = [];
     let distanceOf = new Map<string, number>();
@@ -484,19 +522,49 @@ export function registerPublicRoutes(app: FastifyInstance): void {
       ? (timeline.history.loader.find((l) => l.signature === timeline.history?.first_deploy?.signature)?.fee_payer ?? null)
       : null;
 
+    // handoffs the history doesn't already carry
+    const seen = new Set(timeline.events.map((e) => `${e.network}:${e.signature}`));
+    const handoffEvents = handoffs
+      // one row per transaction: a wrapped call can log the same handoff twice
+      .filter((h) => {
+        const k = `${h.network}:${h.signature}`;
+        if (seen.has(k)) return false;
+        seen.add(k);
+        return true;
+      })
+      .map((h) => ({
+        id: `handoff:${h.signature}:${h.outerIndex}:${h.innerIndex}`,
+        network: h.network as Network,
+        type: "set_authority" as const,
+        signature: h.signature,
+        slot: h.slot,
+        blockTime: h.blockTime?.toISOString() ?? null,
+        programId: row.id,
+        authorityBefore: h.authorityBefore,
+        authorityAfter: h.authorityAfter,
+        sha256After: null,
+      }));
+
+    const detail = serializeProgramDetail(
+      row,
+      events,
+      neighbors,
+      clusterSize,
+      nearestMeta,
+      sourceKin,
+      references,
+      similarityTo,
+      computeRank,
+    );
     return {
-      ...serializeProgramDetail(
-        row,
-        events,
-        neighbors,
-        clusterSize,
-        nearestMeta,
-        sourceKin,
-        references,
-        similarityTo,
-        computeRank,
-      ),
-      events: timeline.events.map(serializeEvent),
+      ...detail,
+      events: [
+        ...timeline.events.map(serializeEvent).map((e) => {
+          const sig = isSyntheticSignature(e.signature) ? codeTxAt.get(`${e.network}:${e.slot}`) : undefined;
+          return sig ? { ...e, signature: sig } : e;
+        }),
+        ...handoffEvents,
+      ].sort((a, b) => b.slot - a.slot),
       deployer: genesis?.fee_payer ?? historyDeployer,
     };
   });

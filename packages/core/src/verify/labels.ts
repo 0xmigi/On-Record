@@ -25,6 +25,14 @@ export interface VersionLabel {
   repoUrl?: string;
   commit?: string;
   verifiedAt?: string | null;
+  /** Who uploaded the recipe behind a verified build. */
+  signedBy?: string;
+  /** Current version only, when it reads not verified although OtterSec holds
+   *  a build of exactly these bytes, marked verified when it ran. The official
+   *  status only counts a recipe signed by the CURRENT upgrade authority, so
+   *  handing the authority to a new key (a multisig, say) turns a verified
+   *  program "not verified" without a byte changing. This is that record. */
+  reproduced?: { signedBy?: string; repoUrl?: string; commit?: string; verifiedAt?: string | null };
 }
 
 /** Hash → label. Hashes with nothing to say are absent. */
@@ -58,6 +66,7 @@ export function versionLabels(report: Report, now = Date.now()): VersionLabels {
       repoUrl: rec.repo_url,
       commit: rec.commit,
       verifiedAt: rec.last_verified_at,
+      ...(rec.signer ? { signedBy: rec.signer } : {}),
     };
   }
 
@@ -81,8 +90,14 @@ export function versionLabels(report: Report, now = Date.now()): VersionLabels {
   const fresh = p.deployedAt !== null && now - Date.parse(p.deployedAt) < PENDING_WINDOW_MS;
   // pending only for a team that has verified before: an upload exists
   const pending = fresh && report.uploads.length > 0 && (problem === "stale" || problem === "never-built");
+  // a build of these exact bytes that OtterSec did mark verified, just not
+  // under the current authority's signature
+  const match = labels[p.hash]?.state === "verified" ? labels[p.hash] : undefined;
+  const reproduced = match
+    ? { signedBy: match.signedBy, repoUrl: match.repoUrl, commit: match.commit, verifiedAt: match.verifiedAt }
+    : undefined;
   labels[p.hash] = pending
     ? { state: "pending", reason: "upgraded in the last day, not re-verified yet" }
-    : { state: "not-verified", reason: problem ? REASONS[problem] : undefined };
+    : { state: "not-verified", reason: problem ? REASONS[problem] : undefined, ...(reproduced ? { reproduced } : {}) };
   return labels;
 }

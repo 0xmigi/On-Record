@@ -1,7 +1,9 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import {
+  builderHref,
   orbTx,
   type ApiProgramDetail,
   type ApiRawEvent,
@@ -37,7 +39,7 @@ export type Trail = VersionTrail;
 const EVENT_LABELS: Record<ApiRawEvent["type"], string> = {
   deploy: "DEPLOY",
   upgrade: "UPGRADE",
-  set_authority: "SET AUTHORITY",
+  set_authority: "HANDOFF",
   close: "CLOSE",
 };
 
@@ -216,11 +218,67 @@ function VerifyCell({ label, rebuilt }: { label?: ApiVersionVerification; rebuil
   );
 }
 
+/** An authority handoff: who held upgrade rights before and after. A key the
+ *  page knows more about (the current multisig) is named, the rest truncated. */
+function HandoffCell({ ev, names }: { ev: ApiRawEvent; names?: Record<string, string> }) {
+  const who = (a: string) => (
+    <Link className="receipt-link" prefetch={false} href={builderHref(a, ev.network)}>
+      {names?.[a] ?? truncateAddress(a)}
+    </Link>
+  );
+  return (
+    <span className="cell-dim trail-handoff">
+      {ev.authorityBefore ? who(ev.authorityBefore) : "unknown"} → {ev.authorityAfter ? who(ev.authorityAfter) : "nobody (made immutable)"}
+    </span>
+  );
+}
+
+const short = (a?: string) => (a ? truncateAddress(a) : "the previous key");
+const fromRepo = (r: NonNullable<ApiVersionVerification["reproduced"]>) =>
+  r.commit ? `${repoName(r.repoUrl)} at ${r.commit.slice(0, 7)}` : (repoName(r.repoUrl) ?? "the published source");
+
+/** The version was verified while its uploader held upgrade rights. */
+function HeldCell({ r }: { r: NonNullable<ApiVersionVerification["reproduced"]> }) {
+  return (
+    <span
+      className="vfy vfy-yes tip vfy-tip"
+      data-tip={`OtterSec rebuilt ${fromRepo(r)} and got exactly these bytes${r.verifiedAt ? ` (${r.verifiedAt.slice(0, 16).replace("T", " ")} UTC)` : ""}. The build was signed by ${short(r.signedBy)}, which held upgrade rights at the time.`}
+      tabIndex={0}
+      role="note"
+    >
+      ✓ verified
+    </span>
+  );
+}
+
+/** The handoff after which explorers stopped showing it verified. */
+function LostCell({
+  r,
+  to,
+  names,
+}: {
+  r: NonNullable<ApiVersionVerification["reproduced"]>;
+  to: string | null;
+  names?: Record<string, string>;
+}) {
+  return (
+    <span
+      className="vfy vfy-no tip vfy-tip"
+      data-tip={`Verification lost here. OtterSec's status only counts a build signed by the current upgrade authority, and ${to ? (names?.[to] ? `the ${names[to]} vault (${truncateAddress(to)})` : truncateAddress(to)) : "the new authority"} hasn't signed one. The code didn't change: it still matches ${fromRepo(r)}.`}
+      tabIndex={0}
+      role="note"
+    >
+      ✗ lost here
+    </span>
+  );
+}
+
 export function RecordTable({
   events,
   trail,
   verification,
   rebuilt,
+  names,
 }: {
   events: ApiProgramDetail["events"];
   trail: Trail;
@@ -228,6 +286,8 @@ export function RecordTable({
   verification?: Record<string, ApiVersionVerification> | null;
   /** On Record's byte-for-byte rebuild: the hash it reproduced, and "repo at commit" */
   rebuilt?: { hash: string; from: string } | null;
+  /** address → a name the page already knows (the current multisig) */
+  names?: Record<string, string>;
 }) {
   const [open, setOpen] = useState<Set<string>>(new Set());
   const toggle = (id: string) =>
@@ -246,10 +306,23 @@ export function RecordTable({
   // a version is keyed by the first slot that carried its bytes, so a later
   // redeploy of the same image has no entry of its own — it is still known
   const versionShas = new Set(Object.values(trail).map((v) => v.sha256));
-  // Last column, after Receipt: the phone layout picks cells by position, and
+  // Last column, after Transaction: the phone layout picks cells by position, and
   // everything it already styles keeps its index this way.
   const hasVerify = !!verification;
-  const cols = 4 + (hasTrail ? 1 : 0) + (hasVerify ? 1 : 0);
+  const cols = 3 + (hasTrail ? 1 : 0) + (hasVerify ? 1 : 0);
+
+  // Verified, then handed off. The live version reads not verified although
+  // OtterSec reproduced these exact bytes; if upgrade rights changed hands
+  // after the code did, that handoff is where it was lost. Say so on both rows
+  // instead of a bare "not verified" on the version the team did verify.
+  const byNewest = [...events].sort((a, b) => b.slot - a.slot);
+  const liveCode = byNewest.find((e) => e.network === "mainnet" && e.type !== "set_authority" && e.sha256After);
+  const liveLabel = liveCode && verification ? verification[liveCode.sha256After!] : undefined;
+  const reproduced = liveLabel?.state === "not-verified" ? liveLabel.reproduced : undefined;
+  const lostAt =
+    reproduced && liveCode
+      ? byNewest.find((e) => e.network === "mainnet" && e.type === "set_authority" && e.slot > liveCode.slot)
+      : undefined;
 
   return (
     <div className="table-scroll">
@@ -258,9 +331,8 @@ export function RecordTable({
           <tr>
             <th scope="col">Event</th>
             <th scope="col">When</th>
-            <th scope="col">Detail</th>
             {hasTrail ? <th scope="col">What changed</th> : null}
-            <th scope="col">Receipt</th>
+            <th scope="col">Transaction</th>
             {hasVerify ? (
               <th scope="col">
                 <span
@@ -287,10 +359,22 @@ export function RecordTable({
                 className={`trail-row-${ev.type}${isOpen ? " trail-row-open" : ""}`}
               >
                 <td>
-                  <span className={`evt-tag evt-${ev.type}`}>{EVENT_LABELS[ev.type]}</span>
+                  {ev.type === "set_authority" ? (
+                    <span
+                      className="evt-tag evt-set_authority"
+                      title={
+                        ev.authorityAfter
+                          ? "The upgrade authority was handed to a new key. The code didn't change."
+                          : "The upgrade authority was removed. Nobody can change this program again."
+                      }
+                    >
+                      {ev.authorityAfter ? "HANDOFF" : "FROZEN"}
+                    </span>
+                  ) : (
+                    <span className={`evt-tag evt-${ev.type}`}>{EVENT_LABELS[ev.type]}</span>
+                  )}
                 </td>
                 <td className="cell-dim">{ev.blockTime ? relativeTime(ev.blockTime) : "—"}</td>
-                <td>slot {ev.slot.toLocaleString("en-US")}</td>
                 {hasTrail ? (
                 <td className="trail-cell">
                   {!t && ev.type === "set_authority" ? (
@@ -365,7 +449,11 @@ export function RecordTable({
                   <td className="vfy-cell">
                     {/* verification is a mainnet fact: a devnet row with the
                         same bytes was never checked under that program id */}
-                    {ev.network === "mainnet" ? (
+                    {lostAt && ev.id === lostAt.id ? (
+                      <LostCell r={reproduced!} to={ev.authorityAfter} names={names} />
+                    ) : lostAt && ev.id === liveCode!.id ? (
+                      <HeldCell r={reproduced!} />
+                    ) : ev.network === "mainnet" ? (
                       <VerifyCell
                         label={ev.sha256After ? verification[ev.sha256After] : undefined}
                         rebuilt={rebuilt && ev.sha256After === rebuilt.hash ? rebuilt.from : null}

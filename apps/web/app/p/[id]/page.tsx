@@ -281,7 +281,15 @@ export default async function ProgramDossierPage({
   const trail = versionsBySlot(versions);
   // On Record's own rebuild from public source, shown only for programs without
   // an OtterSec verification and only while the deployed bytes are the ones rebuilt
-  const rebuild = program.verified ? null : rebuiltFromSource(id, verification?.current?.hash);
+  // Verified NOW, by the same live answer the record table uses. The stored
+  // flag only changes when a sweep re-reads it, so after an authority handoff
+  // it can still say verified while explorers (and the table) say not.
+  const liveV = verification?.current && verification.current.status !== "unreadable" ? verification.current : null;
+  const verifiedNow = liveV ? liveV.status === "verified" : !!program.verified;
+  // OtterSec reproduced the deployed bytes, but under a key that no longer
+  // holds upgrade rights
+  const handedOff = liveV && !verifiedNow ? verification?.versions?.[liveV.hash]?.reproduced ?? null : null;
+  const rebuild = verifiedNow ? null : rebuiltFromSource(id, verification?.current?.hash);
   const usage = storedUsage.usage;
   const usageSampledAt = storedUsage.sampledAt;
 
@@ -336,10 +344,10 @@ export default async function ProgramDossierPage({
   // byte-for-byte rebuild still answers it — the Mac and Linux compilers
   // produce different bytes, so the machine that reproduced the program is the
   // kind it was built on. OtterSec rebuilds in a Linux Docker image.
-  const otterMatched = !!(program.verified || vcur?.status === "verified");
+  const otterMatched = verifiedNow;
   const rebuiltOn: "mac" | "linux" | null = rebuild
     ? rebuild.machine === "ubuntu-latest" ? "linux" : "mac"
-    : otterMatched ? "linux" : null;
+    : otterMatched || handedOff ? "linux" : null;
   const machine = build?.download ?? build?.home ?? rebuiltOn;
   const machineFrom = build?.download
     ? `Read from the ${build.download === "mac" ? "macOS" : "Linux"} compiler paths in the binary: ${build.downloadEvidence ?? ""}…`
@@ -347,7 +355,7 @@ export default async function ProgramDossierPage({
       ? `Read from the ${build.home === "mac" ? "/Users/" : "/home/"} folder in the binary's dependency paths.`
       : rebuild
         ? `The binary has no build paths; On Record's rebuild on ${machineLabel(rebuild.machine)} matched it byte for byte.`
-        : otterMatched
+        : otterMatched || handedOff
           ? "The binary has no build paths; OtterSec's Linux Docker rebuild matched it byte for byte."
           : "The binary carries no build paths, and no rebuild has matched it.";
 
@@ -387,6 +395,8 @@ export default async function ProgramDossierPage({
       k: "verified",
       tip: otterMatched
         ? `OtterSec rebuilt the published source and got exactly the deployed bytes. ${NOT_ENDORSED}`
+        : handedOff
+          ? `OtterSec rebuilt ${handedOff.repoUrl?.match(/github\.com\/([^/]+\/[^/#?]+)/)?.[1] ?? handedOff.repoUrl ?? "the published source"}${handedOff.commit ? ` @ ${handedOff.commit.slice(0, 7)}` : ""} and got exactly the deployed bytes, signed by ${handedOff.signedBy ? truncateAddress(handedOff.signedBy) : "an earlier key"}. Upgrade rights have since moved to a key that hasn't signed it, so explorers show not verified. The record below shows where.`
         : rebuild
           ? `On Record rebuilt ${rebuild.repo.replace("https://github.com/", "")} @ ${rebuild.commit.slice(0, 7)} with Solana ${rebuild.solana} and got exactly the deployed bytes.${vcur && OTTER_SHORT[vcur.status] ? ` OtterSec: ${OTTER_SHORT[vcur.status]}` : ""} ${NOT_ENDORSED}`
           : !onMainnet
@@ -394,6 +404,8 @@ export default async function ProgramDossierPage({
             : (vcur?.diagnosis ?? "No verified build on record."),
       v: otterMatched ? (
         <span className="vfy-yes">✓ OtterSec</span>
+      ) : handedOff ? (
+        <span className="vfy-no">✗ lost at handoff</span>
       ) : rebuild ? (
         <Link className="vfy-or" href={`/p/${id}/rebuild`} prefetch={false}>
           ✓ On Record
@@ -784,6 +796,13 @@ export default async function ProgramDossierPage({
               events={mainnetTimeline}
               trail={trail}
               verification={verification?.versions}
+              names={
+                program.multisig && program.authority
+                  ? {
+                      [program.authority]: `Squads${program.multisig.threshold != null && program.multisig.members != null ? ` ${program.multisig.threshold} of ${program.multisig.members}` : ""}`,
+                    }
+                  : undefined
+              }
               rebuilt={
                 rebuild
                   ? { hash: rebuild.hash, from: `${rebuild.repo.replace("https://github.com/", "")} at ${rebuild.commit.slice(0, 7)}` }
@@ -995,7 +1014,7 @@ export default async function ProgramDossierPage({
               {program.name ?? (
                 <span className="dossier-title-unknown">Unidentified program</span>
               )}
-              {program.verified ? (
+              {verifiedNow ? (
                 <VerifiedBadge size={19} />
               ) : rebuild ? (
                 <Link
