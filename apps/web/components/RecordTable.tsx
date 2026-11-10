@@ -377,8 +377,8 @@ export function RecordTable({
                 <td className="cell-dim">{ev.blockTime ? relativeTime(ev.blockTime) : "—"}</td>
                 {hasTrail ? (
                 <td className="trail-cell">
-                  {!t && ev.type === "set_authority" ? (
-                    <span className="cell-dim">{ev.authorityAfter ? "Authority changed" : "Made immutable"}</span>
+                  {ev.type === "set_authority" ? (
+                    <HandoffCell ev={ev} names={names} />
                   ) : !t && ev.type === "close" ? (
                     <span className="cell-dim">Program closed</span>
                   ) : !t && ev.sha256After && versionShas.has(ev.sha256After) ? (
