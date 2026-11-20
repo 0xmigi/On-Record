@@ -958,53 +958,69 @@ export function registerPublicRoutes(app: FastifyInstance): void {
       // and the primary key, so a program deployed to both clusters is one row,
       // and the mainnet upsert overwrites `network`. Its devnet history rides
       // along as the incubation fact the dossier already backlinks.
-      const conditions = [eq(schema.subjects.kind, "program")];
-
-      const rank = sql<number>`case
+      //
+      // Every predicate here MUST be served by a trigram index (lower(name) and
+      // search_text, both gin_trgm_ops). One unindexed branch in an OR turns the
+      // whole query into a sequential scan: `lower(profile::text) like …` did
+      // exactly that, cast every program's profile to text on every keystroke,
+      // and pushed text searches past the web's 10 s timeout (20 Nov 2026).
+      // search_text already folds in repo, website, category, framework,
+      // integrations, capabilities, IDL instructions, security.txt and the
+      // binary strings (core/search.ts), so nothing findable was lost.
+      // Trigrams need 3 characters: a 2-character query matches names only.
+      const nameRank = sql<number>`case
         when lower(${schema.subjects.name}) = ${q} then 0
         when lower(${schema.subjects.name}) like ${q + "%"} then 1
         when lower(${schema.subjects.name}) like ${like} then 2
-        when lower(${schema.subjects.profile}::text) like ${like} then 3
-        when lower(${schema.subjects.repoUrl}) like ${like} then 4
-        when lower(${schema.subjects.id}) like ${q + "%"} then 5
-        else 6 end`;
+        else 3 end`;
       // mainnet outranks devnet within a match tier, regardless of which mode
       // you're browsing — a live program beats a rehearsal of one
       const clusterRank = sql<number>`case
         when ${schema.subjects.network} = 'mainnet' then 0 else 1 end`;
+      const textMatch =
+        raw.length >= 3
+          ? or(
+              sql`lower(${schema.subjects.name}) like ${like}`,
+              sql`${schema.subjects.searchText} like ${like}`,
+            )!
+          : sql`lower(${schema.subjects.name}) like ${like}`;
 
-      const rows = await db
+      // Match quality first, then mainnet over devnet, then the tiebreak.
+      //
+      // The tiebreak is what ?sort= switches, and it matters more than it
+      // looks: a broad query like "metadao" matches nothing by name, so
+      // every hit lands in the bytecode tier and the tiebreak becomes the
+      // whole ordering. Interest rank answers "what's worth seeing"; recency
+      // answers "what happened lately". Tiers stay above both either way, so
+      // searching a name never buries the program that owns it.
+      const textRows = await db
         .select()
         .from(schema.subjects)
-        .where(
-          and(
-            ...conditions,
-            or(
-              sql`lower(${schema.subjects.name}) like ${like}`,
-              sql`lower(${schema.subjects.repoUrl}) like ${like}`,
-              sql`lower(${schema.subjects.profile}::text) like ${like}`,
-              sql`${schema.subjects.category} like ${like}`,
-              sql`lower(${schema.subjects.id}) like ${q + "%"}`,
-              sql`${schema.subjects.searchText} like ${like}`,
-            )!,
-          ),
-        )
-        // Match quality first, then mainnet over devnet, then the tiebreak.
-        //
-        // The tiebreak is what ?sort= switches, and it matters more than it
-        // looks: a broad query like "metadao" matches nothing by name, so
-        // every hit lands in the bytecode tier and the tiebreak becomes the
-        // whole ordering. Interest rank answers "what's worth seeing"; recency
-        // answers "what happened lately". Tiers stay above both either way, so
-        // searching a name never buries the program that owns it.
+        .where(and(eq(schema.subjects.kind, "program"), textMatch))
         .orderBy(
-          rank,
+          nameRank,
           clusterRank,
           ...(sort === "recent"
             ? [sql`${schema.subjects.firstSeenAt} desc nulls last`]
             : [sql`${schema.subjects.noveltyScore} desc nulls last`, desc(schema.subjects.firstSeenAt)]),
         )
         .limit(limit + 1);
+
+      // A partial address ("SeamV2…") is a prefix of the primary key, matched
+      // case-sensitively as base58 is. Separate query, so it can't drag the
+      // text search back into a scan. Ranked after name hits, before text hits.
+      const idRows = /^[1-9A-HJ-NP-Za-km-z]{4,43}$/.test(raw)
+        ? await db
+            .select()
+            .from(schema.subjects)
+            .where(and(eq(schema.subjects.kind, "program"), sql`${schema.subjects.id} like ${escapeLike(raw) + "%"}`))
+            .limit(limit + 1)
+        : [];
+      const lowerName = (r: (typeof textRows)[number]): string => (r.name ?? "").toLowerCase();
+      const nameHits = textRows.filter((r) => lowerName(r).includes(raw.toLowerCase()));
+      const otherHits = textRows.filter((r) => !lowerName(r).includes(raw.toLowerCase()));
+      const seen = new Set<string>();
+      const rows = [...nameHits, ...idRows, ...otherHits].filter((r) => (seen.has(r.id) ? false : (seen.add(r.id), true)));
 
       const page = rows.slice(0, limit);
       const [sizes, nearest] = await Promise.all([
