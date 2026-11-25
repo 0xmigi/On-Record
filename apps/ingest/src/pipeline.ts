@@ -52,7 +52,7 @@ import { linkIncubation } from "./incubation.js";
 import { recordCounterpart } from "./counterpart.js";
 import { isSyntheticSignature, recordGenesisDeploy } from "./timeline.js";
 import { extendOnlyAt, loaderRecord } from "./loader-history.js";
-import { buildMachineOf } from "./buildclues.js";
+import { buildCratesOf, buildMachineOf } from "./buildclues.js";
 
 /** Bulk calls the live path may spend on one program's first walk: 5,000
  *  transactions, 500 credits. A ProgramData that busy is read oldest first and
@@ -503,6 +503,9 @@ async function upsertSubject(
       // the machine that compiled this version, from paths left in the bytes
       // (buildclues.ts); counted on the stats page
       ...(fp?.strings ? { buildMachine: buildMachineOf(fp.strings) } : {}),
+      // the Solana SDK / framework crate versions it was built against
+      // (buildclues.ts); counted on the stats page next to the build machine
+      ...(fp?.strings ? { buildCrates: buildCratesOf(fp.strings) } : {}),
       ...(md?.idlSource ? { idlSource: md.idlSource } : {}),
       ...(pmpLogo ? { logoUrl: pmpLogo } : {}),
       ...(md?.security ? { pmpSecurity: md.security } : {}),
@@ -843,7 +846,7 @@ function authorityScore(authorityClass: string | null): number {
     case "squads":
       return 1; // multisig
     case "none":
-      return 0.8; // immutable / frozen
+      return 0.8; // immutable
     case "program":
       return 0.6; // controlled by another program (governance-ish)
     case "hot_wallet":

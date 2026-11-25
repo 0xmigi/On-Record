@@ -173,12 +173,23 @@ type SubjectLite = {
  *  (source-framework.ts). Same precedence as the serializer: never relabel
  *  an Anchor binary from source. */
 function frameworkKey(s: SubjectLite): string {
-  const fw = s.profile?.framework ?? "unknown";
-  const source = (s.facts?.sourceFramework as { framework?: string | null } | undefined)?.framework;
+  return frameworkKeyOf(s.profile?.framework, s.profile?.anchor?.line, s.facts?.sourceFramework);
+}
+
+function frameworkKeyOf(framework: unknown, anchorLine: unknown, sourceFramework: unknown): string {
+  const fw = typeof framework === "string" ? framework : "unknown";
+  const source = (sourceFramework as { framework?: string | null } | null | undefined)?.framework;
   if (source && fw !== "anchor") return source;
-  if (fw === "anchor" && s.profile?.anchor?.line === "2.x") return "anchor v2";
+  if (fw === "anchor" && anchorLine === "2.x") return "anchor v2";
   return fw;
 }
+
+/** The sBPF panel compares the window's two halves only when nearly every
+ *  program in each half has its version read. Below this, the halves differ
+ *  mostly in how many were read: programs profiled before the version was
+ *  recorded cluster in the older half, and the arrows would show that, not a
+ *  shift between versions. */
+const SBPF_TREND_MIN_COVERAGE = 0.9;
 
 /** Shown even at zero, so the panel says "none this window" rather than
  *  leaving it unclear whether these are tracked at all. */
@@ -334,6 +345,10 @@ export async function computeWindowFunnel(
   let clones = 0;
   const byCategory: Record<string, number> = {};
   const byFramework: Record<string, number> = Object.fromEntries(ALWAYS_LISTED.map((k) => [k, 0]));
+  // framework counts per bucket: 2h up to 48h, 6h up to 7d, a day up to 90d,
+  // a week beyond — a few dozen points whatever the window
+  const fwBucketSecs = windowHours <= 48 ? 7_200 : windowHours <= 168 ? 21_600 : windowHours <= 2_160 ? 86_400 : 604_800;
+  const fwBuckets = new Map<number, Record<string, number>>();
   const byIntegration: Record<string, number> = {};
   const byCapability: Record<string, number> = {};
   const identity = { named: 0, withRepo: 0, opaque: 0 };
@@ -407,6 +422,12 @@ export async function computeWindowFunnel(
       if ((s.profile?.integrations ?? []).includes("Pump.fun")) churn.pumpfun++;
     }
     const t = s.firstSeenAt?.getTime() ?? 0;
+    if (t > 0) {
+      const b = Math.floor(t / 1000 / fwBucketSecs) * fwBucketSecs;
+      const row = fwBuckets.get(b) ?? {};
+      row[fw] = (row[fw] ?? 0) + 1;
+      fwBuckets.set(b, row);
+    }
     if (t >= midMs) {
       fwLate[fw] = (fwLate[fw] ?? 0) + 1;
       lateTotal++;
@@ -415,6 +436,14 @@ export async function computeWindowFunnel(
       earlyTotal++;
     }
   }
+
+  // The same programs as frameworkTrend, per time bucket, so the page can draw
+  // each framework's share over the window. Buckets with nothing in them are
+  // left out rather than sent as zeros.
+  const frameworkSeries = {
+    bucketSecs: fwBucketSecs,
+    points: [...fwBuckets.entries()].sort((a, b) => a[0] - b[0]).map(([t, counts]) => ({ t, counts })),
+  };
 
   const frameworkTrend = Object.keys(byFramework)
     .map((framework) => {
@@ -439,8 +468,8 @@ export async function computeWindowFunnel(
   const sbpfEvents = [
     ...subs
       .filter((s) => s.deployType !== "upgrade")
-      .map((s) => ({ key: sbpfOf(s.profile?.sbpfVersion), t: s.firstSeenAt?.getTime() ?? 0 })),
-    ...upgradeRows.map((r) => ({ key: sbpfOf(r.sbpf), t: r.atMs })),
+      .map((s) => ({ key: sbpfOf(s.profile?.sbpfVersion), t: s.firstSeenAt?.getTime() ?? 0, fw: frameworkKey(s) })),
+    ...upgradeRows.map((r) => ({ key: sbpfOf(r.sbpf), t: r.atMs, fw: r.fw })),
   ];
   const sbpfAll: Record<string, number> = {};
   const sbpfEarly: Record<string, number> = {};
@@ -457,13 +486,51 @@ export async function computeWindowFunnel(
       sbpfEarlyTotal++;
     }
   }
+  // Shares are of the programs whose version was read: "not read" says how
+  // many we lack, not a version anyone deployed, so it gets a count and no
+  // share. The halves are compared only when both are read nearly in full
+  // (SBPF_TREND_MIN_COVERAGE); otherwise every share is null and the page
+  // shows counts alone.
+  const earlyRead = sbpfEarlyTotal - (sbpfEarly["not read"] ?? 0);
+  const lateRead = sbpfLateTotal - (sbpfLate["not read"] ?? 0);
+  const sbpfTrendShown =
+    earlyRead > 0 &&
+    lateRead > 0 &&
+    earlyRead / sbpfEarlyTotal >= SBPF_TREND_MIN_COVERAGE &&
+    lateRead / sbpfLateTotal >= SBPF_TREND_MIN_COVERAGE;
   const SBPF_ORDER = ["v3", "v2", "v1", "v0", "other", "not read"];
   const sbpfTrend = SBPF_ORDER.filter((k) => k.startsWith("v") || sbpfAll[k])
     .map((version) => {
-      const earlyShare = sbpfEarlyTotal ? (sbpfEarly[version] ?? 0) / sbpfEarlyTotal : 0;
-      const lateShare = sbpfLateTotal ? (sbpfLate[version] ?? 0) / sbpfLateTotal : 0;
+      if (!sbpfTrendShown || version === "not read") {
+        return { version, current: sbpfAll[version] ?? 0, earlyShare: null, lateShare: null, delta: null };
+      }
+      const earlyShare = (sbpfEarly[version] ?? 0) / earlyRead;
+      const lateShare = (sbpfLate[version] ?? 0) / lateRead;
       return { version, current: sbpfAll[version] ?? 0, earlyShare, lateShare, delta: lateShare - earlyShare };
     });
+
+  // Upgrades by the version they shipped: a program upgraded in the window
+  // whose code still targets an older sBPF. Same rows as the radar's upgrade
+  // stream with ?sbpf=, so each figure links to the list it counts.
+  const sbpfUpgrades: Record<string, number> = {};
+  for (const r of upgradeRows) {
+    const k = sbpfOf(r.sbpf);
+    sbpfUpgrades[k] = (sbpfUpgrades[k] ?? 0) + 1;
+  }
+
+  // v3 share per framework, over the same deploys and upgrades, of the ones
+  // whose version was read.
+  const fwSbpf = new Map<string, { total: number; read: number; v3: number }>();
+  for (const e of sbpfEvents) {
+    const row = fwSbpf.get(e.fw) ?? { total: 0, read: 0, v3: 0 };
+    row.total++;
+    if (e.key !== "not read") row.read++;
+    if (e.key === "v3") row.v3++;
+    fwSbpf.set(e.fw, row);
+  }
+  const sbpfByFramework = [...fwSbpf.entries()]
+    .map(([framework, r]) => ({ framework, ...r }))
+    .sort((a, b) => b.total - a.total);
 
   // The three things a deployer publishes alongside the code: an IDL, a
   // security.txt (in the binary or the PMP account, as on the program page) and
@@ -472,8 +539,22 @@ export async function computeWindowFunnel(
   const shipped = [
     ...subs
       .filter((s) => s.deployType !== "upgrade")
-      .map((s) => ({ idl: s.idlPresent, sec: securityTxtSource(s.facts ?? {}) != null, verified: s.verified })),
-    ...upgradeRows.map((r) => ({ idl: r.idlPresent, sec: securityTxtSource(r.sec ?? {}) != null, verified: r.verified })),
+      .map((s) => ({
+        idl: s.idlPresent,
+        sec: securityTxtSource(s.facts ?? {}) != null,
+        verified: s.verified,
+        named: !!s.name,
+        repo: !!s.repoUrl,
+        auth: s.authorityClass,
+      })),
+    ...upgradeRows.map((r) => ({
+      idl: r.idlPresent,
+      sec: securityTxtSource(r.sec ?? {}) != null,
+      verified: r.verified,
+      named: !!r.name,
+      repo: !!r.repoUrl,
+      auth: r.authorityClass,
+    })),
   ];
   const disclosure = {
     total: shipped.length,
@@ -481,7 +562,76 @@ export async function computeWindowFunnel(
     securityTxt: shipped.filter((x) => x.sec).length,
     verified: shipped.filter((x) => x.verified).length,
     allThree: shipped.filter((x) => x.idl && x.sec && x.verified).length,
+    named: shipped.filter((x) => x.named).length,
+    withRepo: shipped.filter((x) => x.repo).length,
   };
+  // Who can change the code, over the same programs: immutable (no authority),
+  // a Squads multisig, another program (a PDA, e.g. governance), or one key.
+  // `unread` = no authority reading stored yet.
+  const authority = { immutable: 0, multisig: 0, program: 0, singleKey: 0, unread: 0 };
+  for (const x of shipped) {
+    if (x.auth === "none") authority.immutable++;
+    else if (x.auth === "squads") authority.multisig++;
+    else if (x.auth === "program") authority.program++;
+    else if (x.auth === "hot_wallet") authority.singleKey++;
+    else authority.unread++;
+  }
+
+  // Build setup: the Solana SDK, Anchor and Pinocchio versions each program was
+  // built against (crate paths left in its bytes, facts.buildCrates) and the
+  // machine that built it, each with how many of those programs have a
+  // verified build. Same set as disclosure. Programs without a stored reading
+  // are counted as unread, never guessed.
+  const built = [
+    ...subs
+      .filter((s) => s.deployType !== "upgrade")
+      .map((s) => ({ crates: s.facts?.buildCrates, machine: s.facts?.buildMachine, verified: s.verified })),
+    ...upgradeRows.map((r) => ({ crates: r.crates, machine: r.machine, verified: r.verified })),
+  ];
+  const majorMinor = (v: string) => v.split(".").slice(0, 2).join(".");
+  const tally = () => new Map<string, { total: number; verified: number }>();
+  const bump = (m: Map<string, { total: number; verified: number }>, k: string, verified: boolean) => {
+    const row = m.get(k) ?? { total: 0, verified: 0 };
+    row.total++;
+    if (verified) row.verified++;
+    m.set(k, row);
+  };
+  const sdk = tally();
+  const anchorV = tally();
+  const pinocchioV = tally();
+  const machineV = tally();
+  let cratesRead = 0;
+  for (const b of built) {
+    if (b.machine === "mac" || b.machine === "linux" || b.machine === "unknown") bump(machineV, b.machine, b.verified);
+    if (!b.crates || typeof b.crates !== "object") continue;
+    cratesRead++;
+    const c = b.crates as Record<string, string>;
+    // solana-program dates the SDK; past 2.0 it split into solana-* crates,
+    // and one of those stands in when the umbrella crate is absent
+    const sdkVersion =
+      c["solana-program"] ?? c["solana-sdk"] ?? Object.entries(c).find(([n]) => n.startsWith("solana-"))?.[1];
+    bump(sdk, sdkVersion ? majorMinor(sdkVersion) : "none found", b.verified);
+    if (c["anchor-lang"]) bump(anchorV, majorMinor(c["anchor-lang"]), b.verified);
+    if (c["pinocchio"]) bump(pinocchioV, majorMinor(c["pinocchio"]), b.verified);
+  }
+  const rowsOf = (m: Map<string, { total: number; verified: number }>) =>
+    [...m.entries()].map(([version, r]) => ({ version, ...r })).sort((a, b) => b.total - a.total);
+  const buildSetup = {
+    total: built.length,
+    cratesRead,
+    sdk: rowsOf(sdk),
+    anchor: rowsOf(anchorV),
+    pinocchio: rowsOf(pinocchioV),
+    machine: rowsOf(machineV),
+  };
+
+  // Lifecycle. Each is one aggregate in Postgres, so only a handful of numbers
+  // come back.
+  const lifecycle = await lifecycleOf(network, start, subs.length, closedCount).catch((err) => {
+    logger.warn({ err: String(err), network }, "funnel: lifecycle read failed");
+    return null;
+  });
+  const lostVerification = await lostVerificationOf(network, start).catch(() => null);
 
   lap("breakdowns");
 
@@ -612,8 +762,15 @@ export async function computeWindowFunnel(
     conviction,
     churn,
     frameworkTrend,
+    frameworkSeries,
     sbpfTrend,
+    sbpfUpgrades,
+    sbpfByFramework,
+    buildSetup,
     disclosure,
+    authority,
+    ...(lifecycle ? { lifecycle } : {}),
+    ...(lostVerification != null ? { lostVerification } : {}),
     updatedAt: new Date().toISOString(),
   };
 }
@@ -715,6 +872,7 @@ type UnpackedRow = {
   closed: boolean;
   source_framework: unknown;
   build_machine: unknown;
+  build_crates: unknown;
   has_security_txt: unknown;
   security_txt: unknown;
   pmp_security: unknown;
@@ -730,7 +888,7 @@ async function unpackedSubjects(network: Network, start: Date): Promise<{ subs: 
       p.framework, p.anchor -> 'line' as anchor_line, p.integrations, p.capabilities,
       p."sbpfVersion" as sbpf,
       f."closedAt" is not null as closed,
-      f."sourceFramework" as source_framework, f."buildMachine" as build_machine,
+      f."sourceFramework" as source_framework, f."buildMachine" as build_machine, f."buildCrates" as build_crates,
       f."hasSecurityTxt" as has_security_txt, f."securityTxt" as security_txt,
       f."pmpSecurity" as pmp_security
     from subjects s
@@ -738,7 +896,7 @@ async function unpackedSubjects(network: Network, start: Date): Promise<{ subs: 
       framework jsonb, anchor jsonb, integrations jsonb, capabilities jsonb, "sbpfVersion" jsonb
     ) on true
     left join lateral jsonb_to_record(s.facts) as f(
-      "closedAt" jsonb, "sourceFramework" jsonb, "buildMachine" jsonb,
+      "closedAt" jsonb, "sourceFramework" jsonb, "buildMachine" jsonb, "buildCrates" jsonb,
       "hasSecurityTxt" jsonb, "securityTxt" jsonb, "pmpSecurity" jsonb
     ) on true
     where s.network = ${network} and s.kind = 'program'
@@ -776,6 +934,7 @@ async function unpackedSubjects(network: Network, start: Date): Promise<{ subs: 
       facts: {
         sourceFramework: r.source_framework,
         buildMachine: r.build_machine,
+        buildCrates: r.build_crates,
         hasSecurityTxt: r.has_security_txt,
         securityTxt: r.security_txt,
         pmpSecurity: r.pmp_security,
@@ -785,9 +944,103 @@ async function unpackedSubjects(network: Network, start: Date): Promise<{ subs: 
   return { subs, closed };
 }
 
+// --- lifecycle --------------------------------------------------------------
+
+const HOUR_S = 3_600;
+const DAY_S = 86_400;
+/** lifespan buckets: under an hour, a day, a week, a month, longer */
+const LIFESPAN_EDGES = [HOUR_S, DAY_S, 7 * DAY_S, 30 * DAY_S];
+/** gap between code changes: under a day, a week, a month, 90 days, longer */
+const GAP_EDGES = [DAY_S, 7 * DAY_S, 30 * DAY_S, 90 * DAY_S];
+
+/** one count per bucket, named b0..bN */
+const bucketSql = (col: SQL, edges: number[]) => {
+  const parts = [sql`count(*) filter (where ${col} < ${edges[0]}) as b0`];
+  for (let i = 1; i < edges.length; i++)
+    parts.push(sql`count(*) filter (where ${col} >= ${edges[i - 1]} and ${col} < ${edges[i]}) as ${sql.raw(`b${i}`)}`);
+  parts.push(sql`count(*) filter (where ${col} >= ${edges[edges.length - 1]}) as ${sql.raw(`b${edges.length}`)}`);
+  return sql.join(parts, sql`, `);
+};
+
+type Dist = { buckets: number[]; median: number | null; n: number };
+
+function distOf(row: Record<string, unknown> | undefined, size: number): Dist {
+  const buckets = Array.from({ length: size }, (_, i) => Number(row?.[`b${i}`] ?? 0));
+  const median = row?.median == null ? null : Math.round(Number(row.median));
+  return { buckets, median, n: buckets.reduce((a, b) => a + b, 0) };
+}
+
+/** What happened to the programs first seen in the window: how many are still
+ *  live, how long the closed ones lasted (deploy to close), and for programs
+ *  upgraded in the window, how long since their previous code change on
+ *  record. Seconds throughout. */
+async function lifecycleOf(network: Network, start: Date, live: number, closed: number) {
+  const span = sql`extract(epoch from ((s.facts ->> 'closedAt')::timestamptz - coalesce(s.first_deploy_at, s.first_seen_at)))`;
+  const lifeRows = (await db.execute(sql`
+    select ${bucketSql(sql`d`, LIFESPAN_EDGES)},
+           percentile_cont(0.5) within group (order by d) as median
+      from (select ${span} as d
+              from subjects s
+             where s.network = ${network} and s.kind = 'program'
+               and s.first_seen_at >= ${start.toISOString()}::timestamptz
+               and (s.facts ->> 'closedAt') ~ '^[0-9]{4}-') x
+     where d >= 0
+  `)) as unknown as Record<string, unknown>[];
+  const lifespan = distOf(lifeRows[0], LIFESPAN_EDGES.length + 1);
+
+  // the newest code change of each program upgraded in the window, and the one
+  // before it; programs whose previous change predates the record have none
+  const gapRows = (await db.execute(sql`
+    select ${bucketSql(sql`d`, GAP_EDGES)},
+           percentile_cont(0.5) within group (order by d) as median,
+           count(*) filter (where d is null) as unknown
+      from (select extract(epoch from (cur - prev)) as d
+              from (select e.block_time as cur,
+                           lag(e.block_time) over (partition by e.program_id order by e.slot) as prev,
+                           row_number() over (partition by e.program_id order by e.slot desc) as rn
+                      from events e
+                      join subjects s on s.id = e.program_id
+                     where s.network = ${network} and s.kind = 'program' and s.deploy_type = 'upgrade'
+                       and coalesce(s.last_event_at, s.first_seen_at) >= ${start.toISOString()}::timestamptz
+                       and (s.facts ->> 'closedAt') is null
+                       and e.type in ('deploy', 'upgrade') and e.block_time is not null) t
+             where rn = 1) g
+  `)) as unknown as Record<string, unknown>[];
+  const gap = distOf(gapRows[0], GAP_EDGES.length + 1);
+  return {
+    live,
+    closed,
+    lifespan,
+    upgradeGap: { ...gap, noEarlier: Number(gapRows[0]?.unknown ?? 0) },
+  };
+}
+
+/** Programs whose verified build an upgrade replaced inside the window, with
+ *  no verified build seen since (verification-stamps.ts keeps the summary). */
+async function lostVerificationOf(network: Network, start: Date): Promise<number> {
+  const rows = (await db.execute(sql`
+    select count(*)::int as n
+      from subjects s
+     where s.network = ${network} and s.kind = 'program'
+       and s.facts ? 'verificationBreak'
+       and (s.facts -> 'verificationBreak' ->> 'restoredSeenAt') is null
+       and (s.facts -> 'verificationBreak' ->> 'blockTime') ~ '^[0-9]{4}-'
+       and (s.facts -> 'verificationBreak' ->> 'blockTime')::timestamptz >= ${start.toISOString()}::timestamptz
+  `)) as unknown as { n: number }[];
+  return Number(rows[0]?.n ?? 0);
+}
+
 type UpgradeRow = {
   atMs: number;
   sbpf: number | null;
+  /** stats-page framework key (frameworkKeyOf) */
+  fw: string;
+  /** facts.buildMachine / facts.buildCrates, absent until read */
+  machine: unknown;
+  crates: unknown;
+  name: string | null;
+  repoUrl: string | null;
+  authorityClass: string | null;
   verified: boolean;
   idlPresent: boolean;
   sec: { hasSecurityTxt?: boolean; securityTxt?: unknown; pmpSecurity?: unknown };
@@ -798,11 +1051,16 @@ async function unpackedUpgrades(network: Network, start: Date): Promise<UpgradeR
   const rows = (await db.execute(sql`
     select (extract(epoch from coalesce(s.last_event_at, s.first_seen_at)) * 1000)::float8 as at_ms,
       (s.profile ->> 'sbpfVersion')::int as sbpf, s.verified, s.idl_present,
+      s.name, s.repo_url, s.authority_class,
+      s.profile ->> 'framework' as framework, s.profile -> 'anchor' ->> 'line' as anchor_line,
+      f."sourceFramework" as source_framework,
+      f."buildMachine" as machine, f."buildCrates" as crates,
       f."hasSecurityTxt" as has_security_txt, f."securityTxt" as security_txt,
       f."pmpSecurity" as pmp_security
     from subjects s
     left join lateral jsonb_to_record(s.facts) as f(
-      "closedAt" jsonb, "hasSecurityTxt" jsonb, "securityTxt" jsonb, "pmpSecurity" jsonb
+      "closedAt" jsonb, "sourceFramework" jsonb, "buildMachine" jsonb, "buildCrates" jsonb,
+      "hasSecurityTxt" jsonb, "securityTxt" jsonb, "pmpSecurity" jsonb
     ) on true
     where s.network = ${network} and s.kind = 'program' and s.deploy_type = 'upgrade'
       and coalesce(s.last_event_at, s.first_seen_at) >= ${start.toISOString()}::timestamptz
@@ -812,6 +1070,14 @@ async function unpackedUpgrades(network: Network, start: Date): Promise<UpgradeR
     sbpf: number | null;
     verified: boolean;
     idl_present: boolean;
+    framework: string | null;
+    anchor_line: string | null;
+    source_framework: unknown;
+    machine: unknown;
+    crates: unknown;
+    name: string | null;
+    repo_url: string | null;
+    authority_class: string | null;
     has_security_txt: boolean | undefined;
     security_txt: unknown;
     pmp_security: unknown;
@@ -819,6 +1085,12 @@ async function unpackedUpgrades(network: Network, start: Date): Promise<UpgradeR
   return rows.map((r) => ({
     atMs: r.at_ms,
     sbpf: r.sbpf,
+    fw: frameworkKeyOf(r.framework ?? undefined, r.anchor_line, r.source_framework),
+    machine: r.machine,
+    crates: r.crates,
+    name: r.name,
+    repoUrl: r.repo_url,
+    authorityClass: r.authority_class,
     verified: r.verified,
     idlPresent: r.idl_present,
     sec: { hasSecurityTxt: r.has_security_txt, securityTxt: r.security_txt, pmpSecurity: r.pmp_security },
@@ -841,6 +1113,7 @@ function slimFacts() {
   return sql<Record<string, unknown> | null>`case when ${schema.subjects.facts} is null then null else jsonb_build_object(
     'sourceFramework', ${schema.subjects.facts} -> 'sourceFramework',
     'buildMachine', ${schema.subjects.facts} -> 'buildMachine',
+    'buildCrates', ${schema.subjects.facts} -> 'buildCrates',
     'hasSecurityTxt', ${schema.subjects.facts} -> 'hasSecurityTxt',
     'securityTxt', ${schema.subjects.facts} -> 'securityTxt',
     'pmpSecurity', ${schema.subjects.facts} -> 'pmpSecurity') end`;
@@ -851,6 +1124,14 @@ async function upgradesKeyByKey(network: Network, start: Date, live: SQL): Promi
     .select({
       at: sql<string>`coalesce(${schema.subjects.lastEventAt}, ${schema.subjects.firstSeenAt})`,
       sbpf: sql<number | null>`(${schema.subjects.profile} ->> 'sbpfVersion')::int`,
+      framework: sql<string | null>`${schema.subjects.profile} ->> 'framework'`,
+      anchorLine: sql<string | null>`${schema.subjects.profile} -> 'anchor' ->> 'line'`,
+      sourceFramework: sql<unknown>`${schema.subjects.facts} -> 'sourceFramework'`,
+      machine: sql<unknown>`${schema.subjects.facts} -> 'buildMachine'`,
+      crates: sql<unknown>`${schema.subjects.facts} -> 'buildCrates'`,
+      name: schema.subjects.name,
+      repoUrl: schema.subjects.repoUrl,
+      authorityClass: schema.subjects.authorityClass,
       verified: schema.subjects.verified,
       idlPresent: schema.subjects.idlPresent,
       sec: sql<UpgradeRow["sec"]>`jsonb_build_object(
@@ -868,5 +1149,9 @@ async function upgradesKeyByKey(network: Network, start: Date, live: SQL): Promi
         live,
       ),
     );
-  return rows.map((r) => ({ ...r, atMs: new Date(r.at).getTime() }));
+  return rows.map(({ framework, anchorLine, sourceFramework, ...r }) => ({
+    ...r,
+    atMs: new Date(r.at).getTime(),
+    fw: frameworkKeyOf(framework ?? undefined, anchorLine, sourceFramework),
+  }));
 }

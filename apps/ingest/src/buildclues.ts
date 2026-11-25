@@ -55,6 +55,14 @@ const KEY_CRATES = ["solana-program", "anchor-lang", "pinocchio", "solana-sdk", 
  *  subject as facts.buildMachine so the stats page can count it. */
 export type BuildMachine = "mac" | "linux" | "unknown";
 
+/** The Solana SDK and framework crate versions the binary was built against,
+ *  as {crate: version}, the same crates the program page shows. Stored on the
+ *  subject as facts.buildCrates so the stats page can count versions. An empty
+ *  object is a reading too: no registry paths survived in the bytes. */
+export function buildCratesOf(strings: string[]): Record<string, string> {
+  return Object.fromEntries(readBuildClues(strings).crates.map((c) => [c.name, c.version]));
+}
+
 export function buildMachineOf(strings: string[]): BuildMachine {
   const c = readBuildClues(strings);
   return c.download ?? c.home ?? "unknown";

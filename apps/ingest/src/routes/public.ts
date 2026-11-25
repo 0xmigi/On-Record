@@ -225,7 +225,7 @@ async function clusterSizes(bucketIds: (string | null)[]): Promise<Map<string, n
 
 export function registerPublicRoutes(app: FastifyInstance): void {
   // --- the radar: ranked programs -----------------------------------------
-  app.get<{ Querystring: { window?: string; band?: string; type?: string; cursor?: string; limit?: string; closed?: string; sort?: string; network?: string; category?: string; verification?: string } }>(
+  app.get<{ Querystring: { window?: string; band?: string; type?: string; cursor?: string; limit?: string; closed?: string; sort?: string; network?: string; category?: string; verification?: string; sbpf?: string } }>(
     "/api/radar",
     async (req): Promise<ApiCursorPage<ApiProgram>> => {
       const limit = parseLimit(req.query.limit, 30, 100);
@@ -284,6 +284,10 @@ export function registerPublicRoutes(app: FastifyInstance): void {
           sql`${schema.subjects.facts} ? 'verificationBreak' and (${schema.subjects.facts} -> 'verificationBreak' ->> 'restoredSeenAt') is null`,
         );
       }
+      // sBPF version the current build targets (ELF e_flags), narrowed in SQL
+      // like category: the stats page links each version's count here.
+      const sbpf = /^v[0-3]$/.test(req.query.sbpf ?? "") ? Number(req.query.sbpf!.slice(1)) : null;
+      if (sbpf != null) conditions.push(sql`(${schema.subjects.profile} ->> 'sbpfVersion')::int = ${sbpf}`);
       // The deploy stream tiers by novelty (novel/variant/clone) and always
       // passes an explicit band. The upgrade stream spans all bands — an
       // upgrade's lineage band is orthogonal to the fact that it was upgraded,
