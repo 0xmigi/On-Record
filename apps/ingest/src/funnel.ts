@@ -349,6 +349,16 @@ export async function computeWindowFunnel(
   // a week beyond — a few dozen points whatever the window
   const fwBucketSecs = windowHours <= 48 ? 7_200 : windowHours <= 168 ? 21_600 : windowHours <= 2_160 ? 86_400 : 604_800;
   const fwBuckets = new Map<number, Record<string, number>>();
+  // the Toolchain panels narrowed to one framework: sBPF versions, build
+  // machine (with verified), integrations and v0 upgrades, per framework key
+  type FwDetail = {
+    sbpf: Record<string, number>;
+    machine: Record<string, { total: number; verified: number }>;
+    integrations: Record<string, number>;
+    v0Upgrades: number;
+  };
+  const byFw: Record<string, FwDetail> = {};
+  const fwd = (k: string): FwDetail => (byFw[k] ??= { sbpf: {}, machine: {}, integrations: {}, v0Upgrades: 0 });
   const byIntegration: Record<string, number> = {};
   const byCapability: Record<string, number> = {};
   const identity = { named: 0, withRepo: 0, opaque: 0 };
@@ -396,8 +406,11 @@ export async function computeWindowFunnel(
     // sha256 (unfingerprinted) still count individually rather than vanish.
     if (!s.sha256 || !integrationSeen.has(s.sha256)) {
       if (s.sha256) integrationSeen.add(s.sha256);
-      for (const integ of s.profile?.integrations ?? [])
+      for (const integ of s.profile?.integrations ?? []) {
         byIntegration[integ] = (byIntegration[integ] ?? 0) + 1;
+        const d = fwd(fw).integrations;
+        d[integ] = (d[integ] ?? 0) + 1;
+      }
     }
 
     if (s.name) identity.named++;
@@ -516,6 +529,11 @@ export async function computeWindowFunnel(
   for (const r of upgradeRows) {
     const k = sbpfOf(r.sbpf);
     sbpfUpgrades[k] = (sbpfUpgrades[k] ?? 0) + 1;
+    if (k === "v0") fwd(r.fw).v0Upgrades++;
+  }
+  for (const e of sbpfEvents) {
+    const d = fwd(e.fw).sbpf;
+    d[e.key] = (d[e.key] ?? 0) + 1;
   }
 
   // v3 share per framework, over the same deploys and upgrades, of the ones
@@ -569,6 +587,27 @@ export async function computeWindowFunnel(
   // a Squads multisig, another program (a PDA, e.g. governance), or one key.
   // `unread` = no authority reading stored yet.
   const authority = { immutable: 0, multisig: 0, program: 0, singleKey: 0, unread: 0 };
+  // Published and Verified narrowed to one kind of authority
+  type Disc = { total: number; idl: number; securityTxt: number; withRepo: number; verified: number };
+  const disclosureByAuthority: Record<string, Disc> = {};
+  for (const x of shipped) {
+    const k =
+      x.auth === "none"
+        ? "immutable"
+        : x.auth === "squads"
+          ? "multisig"
+          : x.auth === "program"
+            ? "program"
+            : x.auth === "hot_wallet"
+              ? "singleKey"
+              : "unread";
+    const d = (disclosureByAuthority[k] ??= { total: 0, idl: 0, securityTxt: 0, withRepo: 0, verified: 0 });
+    d.total++;
+    if (x.idl) d.idl++;
+    if (x.sec) d.securityTxt++;
+    if (x.repo) d.withRepo++;
+    if (x.verified) d.verified++;
+  }
   for (const x of shipped) {
     if (x.auth === "none") authority.immutable++;
     else if (x.auth === "squads") authority.multisig++;
@@ -585,8 +624,8 @@ export async function computeWindowFunnel(
   const built = [
     ...subs
       .filter((s) => s.deployType !== "upgrade")
-      .map((s) => ({ crates: s.facts?.buildCrates, machine: s.facts?.buildMachine, verified: s.verified })),
-    ...upgradeRows.map((r) => ({ crates: r.crates, machine: r.machine, verified: r.verified })),
+      .map((s) => ({ crates: s.facts?.buildCrates, machine: s.facts?.buildMachine, verified: s.verified, fw: frameworkKey(s) })),
+    ...upgradeRows.map((r) => ({ crates: r.crates, machine: r.machine, verified: r.verified, fw: r.fw })),
   ];
   const majorMinor = (v: string) => v.split(".").slice(0, 2).join(".");
   const tally = () => new Map<string, { total: number; verified: number }>();
@@ -602,7 +641,13 @@ export async function computeWindowFunnel(
   const machineV = tally();
   let cratesRead = 0;
   for (const b of built) {
-    if (b.machine === "mac" || b.machine === "linux" || b.machine === "unknown") bump(machineV, b.machine, b.verified);
+    if (b.machine === "mac" || b.machine === "linux" || b.machine === "unknown") {
+      bump(machineV, b.machine, b.verified);
+      const m = fwd(b.fw).machine;
+      const row = (m[b.machine] ??= { total: 0, verified: 0 });
+      row.total++;
+      if (b.verified) row.verified++;
+    }
     if (!b.crates || typeof b.crates !== "object") continue;
     cratesRead++;
     const c = b.crates as Record<string, string>;
@@ -769,6 +814,8 @@ export async function computeWindowFunnel(
     buildSetup,
     disclosure,
     authority,
+    disclosureByAuthority,
+    toolchainByFramework: byFw,
     ...(lifecycle ? { lifecycle } : {}),
     ...(lostVerification != null ? { lostVerification } : {}),
     updatedAt: new Date().toISOString(),

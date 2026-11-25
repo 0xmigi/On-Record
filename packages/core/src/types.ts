@@ -782,6 +782,25 @@ export interface ApiFunnel {
   /** programs whose verified build an upgrade replaced inside the window, not
    *  verified again since */
   lostVerification?: number;
+  /** Published / Verified narrowed to one kind of upgrade authority (keys:
+   *  immutable, multisig, program, singleKey, unread). Same programs as
+   *  disclosure. Absent on API builds predating it. */
+  disclosureByAuthority?: Record<
+    string,
+    { total: number; idl: number; securityTxt: number; withRepo: number; verified: number }
+  >;
+  /** The Toolchain panels narrowed to one framework (stats-page framework
+   *  key): sBPF versions and build machine over deploys and upgrades,
+   *  integrations over new deploys, and upgrades still on v0. */
+  toolchainByFramework?: Record<
+    string,
+    {
+      sbpf: Record<string, number>;
+      machine: Record<string, { total: number; verified: number }>;
+      integrations: Record<string, number>;
+      v0Upgrades: number;
+    }
+  >;
   updatedAt: string; // ISO
 }
 
