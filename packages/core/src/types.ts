@@ -729,7 +729,12 @@ export interface ApiFunnel {
   /** frameworkTrend's programs per time bucket (`t` = bucket start, secs),
    *  for the share-over-time chart. Empty buckets are left out. Absent on API
    *  builds predating it. */
-  frameworkSeries?: { bucketSecs: number; points: { t: number; counts: Record<string, number> }[] };
+  frameworkSeries?: {
+    bucketSecs: number;
+    points: { t: number; counts: Record<string, number> }[];
+    /** mainnet: buckets before this (unix s, the record-start day) come from the archive */
+    archiveUntil?: number | null;
+  };
   /** sBPF version (ELF e_flags) of every program whose code changed in the
    *  window, new deploys and upgrades together, with the same first-half vs
    *  second-half share change as frameworkTrend. Keys: v3, v2, v1, v0, plus

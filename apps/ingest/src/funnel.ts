@@ -435,7 +435,9 @@ export async function computeWindowFunnel(
       if ((s.profile?.integrations ?? []).includes("Pump.fun")) churn.pumpfun++;
     }
     const t = s.firstSeenAt?.getTime() ?? 0;
-    if (t > 0) {
+    // the share chart counts new deploys only, so the archive (which counts
+    // deploys) can sit before it without the two meaning different things
+    if (t > 0 && s.deployType !== "upgrade") {
       const b = Math.floor(t / 1000 / fwBucketSecs) * fwBucketSecs;
       const row = fwBuckets.get(b) ?? {};
       row[fw] = (row[fw] ?? 0) + 1;
@@ -450,12 +452,14 @@ export async function computeWindowFunnel(
     }
   }
 
-  // The same programs as frameworkTrend, per time bucket, so the page can draw
-  // each framework's share over the window. Buckets with nothing in them are
-  // left out rather than sent as zeros.
-  const frameworkSeries = {
+  // The window's new deploys per framework, per time bucket, so the page can
+  // draw each framework's share over the window. On mainnet the archive fills
+  // the days before the record starts (added below). Buckets with nothing in
+  // them are left out rather than sent as zeros.
+  const frameworkSeries: NonNullable<ApiFunnel["frameworkSeries"]> = {
     bucketSecs: fwBucketSecs,
-    points: [...fwBuckets.entries()].sort((a, b) => a[0] - b[0]).map(([t, counts]) => ({ t, counts })),
+    points: [],
+    archiveUntil: null,
   };
 
   const frameworkTrend = Object.keys(byFramework)
@@ -756,6 +760,18 @@ export async function computeWindowFunnel(
         byDay.set(d.day, cur);
       }
       archiveCoverage = { from, to };
+      // the same days into the frameworks series: deploys per framework. The
+      // archive names only anchor, native, pinocchio and unknown, so Anchor v2
+      // and Quasar first appear at the seam.
+      for (const d of days) {
+        if (d.day < firstDay || d.day >= seamDay || d.deploys === 0) continue;
+        const t = Date.parse(`${d.day}T00:00:00Z`) / 1000;
+        const b = Math.floor(t / fwBucketSecs) * fwBucketSecs;
+        const row = fwBuckets.get(b) ?? {};
+        row[d.framework] = (row[d.framework] ?? 0) + d.deploys;
+        fwBuckets.set(b, row);
+      }
+      if (seamDay > firstDay) frameworkSeries.archiveUntil = Math.floor(Date.parse(`${seamDay}T00:00:00Z`) / 1000);
       archiveVolume = [...byDay.entries()]
         .sort((x, y) => (x[0] < y[0] ? -1 : 1))
         .map(([day, v]) => ({
@@ -768,6 +784,7 @@ export async function computeWindowFunnel(
   }
 
   lap("archive");
+  frameworkSeries.points = [...fwBuckets.entries()].sort((a, b) => a[0] - b[0]).map(([t, counts]) => ({ t, counts }));
   logger.info({ network, windowHours, slim, unpacked: unpacked != null, ...stages }, "funnel: stages");
 
   const raw = deploys + upgrades;
