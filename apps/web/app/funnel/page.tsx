@@ -347,7 +347,7 @@ export default async function FunnelPage({
                   ? undefined
                   : `${t.delta > 0 ? "↑" : "↓"} ${Math.abs(sharePp(t.delta))}pp over the window`,
             }))}
-            frameworksInfo="Framework of each new deploy, as a share of the new deploys in each period. Before the record starts the counts come from the Old Faithful archive (mainnet only), which names Anchor, native and Pinocchio but does not split out Anchor v2 or Quasar. From the record start, Anchor v2 is counted apart from earlier Anchor, and Quasar is named from the program's source, since its binary reads as Pinocchio. Click a band to narrow the section to it."
+            frameworksInfo="Framework of each new program, as a share of the programs first deployed in each period that are still live. Before the record starts the counts come from the Old Faithful archive (mainnet only), counted the same way; it does not split out Anchor v2 or Quasar. Before Pinocchio's first release (28 Jul 2024), programs built the way Pinocchio builds look were C programs and the like, so they show as c-style. Click a band to narrow the section to it."
             series={
               (funnel.frameworkSeries?.points.length ?? 0) >= 2
                 ? {

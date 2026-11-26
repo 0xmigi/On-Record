@@ -27,7 +27,7 @@ type Label = { f: string; x: number; y: number; outside?: { fromY: number } };
 
 export function FrameworkShareChart({
   points,
-  order,
+  order: orderIn,
   bucketSecs,
   highlight = null,
   onPick,
@@ -64,6 +64,14 @@ export function FrameworkShareChart({
     ro.observe(el);
     return () => ro.disconnect();
   }, []);
+
+  // the given order, then any framework only the series has (the archive's
+  // "c-style", from before Pinocchio existed), on top
+  const order = useMemo(() => {
+    const extra = new Set<string>();
+    for (const p of points) for (const k of Object.keys(p.counts)) if (!orderIn.includes(k)) extra.add(k);
+    return [...orderIn, ...extra];
+  }, [points, orderIn]);
 
   // shares per point, stacked in `order`
   const rows = useMemo(
@@ -189,7 +197,10 @@ export function FrameworkShareChart({
 
   const fmt = (t: number) => {
     const d = new Date(t * 1000);
-    return bucketSecs >= 86_400
+    // weekly buckets span years, so they carry one ("week of Jul 9, 2026")
+    return bucketSecs >= 604_800
+      ? `week of ${d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric", timeZone: "UTC" })}`
+      : bucketSecs >= 86_400
       ? `${d.getUTCMonth() + 1}/${d.getUTCDate()}`
       : `${d.getMonth() + 1}/${d.getDate()} ${String(d.getHours()).padStart(2, "0")}:00`;
   };

@@ -163,6 +163,8 @@ type SubjectLite = {
   profile: ProgramProfile | null;
   deployType: string | null;
   firstSeenAt: Date | null;
+  /** the program's original deploy, from its loader record; null when unread */
+  firstDeployAt: Date | null;
   facts: Record<string, unknown> | null;
 };
 
@@ -297,6 +299,7 @@ export async function computeWindowFunnel(
         profile: slim ? slimProfile() : schema.subjects.profile,
         deployType: schema.subjects.deployType,
         firstSeenAt: schema.subjects.firstSeenAt,
+        firstDeployAt: schema.subjects.firstDeployAt,
         facts: slim ? slimFacts() : schema.subjects.facts,
       })
       .from(schema.subjects)
@@ -435,10 +438,15 @@ export async function computeWindowFunnel(
       if ((s.profile?.integrations ?? []).includes("Pump.fun")) churn.pumpfun++;
     }
     const t = s.firstSeenAt?.getTime() ?? 0;
-    // the share chart counts new deploys only, so the archive (which counts
-    // deploys) can sit before it without the two meaning different things
-    if (t > 0 && s.deployType !== "upgrade") {
-      const b = Math.floor(t / 1000 / fwBucketSecs) * fwBucketSecs;
+    // The share chart counts programs first DEPLOYED in the window (and still
+    // live, like everything in this scan), in the week of that deploy. Not
+    // "first seen as a deploy": a program deployed and upgraded before the
+    // poller first saw it reads as an upgrade, and that skipped about half the
+    // new programs (2026-11-26: 388 of 603 Pinocchio, 833 of 1,713 Anchor, in
+    // Jul to Oct). The archive side below counts the same way.
+    const deployedAt = s.firstDeployAt?.getTime() ?? (s.deployType !== "upgrade" ? t : 0);
+    if (deployedAt > 0 && deployedAt >= start.getTime()) {
+      const b = Math.floor(deployedAt / 1000 / fwBucketSecs) * fwBucketSecs;
       const row = fwBuckets.get(b) ?? {};
       row[fw] = (row[fw] ?? 0) + 1;
       fwBuckets.set(b, row);
@@ -760,16 +768,38 @@ export async function computeWindowFunnel(
         byDay.set(d.day, cur);
       }
       archiveCoverage = { from, to };
-      // the same days into the frameworks series: deploys per framework. The
-      // archive names only anchor, native, pinocchio and unknown, so Anchor v2
-      // and Quasar first appear at the seam.
-      for (const d of days) {
-        if (d.day < firstDay || d.day >= seamDay || d.deploys === 0) continue;
-        const t = Date.parse(`${d.day}T00:00:00Z`) / 1000;
-        const b = Math.floor(t / fwBucketSecs) * fwBucketSecs;
-        const row = fwBuckets.get(b) ?? {};
-        row[d.framework] = (row[d.framework] ?? 0) + d.deploys;
-        fwBuckets.set(b, row);
+      // The days before the seam into the frameworks series, counted the way
+      // the live side is: programs first deployed in the week, still live.
+      // Read from the per-program index (history_programs), not the daily
+      // totals, which count every deploy instruction: there, bots that deploy
+      // and close within the hour made up most of "pinocchio" (68% of Jul to
+      // Oct's closed within a day) and the share fell off a cliff at the seam.
+      // A program counts as closed if the archive or the live record says so.
+      // The archive names only anchor, native, pinocchio and unknown, so Anchor
+      // v2 and Quasar first appear at the seam; and before Pinocchio's first
+      // release (28 Jul 2024) its marker, C-style calls with no Rust SDK, means
+      // C programs and the like, so those count as "c-style".
+      if (seamDay > firstDay) {
+        const arch = (await db.execute(sql`
+          select (floor(extract(epoch from h.first_deploy_at) / ${fwBucketSecs}) * ${fwBucketSecs})::float8 as b,
+                 case when h.framework = 'pinocchio' and h.first_deploy_at < '2024-07-28' then 'c-style'
+                      else h.framework end as fw,
+                 count(*)::int as n
+          from history_programs h
+          left join subjects s on s.id = h.program_id and s.network = 'mainnet'
+          where h.first_deploy_at >= ${windowStart.toISOString()}::timestamptz
+            and h.first_deploy_at < ${`${seamDay}T00:00:00Z`}::timestamptz
+            and h.closed_at is null and (s.facts ->> 'closedAt') is null
+          group by 1, 2
+        `).catch((err) => {
+          logger.warn({ err: String(err) }, "funnel: archive framework read failed");
+          return [];
+        })) as unknown as { b: number; fw: string; n: number }[];
+        for (const r of arch) {
+          const row = fwBuckets.get(r.b) ?? {};
+          row[r.fw] = (row[r.fw] ?? 0) + r.n;
+          fwBuckets.set(r.b, row);
+        }
       }
       if (seamDay > firstDay) frameworkSeries.archiveUntil = Math.floor(Date.parse(`${seamDay}T00:00:00Z`) / 1000);
       archiveVolume = [...byDay.entries()]
@@ -927,6 +957,7 @@ type UnpackedRow = {
   deployer_funding_source: string | null;
   deploy_type: string | null;
   first_seen_ms: number | null;
+  first_deploy_ms: number | null;
   has_profile: boolean;
   framework: unknown;
   anchor_line: unknown;
@@ -948,6 +979,7 @@ async function unpackedSubjects(network: Network, start: Date): Promise<{ subs: 
     select s.sha256, s.novelty_band, s.category, s.name, s.repo_url, s.authority_class,
       s.verified, s.idl_present, s.entity_key, s.deployer_funding_source, s.deploy_type,
       (extract(epoch from s.first_seen_at) * 1000)::float8 as first_seen_ms,
+      (extract(epoch from s.first_deploy_at) * 1000)::float8 as first_deploy_ms,
       s.profile is not null as has_profile,
       p.framework, p.anchor -> 'line' as anchor_line, p.integrations, p.capabilities,
       p."sbpfVersion" as sbpf,
@@ -986,6 +1018,7 @@ async function unpackedSubjects(network: Network, start: Date): Promise<{ subs: 
       deployerFundingSource: r.deployer_funding_source,
       deployType: r.deploy_type,
       firstSeenAt: r.first_seen_ms == null ? null : new Date(r.first_seen_ms),
+      firstDeployAt: r.first_deploy_ms == null ? null : new Date(r.first_deploy_ms),
       profile: r.has_profile
         ? ({
             framework: r.framework,
