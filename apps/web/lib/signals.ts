@@ -10,7 +10,7 @@ import type { ApiProgram } from "@/lib/api";
 //   OPEN   how much the developer disclosed: name, repo, site, IDL,
 //          security.txt (binary or PMP account), verified build — a count, out of 6
 //   COST   SOL locked as rent by the deploy, log₁₀ scale (100 SOL caps)
-//   CTRL   who can change it: multisig > frozen > program > hot wallet
+//   CTRL   who can change it: multisig > immutable > program > hot wallet
 //
 // Each signal carries a plain-English `why` shown on hover — the sentence is
 // the product; the shape is just its silhouette.

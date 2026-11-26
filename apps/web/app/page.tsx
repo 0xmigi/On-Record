@@ -24,6 +24,7 @@ import {
   parseVerification,
   parseCategory,
   parseFramework,
+  parseSbpf,
   parseSize,
   withPatch,
   type NetworkFilter,
@@ -259,6 +260,7 @@ export default async function RadarPage({
     category?: string;
     framework?: string;
     size?: string;
+    sbpf?: string;
   }>;
 }) {
   const sp = await searchParams;
@@ -300,27 +302,29 @@ export default async function RadarPage({
     category: parseCategory(sp.category),
     framework: parseFramework(sp.framework),
     size: parseSize(sp.size),
+    sbpf: parseSbpf(sp.sbpf),
   };
 
   // narrowed in SQL rather than over a fetched page — see fetchRadar
   const category = params.category;
   const verification = params.verification;
+  const sbpf = params.sbpf;
 
   const EMPTY = { items: [] as ApiProgram[], total: 0, nextCursor: null };
   const [novelPage, variantPage, clonePage, closedPages, upgradePage, funnel] = await Promise.all([
-    isDeploy ? fetchRadar({ type, window, band: "novel", limit: 100, network, category, verification, sort: "interest" }) : Promise.resolve(EMPTY),
-    isDeploy ? fetchRadar({ type, window, band: "variant", limit: 100, network, category, verification, sort: "interest" }) : Promise.resolve(EMPTY),
-    isDeploy ? fetchRadar({ type, window, band: "clone", limit: 100, network, category, verification, sort: "interest" }) : Promise.resolve(EMPTY),
+    isDeploy ? fetchRadar({ type, window, band: "novel", limit: 100, network, category, verification, sbpf, sort: "interest" }) : Promise.resolve(EMPTY),
+    isDeploy ? fetchRadar({ type, window, band: "variant", limit: 100, network, category, verification, sbpf, sort: "interest" }) : Promise.resolve(EMPTY),
+    isDeploy ? fetchRadar({ type, window, band: "clone", limit: 100, network, category, verification, sbpf, sort: "interest" }) : Promise.resolve(EMPTY),
     // the graveyard: closed programs across all bands (rent reclaimed).
     // Devnet skips it — pre-launch churn there is expected, not a story.
     isDeploy && !isDevnet
       ? Promise.all(
           (["novel", "variant", "clone"] as const).map((band) =>
-            fetchRadar({ type, window, band, closed: "only", limit: 100, category, verification, sort: "interest" }),
+            fetchRadar({ type, window, band, closed: "only", limit: 100, category, verification, sbpf, sort: "interest" }),
           ),
         )
       : Promise.resolve([]),
-    !isDeploy ? fetchRadar({ type, window, limit: 50, network, category, verification, sort: "interest" }) : Promise.resolve(EMPTY),
+    !isDeploy ? fetchRadar({ type, window, limit: 50, network, category, verification, sbpf, sort: "interest" }) : Promise.resolve(EMPTY),
     // funnel is per-cluster now — devnet gets its own live-computed stats
     fetchFunnel(FUNNEL_WINDOW[window], network === "all" ? "mainnet" : network),
   ]);

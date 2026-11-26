@@ -53,6 +53,11 @@ export function Footer() {
             <span>on record</span>
           </Link>
           <p className="footer-motto">Every deploy and upgrade on Solana mainnet.</p>
+          <a className="footer-credit" href="https://www.helius.dev" target="_blank" rel="noopener noreferrer">
+            Powered by
+            {/* the real mark + wordmark from the Helius brand kit, not ours */}
+            <img className="footer-helius" src="/brand/helius-horizontal.svg" alt="Helius" width={72} height={15} />
+          </a>
         </div>
         <nav className="footer-cols" aria-label="Footer">
           {COLUMNS.map((col) => (
@@ -75,13 +80,11 @@ export function Footer() {
           ))}
         </nav>
       </div>
-      <div className="footer-base">
-        <div className="footer-base-rule">
-          <a className="footer-credit" href="https://www.helius.dev" target="_blank" rel="noopener noreferrer">
-            Powered by
-            {/* the real mark + wordmark from the Helius brand kit, not ours */}
-            <img className="footer-helius" src="/brand/helius-horizontal.svg" alt="Helius" width={72} height={15} />
-          </a>
+      {/* the name across the full page width, closing every page: light, and
+          running off the bottom edge so it reads as the end */}
+      <div className="footer-giant" aria-hidden="true">
+        <div className="footer-giant-clip">
+          <span>on record</span>
         </div>
       </div>
     </footer>

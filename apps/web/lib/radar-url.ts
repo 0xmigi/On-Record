@@ -22,9 +22,9 @@ export type View = "novel" | "variant" | "recycled";
 // (which only has sizeBytes, not a derived band) can bucket without importing
 // the dossier-oriented composition module.
 export type SizeBand = "lean" | "moderate" | "heavy";
-// The rug-risk lens over authorityClass: frozen = immutable, multisig =
+// The rug-risk lens over authorityClass: immutable = no upgrade authority, multisig =
 // Squads-governed, hot = one key can swap the code.
-export type AuthorityFacet = "frozen" | "multisig" | "hot";
+export type AuthorityFacet = "immutable" | "multisig" | "hot";
 
 // Frameworks we let users filter by — "unknown" is the absence of a label, not
 // a thing to select. Anchor splits by line the same way the stats page counts
@@ -33,7 +33,7 @@ export type AuthorityFacet = "frozen" | "multisig" | "hot";
 export type FrameworkFacet = Exclude<Framework, "unknown"> | "anchor-v1" | "anchor-v2";
 export const FILTER_FRAMEWORKS: FrameworkFacet[] = ["anchor", "anchor-v1", "anchor-v2", "pinocchio", "quasar", "native"];
 export const SIZE_BANDS: SizeBand[] = ["lean", "moderate", "heavy"];
-export const AUTHORITY_FACETS: AuthorityFacet[] = ["frozen", "multisig", "hot"];
+export const AUTHORITY_FACETS: AuthorityFacet[] = ["immutable", "multisig", "hot"];
 // "unknown" is the absence of a category, not a selectable facet. Ordered by
 // how much of the corpus each holds, so the useful filters come first.
 export const FILTER_CATEGORIES: Category[] = [
@@ -92,13 +92,13 @@ function matchesFramework(program: ApiProgram, f: FrameworkFacet): boolean {
 }
 
 export const AUTHORITY_LABEL: Record<AuthorityFacet, string> = {
-  frozen: "Frozen",
+  immutable: "Immutable",
   multisig: "Multisig",
   hot: "Hot wallet",
 };
 
 export const AUTHORITY_HINT: Record<AuthorityFacet, string> = {
-  frozen: "Immutable — the code can never change",
+  immutable: "No upgrade authority — the code can never change",
   multisig: "Upgrades gated by a Squads multisig",
   hot: "A single key can swap the code",
 };
@@ -126,6 +126,15 @@ export const CATEGORY_FILTER_LABEL: Record<Category, string> = {
   unknown: "Unknown",
 };
 
+/** The sBPF version a program's current build targets (ELF e_flags).
+ *  Filtered in SQL — list rows don't carry it. */
+export type SbpfFacet = "v0" | "v1" | "v2" | "v3";
+export const SBPF_FACETS: SbpfFacet[] = ["v3", "v2", "v1", "v0"];
+
+export function parseSbpf(v: string | undefined): SbpfFacet | null {
+  return v && (SBPF_FACETS as string[]).includes(v) ? (v as SbpfFacet) : null;
+}
+
 /** Verification state. Filtered in SQL across the whole window — "lost" needs
  *  the break history, which list rows don't carry. */
 export type VerificationFacet = "verified" | "lost";
@@ -148,6 +157,7 @@ export interface RadarParams {
   category: Category | null;
   framework: FrameworkFacet | null;
   size: SizeBand | null;
+  sbpf: SbpfFacet | null;
 }
 
 export function isView(v: string | undefined): v is View {
@@ -168,6 +178,8 @@ export function parseVerification(v: string | undefined): VerificationFacet | nu
 }
 
 export function parseAuthority(v: string | undefined): AuthorityFacet | null {
+  // "frozen" was this facet's old name: links shared before the rename still work
+  if (v === "frozen") return "immutable";
   return v && (AUTHORITY_FACETS as string[]).includes(v) ? (v as AuthorityFacet) : null;
 }
 
@@ -188,7 +200,7 @@ export function sizeBandOf(bytes: number | null): SizeBand | null {
 export function authorityFacetOf(program: ApiProgram): AuthorityFacet | null {
   switch (program.authorityClass) {
     case "none":
-      return "frozen";
+      return "immutable";
     case "squads":
       return "multisig";
     case "hot_wallet":
@@ -213,15 +225,16 @@ export function hasActiveFacets(p: RadarParams): boolean {
     p.authority != null ||
     p.category != null ||
     p.framework != null ||
-    p.size != null
+    p.size != null ||
+    p.sbpf != null
   );
 }
 
 /** True when a facet is applied over the fetched page rather than in SQL, so
- *  the API's totals no longer describe what is shown. Verification and
- *  category are narrowed in SQL. */
+ *  the API's totals no longer describe what is shown. Verification, category
+ *  and sBPF are narrowed in SQL. */
 export function hasClientFacets(p: RadarParams): boolean {
-  return hasActiveFacets({ ...p, verification: null, category: null });
+  return hasActiveFacets({ ...p, verification: null, category: null, sbpf: null });
 }
 
 /** Does a program pass every active attribute facet? */
@@ -257,6 +270,7 @@ export function buildRadarHref(p: RadarParams): string {
   if (p.category) params.set("category", p.category);
   if (p.framework) params.set("framework", p.framework);
   if (p.size) params.set("size", p.size);
+  if (p.sbpf) params.set("sbpf", p.sbpf);
   const qs = params.toString();
   return qs ? `/?${qs}` : "/";
 }

@@ -40,13 +40,17 @@ export function NetworkToggle() {
     setOpen(false);
   };
 
+  // Stay on the page: the radar and the stats page both follow the switch,
+  // and keep their own params (window, filters) across the change.
   const href = (net: Net): string => {
-    const params = new URLSearchParams(onRadar ? search : undefined);
+    const stays = onRadar || pathname === "/funnel";
+    const params = new URLSearchParams(stays ? search : undefined);
     params.delete("network");
     // "all" is the default, so it stays out of the URL
     if (net !== "all") params.set("network", net);
     const qs = params.toString();
-    return qs ? `/?${qs}` : "/";
+    const base = stays ? pathname : "/";
+    return qs ? `${base}?${qs}` : base;
   };
 
   // close on outside click / Escape

@@ -258,6 +258,9 @@ export interface ApiProgramDetail extends ApiProgram {
     downloadEvidence: string | null;
     home?: "mac" | "linux" | null;
     crates: { name: string; version: string }[];
+    /** the linker's own stamp, when the binary kept it (~2% do). Older API
+     *  builds omit it. */
+    linker?: { version: string; repo: string | null; commit: string | null } | null;
   } | null;
   syscalls: string[]; // sol_* imports read off the ELF (the capability evidence)
   /** how the syscall set was read: dynamic imports, hashed static calls, or a scan */
@@ -389,22 +392,99 @@ export interface ApiFunnel {
     lateShare: number;
     delta: number;
   }[];
+  /** How the window's deploys and upgrades (same set as disclosure) were
+   *  built: Solana SDK, Anchor and Pinocchio versions (major.minor, from crate
+   *  paths in the bytes) and build machine, each with how many have a verified
+   *  build. `cratesRead` = programs with a stored crate reading; the rest have
+   *  none yet. Absent on API builds predating it. */
+  buildSetup?: {
+    total: number;
+    cratesRead: number;
+    sdk: { version: string; total: number; verified: number }[];
+    anchor: { version: string; total: number; verified: number }[];
+    pinocchio: { version: string; total: number; verified: number }[];
+    machine: { version: string; total: number; verified: number }[];
+  };
+  /** frameworkTrend's programs per time bucket (`t` = bucket start, secs),
+   *  for the share-over-time chart. Empty buckets are left out. Absent on API
+   *  builds predating it. */
+  frameworkSeries?: {
+    bucketSecs: number;
+    points: { t: number; counts: Record<string, number> }[];
+    /** mainnet: buckets before this (unix s, the record-start day) come from the archive */
+    archiveUntil?: number | null;
+  };
   /** sBPF version (ELF e_flags) of every program whose code changed in the
    *  window, new deploys and upgrades together, with the same first-half vs
    *  second-half share change as frameworkTrend. Keys: v3, v2, v1, v0, plus
    *  "other" and "not read" (profiled before the version was recorded) when
-   *  present. Absent on API builds predating it. */
+   *  present. Shares are of the programs whose version was read; they are null
+   *  on "not read", and on every row when either half is under 90% read.
+   *  Absent on API builds predating it. */
   sbpfTrend?: {
     version: string;
     current: number;
-    earlyShare: number;
-    lateShare: number;
-    delta: number;
+    earlyShare: number | null;
+    lateShare: number | null;
+    delta: number | null;
   }[];
+  /** The window's upgrades by the sBPF version they shipped (same keys as
+   *  sbpfTrend). Matches the radar's upgrade stream filtered by ?sbpf=. */
+  sbpfUpgrades?: Record<string, number>;
+  /** Per framework (stats-page key), over the same deploys and upgrades as
+   *  sbpfTrend: how many, how many had their version read, how many are v3. */
+  sbpfByFramework?: { framework: string; total: number; read: number; v3: number }[];
   /** How many of the window's deploys and upgrades (same set as sbpfTrend)
    *  published an IDL, a security.txt (binary or PMP) and a verified build.
    *  Absent on API builds predating it. */
-  disclosure?: { total: number; idl: number; securityTxt: number; verified: number; allThree: number };
+  disclosure?: {
+    total: number;
+    idl: number;
+    securityTxt: number;
+    verified: number;
+    allThree: number;
+    /** same programs: a project name recovered, a source repo found. Absent
+     *  on API builds predating them. */
+    named?: number;
+    withRepo?: number;
+  };
+  /** Who can change the code, over the same programs as disclosure. Absent on
+   *  API builds predating it. */
+  authority?: { immutable: number; multisig: number; program: number; singleKey: number; unread: number };
+  /** What happened to the programs first seen in the window. lifespan: how
+   *  long the closed ones lasted, deploy to close, bucketed under 1h / 1d / 7d
+   *  / 30d / longer, median in seconds. upgradeGap: for programs upgraded in
+   *  the window, time since their previous code change on record, bucketed
+   *  under 1d / 7d / 30d / 90d / longer; noEarlier = previous change predates
+   *  the record. Absent on API builds predating it. */
+  lifecycle?: {
+    live: number;
+    closed: number;
+    lifespan: { buckets: number[]; median: number | null; n: number };
+    upgradeGap: { buckets: number[]; median: number | null; n: number; noEarlier: number };
+  };
+  /** programs whose verified build an upgrade replaced inside the window, not
+   *  verified again since */
+  lostVerification?: number;
+  /** Published / Verified narrowed to one kind of upgrade authority (keys:
+   *  immutable, multisig, program, singleKey, unread). Same programs as
+   *  disclosure. Absent on API builds predating it. */
+  disclosureByAuthority?: Record<
+    string,
+    { total: number; idl: number; securityTxt: number; withRepo: number; verified: number }
+  >;
+  /** The Toolchain panels narrowed to one framework (stats-page framework
+   *  key): sBPF versions and build machine over deploys and upgrades,
+   *  integrations over new deploys, and upgrades still on v0. */
+  toolchainByFramework?: Record<
+    string,
+    {
+      sbpf: Record<string, number>;
+      machine: Record<string, { total: number; verified: number }>;
+      integrations: Record<string, number>;
+      v0Upgrades: number;
+    }
+  >;
   updatedAt: string; // ISO
 }
 
@@ -487,6 +567,8 @@ export async function fetchRadar(
     /** filtered in SQL: "lost" = an upgrade replaced a verified build and no
      *  build since has been seen verified */
     verification?: "verified" | "lost" | null;
+    /** filtered in SQL: the sBPF version the current build targets */
+    sbpf?: "v0" | "v1" | "v2" | "v3" | null;
     /** "interest" = order by the interest score in SQL, so a limited page is
      *  the top N of the window rather than the newest N. Only "recent"
      *  supports the cursor, so paginating callers must stay on the default. */
@@ -506,6 +588,7 @@ export async function fetchRadar(
   }
   if (opts.category) params.set("category", opts.category);
   if (opts.verification) params.set("verification", opts.verification);
+  if (opts.sbpf) params.set("sbpf", opts.sbpf);
   params.set("limit", String(opts.limit ?? 50));
   const page = await getJson<ApiCursorPage<ApiProgram>>(
     `/api/radar?${params.toString()}`

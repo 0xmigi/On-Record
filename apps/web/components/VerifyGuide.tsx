@@ -115,7 +115,7 @@ function signerOf(p: GuideProgram, siblingSquads: Squads | null) {
   if (p.authorityClass === "squads" || siblingSquads)
     return { kind: "squads" as const, label: s ? `Squads ${s.threshold} of ${s.members}` : "Squads multisig", fromSibling: !ms && !!siblingSquads };
   if (p.authorityClass === "program") return { kind: "program" as const, label: "program", fromSibling: false };
-  if (p.authorityClass === "none") return { kind: "none" as const, label: "frozen", fromSibling: false };
+  if (p.authorityClass === "none") return { kind: "none" as const, label: "immutable", fromSibling: false };
   return { kind: "wallet" as const, label: "wallet", fromSibling: false };
 }
 
@@ -394,7 +394,7 @@ export function VerifyGuide({
     return (
       <div className="vguide">
         {head}
-        <p className="vguide-off">Frozen · can&apos;t be upgraded to a verifiable build</p>
+        <p className="vguide-off">Immutable · can&apos;t be upgraded to a verifiable build</p>
       </div>
     );
   }

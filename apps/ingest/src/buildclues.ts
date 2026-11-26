@@ -22,7 +22,11 @@
  * missing (~1,260 mainnet events).
  *
  * No Rust version is read: the platform-tools paths carry none
- * (`…/out/rust/library/core/…`). Paths remapped at build time leave nothing,
+ * (`…/out/rust/library/core/…`). Some binaries keep the linker's own stamp,
+ * "Linker: LLD 20.1.7 (https://github.com/anza-xyz/llvm-project.git 7849…)":
+ * the LLVM build inside the platform-tools that linked it. About 2% of
+ * mainnet programs carry it (prod, 2026-11-26: 29 of 1,476 recent; 0 of 38
+ * full binaries without it in the stored strings had it on chain). Paths remapped at build time leave nothing,
  * and then every field is null — "not in the binary", never a guess.
  *
  * Read from the full stored string set, not the 40 the dossier ships.
@@ -37,6 +41,21 @@ export interface BuildClues {
   home: "mac" | "linux" | null;
   /** crate versions out of cargo registry paths, the Solana-relevant ones first */
   crates: { name: string; version: string }[];
+  /** the linker's stamp, when the binary kept it */
+  linker: Linker | null;
+}
+
+export type Linker = { version: string; repo: string | null; commit: string | null };
+
+const LINKER = /Linker: LLD (\d+\.\d+\.\d+)(?: \(https:\/\/github\.com\/([^\s)]+?)(?:\.git)? ([0-9a-f]{7,40})\))?/;
+
+/** The linker stamp in a binary's strings, or null when it isn't there. */
+export function linkerOf(strings: string[]): Linker | null {
+  for (const str of strings) {
+    const m = str.match(LINKER);
+    if (m) return { version: m[1]!, repo: m[2] ?? null, commit: m[3] ?? null };
+  }
+  return null;
 }
 
 const MAC_DL = /\/Users\/[A-Za-z0-9._-]+\/work\/(?:platform-tools|bpf-tools)\/[^\s]{0,60}/;
@@ -93,5 +112,5 @@ export function readBuildClues(strings: string[]): BuildClues {
     if (split) key.push({ name: split[0], version: split[1] });
   }
 
-  return { download, downloadEvidence: evidence, home, crates: key.slice(0, 4) };
+  return { download, downloadEvidence: evidence, home, crates: key.slice(0, 4), linker: linkerOf(strings) };
 }

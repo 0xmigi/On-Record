@@ -11,6 +11,7 @@ import {
   FILTER_CATEGORIES,
   FILTER_FRAMEWORKS,
   FRAMEWORK_LABEL,
+  SBPF_FACETS,
   SIZE_BANDS,
   SIZE_BAND_HINT,
   SIZE_BAND_LABEL,
@@ -18,13 +19,14 @@ import {
   type AuthorityFacet,
   type FrameworkFacet,
   type RadarParams,
+  type SbpfFacet,
   type SizeBand,
 } from "@/lib/radar-url";
 
 // The mutable slice of RadarParams the modal edits.
 type Draft = Pick<
   RadarParams,
-  "verification" | "sectxt" | "idl" | "repo" | "active" | "authority" | "category" | "framework" | "size"
+  "verification" | "sectxt" | "idl" | "repo" | "active" | "authority" | "category" | "framework" | "size" | "sbpf"
 >;
 
 const EMPTY_DRAFT: Draft = {
@@ -37,6 +39,7 @@ const EMPTY_DRAFT: Draft = {
   category: null,
   framework: null,
   size: null,
+  sbpf: null,
 };
 
 function draftFrom(p: RadarParams): Draft {
@@ -50,6 +53,7 @@ function draftFrom(p: RadarParams): Draft {
     category: p.category,
     framework: p.framework,
     size: p.size,
+    sbpf: p.sbpf,
   };
 }
 
@@ -63,7 +67,8 @@ function activeCount(d: Draft): number {
     (d.authority ? 1 : 0) +
     (d.category ? 1 : 0) +
     (d.framework ? 1 : 0) +
-    (d.size ? 1 : 0)
+    (d.size ? 1 : 0) +
+    (d.sbpf ? 1 : 0)
   );
 }
 
@@ -146,10 +151,23 @@ const ic = {
       <path d="M3 20h18M6 20V10M12 20V4M18 20v-6" />
     </svg>
   ),
+  sbpf: (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      <rect x="6" y="6" width="12" height="12" rx="1.5" />
+      <path d="M9 2v4M15 2v4M9 18v4M15 18v4M2 9h4M2 15h4M18 9h4M18 15h4" />
+    </svg>
+  ),
+};
+
+const SBPF_HINT: Record<SbpfFacet, string> = {
+  v3: "Current build targets sBPF v3, the version SIMD-0500 requires for deploys and upgrades",
+  v2: "Current build targets sBPF v2",
+  v1: "Current build targets sBPF v1",
+  v0: "Current build targets sBPF v0",
 };
 
 // tone per option on the two "meaning" axes (safe → risky, lean → heavy)
-const AUTHORITY_TONE: Record<AuthorityFacet, Tone> = { frozen: "good", multisig: "neutral", hot: "warn" };
+const AUTHORITY_TONE: Record<AuthorityFacet, Tone> = { immutable: "good", multisig: "neutral", hot: "warn" };
 const SIZE_TONE: Record<SizeBand, Tone> = { lean: "good", moderate: "neutral", heavy: "warn" };
 
 const FRAMEWORK_HINT: Record<FrameworkFacet, string> = {
@@ -197,7 +215,7 @@ export function RadarFilters({ params }: { params: RadarParams }) {
     router.push(buildRadarHref({ ...params, ...EMPTY_DRAFT }), { scroll: false });
   };
 
-  const pick = <K extends "authority" | "category" | "framework" | "size">(
+  const pick = <K extends "authority" | "category" | "framework" | "size" | "sbpf">(
     key: K,
     value: NonNullable<Draft[K]>,
   ) => setDraft((d) => ({ ...d, [key]: d[key] === value ? null : value }));
@@ -352,6 +370,18 @@ export function RadarFilters({ params }: { params: RadarParams }) {
                     label={SIZE_BAND_LABEL[s]}
                     title={SIZE_BAND_HINT[s]}
                     onClick={() => pick("size", s)}
+                  />
+                ))}
+              </Group>
+
+              <Group icon={ic.sbpf} label="sBPF">
+                {SBPF_FACETS.map((v: SbpfFacet) => (
+                  <Chip
+                    key={v}
+                    active={draft.sbpf === v}
+                    label={v}
+                    title={SBPF_HINT[v]}
+                    onClick={() => pick("sbpf", v)}
                   />
                 ))}
               </Group>

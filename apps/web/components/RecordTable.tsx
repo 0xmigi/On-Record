@@ -368,7 +368,7 @@ export function RecordTable({
                           : "The upgrade authority was removed. Nobody can change this program again."
                       }
                     >
-                      {ev.authorityAfter ? "HANDOFF" : "FROZEN"}
+                      {ev.authorityAfter ? "HANDOFF" : "IMMUTABLE"}
                     </span>
                   ) : (
                     <span className={`evt-tag evt-${ev.type}`}>{EVENT_LABELS[ev.type]}</span>

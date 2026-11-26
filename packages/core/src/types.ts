@@ -528,6 +528,9 @@ export interface ApiProgramDetail extends ApiProgram {
     downloadEvidence: string | null;
     home?: "mac" | "linux" | null;
     crates: { name: string; version: string }[];
+    /** the linker's own stamp, when the binary kept it (~2% do). Older API
+     *  builds omit it. */
+    linker?: { version: string; repo: string | null; commit: string | null } | null;
   } | null;
   /** sol_* syscall imports read off the ELF — the evidence behind capabilities */
   syscalls: string[];

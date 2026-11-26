@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 
 // ---------------------------------------------------------------------------
 // Deploys over time — stacked vertical bars: new deploys (accent) under
@@ -66,6 +66,23 @@ function topRoundedRect(x: number, y: number, w: number, h: number, r: number): 
   return `M${x},${y + h} v${-(h - rr)} q0,${-rr} ${rr},${-rr} h${w - 2 * rr} q${rr},0 ${rr},${rr} v${h - rr} z`;
 }
 
+/** Which series the chart plots. The headline figures above the chart are the
+ *  switch: each one is the total of the series it selects. */
+type Focus = "all" | "deploy" | "upgrade";
+
+export interface FlowFigures {
+  programs: number;
+  deploys: number;
+  upgrades: number;
+  /** ISO — where the figures start, when that is later than the chart's left edge */
+  since?: string | null;
+  sinceTip?: string;
+}
+
+const fmtNum = (n: number) => n.toLocaleString("en-US");
+const fmtSince = (iso: string) =>
+  new Date(iso).toLocaleDateString("en-US", { day: "numeric", month: "short", year: "numeric", timeZone: "UTC" });
+
 /** `devnetVolume` opts the chart into cluster comparison: each bucket draws two
  *  bars — this page's cluster and devnet — so their volumes read side by side.
  *  Omit it (or pass an empty series) and the chart stays single-series. */
@@ -77,6 +94,8 @@ export function FlowChart({
   devnetStartsAt,
   archiveVolume,
   windowSecs,
+  figures,
+  controls,
 }: {
   volume: VolumePoint[];
   devnetVolume?: VolumePoint[];
@@ -88,8 +107,15 @@ export function FlowChart({
   /** daily points from the Old Faithful archive, before the record starts */
   archiveVolume?: VolumePoint[];
   windowSecs: number;
+  /** the window's totals, drawn as the chart's legend and series switch */
+  figures?: FlowFigures;
+  /** drawn at the right end of the figures row (the page's time frames) */
+  controls?: ReactNode;
 }) {
   const [hover, setHover] = useState<number | null>(null);
+  const [focus, setFocus] = useState<Focus>("all");
+  const showDeploys = focus !== "upgrade";
+  const showUpgrades = focus !== "deploy";
   const wrapRef = useRef<HTMLDivElement>(null);
   const [width, setWidth] = useState(920);
 
@@ -109,6 +135,9 @@ export function FlowChart({
   const hasSplit = volume.some((p) => p.deploys != null || p.upgrades != null);
 
   const comparing = (devnetVolume?.length ?? 0) > 0;
+  // devnet always reads as devnet: hatched, alone or beside mainnet
+  const devnetAlone = !comparing && networkLabel === "devnet";
+  const mainSuffix = devnetAlone ? "-devnet" : "";
 
   const buckets = useMemo<Bucket[]>(() => {
     const bs = bucketSecs(windowSecs);
@@ -150,7 +179,10 @@ export function FlowChart({
   const yMax = niceMax(
     Math.max(
       1,
-      ...buckets.map((b) => Math.max(b.deploys + b.upgrades, (b.devnet?.deploys ?? 0) + (b.devnet?.upgrades ?? 0))),
+      ...buckets.map((b) => {
+        const sum = (s: Series) => (showDeploys ? s.deploys : 0) + (showUpgrades ? s.upgrades : 0);
+        return Math.max(sum(b), b.devnet ? sum(b.devnet) : 0);
+      }),
     ),
   );
   const plotW = width - PAD_L;
@@ -210,19 +242,74 @@ export function FlowChart({
 
   return (
     <div className="flow-chart">
-      {hasSplit ? (
+      {hasSplit && figures ? (
+        <div className={`flow-figures${devnetAlone ? " is-devnet" : ""}`} role="group" aria-label="Series shown in the chart">
+          {(
+            [
+              ["all", figures.programs, "programs"],
+              ["deploy", figures.deploys, "new"],
+              ["upgrade", figures.upgrades, "upgrades"],
+            ] as const
+          ).map(([key, n, label]) => {
+            const total = figures.deploys + figures.upgrades;
+            const newPct = total > 0 ? (figures.deploys / total) * 100 : 50;
+            return (
+              <button
+                key={key}
+                type="button"
+                className={`flow-figure${focus === key ? " is-on" : ""}`}
+                aria-pressed={focus === key}
+                onClick={() => setFocus(focus === key && key !== "all" ? "all" : key)}
+              >
+                <span className="flow-figure-num">{fmtNum(n)}</span>
+                <span className="flow-figure-label">{label}</span>
+                {/* the underline is the series' colour; under "programs" it is
+                    the new/upgrade split itself */}
+                <span
+                  className={`flow-figure-bar flow-figure-bar-${key}`}
+                  style={
+                    key === "all"
+                      ? {
+                          background: `linear-gradient(90deg, var(--chart-deploy) 0 ${newPct}%, var(--chart-upgrade) ${newPct}% 100%)`,
+                        }
+                      : undefined
+                  }
+                />
+              </button>
+            );
+          })}
+          <div className="flow-figures-side">
+            {controls}
+            {figures.since ? (
+              <span className="flow-figures-since">
+                since {fmtSince(figures.since)}
+                {figures.sinceTip ? (
+                  <span className="info-dot" data-tip={figures.sinceTip} tabIndex={0} role="note">
+                    i
+                  </span>
+                ) : null}
+              </span>
+            ) : null}
+          </div>
+        </div>
+      ) : null}
+      {hasSplit && (comparing || !figures) ? (
         <div className="flow-legend" aria-hidden="true">
-          <span className="flow-key">
-            <span className="flow-swatch flow-swatch-deploy" /> new deploys
-          </span>
-          <span className="flow-key">
-            <span className="flow-swatch flow-swatch-upgrade" /> upgrades
-          </span>
+          {!figures ? (
+            <>
+              <span className="flow-key">
+                <span className="flow-swatch flow-swatch-deploy" /> new deploys
+              </span>
+              <span className="flow-key">
+                <span className="flow-swatch flow-swatch-upgrade" /> upgrades
+              </span>
+            </>
+          ) : null}
           {/* colour carries deploy-vs-upgrade; the cluster is carried by the
               paired position + weight, so it has to be said in words */}
           {comparing ? (
             <>
-              <span className="flow-legend-sep">·</span>
+              {!figures ? <span className="flow-legend-sep">·</span> : null}
               <span className="flow-key">
                 <span className="flow-swatch flow-swatch-deploy" /> {networkLabel}
               </span>
@@ -245,7 +332,7 @@ export function FlowChart({
               or weight: a lighter fill reads as a fourth colour and washes out
               in a screenshot, while a hatch stays legible at any size and in
               either theme. Hue keeps meaning deploy-vs-upgrade throughout. */}
-          {comparing ? (
+          {comparing || devnetAlone ? (
             <defs>
               {(["deploy", "upgrade"] as const).map((k) => (
                 <pattern
@@ -305,8 +392,8 @@ export function FlowChart({
             const x0 = comparing ? cx - barW - pairGap / 2 : cx - barW / 2;
             const xDev = cx + pairGap / 2;
             const stack = (sx: number, s: Series, suffix: string) => {
-              const dH = y(s.deploys);
-              const uH = y(s.upgrades);
+              const dH = showDeploys ? y(s.deploys) : 0;
+              const uH = showUpgrades ? y(s.upgrades) : 0;
               const gap = uH > 0 && dH > 0 ? 2 : 0; // surface gap between segments
               return (
                 <>
@@ -328,7 +415,7 @@ export function FlowChart({
             };
             return (
               <g key={b.t}>
-                {stack(x0, b, "")}
+                {stack(x0, b, mainSuffix)}
                 {comparing && b.devnet ? stack(xDev, b.devnet, "-devnet") : null}
                 {hover === i ? (
                   <line className="flow-hover-line" x1={cx} x2={cx} y1={PAD_T} y2={baseY} />
@@ -366,11 +453,11 @@ export function FlowChart({
               <>
                 {comparing ? <span className="flow-tip-net">{networkLabel}</span> : null}
                 <span className="flow-tip-row">
-                  <span className="flow-swatch flow-swatch-deploy" />
+                  <span className={`flow-swatch flow-swatch-deploy${mainSuffix}`} />
                   {hovered.deploys} new
                 </span>
                 <span className="flow-tip-row">
-                  <span className="flow-swatch flow-swatch-upgrade" />
+                  <span className={`flow-swatch flow-swatch-upgrade${mainSuffix}`} />
                   {hovered.upgrades} upgrades
                 </span>
                 {comparing && !hovered.devnet ? <span className="flow-tip-net">devnet not recorded yet</span> : null}

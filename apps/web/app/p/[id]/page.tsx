@@ -316,7 +316,7 @@ export default async function ProgramDossierPage({
 
   const mutability =
     program.authorityClass === "none"
-      ? "immutable (frozen)"
+      ? "immutable"
       : program.authorityClass
         ? "mutable"
         : "unknown";
@@ -371,8 +371,28 @@ export default async function ProgramDossierPage({
   // the SDK crate version if the binary names one, which is what the code was
   // written against, not what built it — labelled as such.
   const sdk = build?.crates.find((c) => c.name === "solana-program");
+  // the linker's own stamp, when the binary kept it: the LLVM build inside the
+  // platform-tools that linked it. Older API builds don't send it, so read it
+  // from the strings the page already has.
+  const linker =
+    build?.linker !== undefined
+      ? build.linker
+      : (() => {
+          for (const str of program.strings ?? []) {
+            const m = str.match(
+              /Linker: LLD (\d+\.\d+\.\d+)(?: \(https:\/\/github\.com\/([^\s)]+?)(?:\.git)? ([0-9a-f]{7,40})\))?/,
+            );
+            if (m) return { version: m[1]!, repo: m[2] ?? null, commit: m[3] ?? null };
+          }
+          return null;
+        })();
   const toolchainValue: ReactNode = rebuild ? (
     `Solana ${rebuild.solana}`
+  ) : linker ? (
+    <>
+      LLD {linker.version}
+      <span className="ov-note">linker</span>
+    </>
   ) : sdk ? (
     <>
       {sdk.version}
@@ -383,9 +403,11 @@ export default async function ProgramDossierPage({
   );
   const toolchainTip = rebuild
     ? `The Solana release whose cargo-build-sbf reproduced these bytes, byte for byte, in On Record's rebuild on ${machineLabel(rebuild.machine)}. The release picks the compiler (platform-tools) by default.`
-    : sdk
+    : linker
+      ? `The binary kept its linker's stamp: LLD ${linker.version}${linker.repo ? ` from ${linker.repo}` : ""}${linker.commit ? ` @ ${linker.commit.slice(0, 8)}` : ""}. That is the LLVM build inside the platform-tools that linked it. About 2% of programs keep this stamp.${sdk ? ` Its code was written against solana-program ${sdk.version}.` : ""}`
+      : sdk
       ? `The binary was compiled against solana-program ${sdk.version}, read from its dependency paths. That's the SDK the code uses, not the Solana release that built it.`
-      : "The Solana release and compiler that built it. Known exactly for programs On Record has rebuilt; reading the compiler straight from the binary is next.";
+      : "The Solana release and compiler that built it. Known exactly for programs On Record has rebuilt, or read from the binary when it kept its linker's stamp (about 2% do).";
 
   // Twelve cells, the same twelve on every program, in the same places. What
   // isn't known reads "—"; nothing appears or disappears. Explanations live in
@@ -443,13 +465,13 @@ export default async function ProgramDossierPage({
     },
     {
       k: "control",
-      tip: "Who can replace the program's code. Frozen means nobody can; a Squads multisig needs several signers.",
+      tip: "Who can replace the program's code. Immutable means nobody can; a Squads multisig needs several signers.",
       v: program.multisig ? (
         <Link className="receipt-link" prefetch={false} href={builderHref(program.multisig.address, program.network)}>
           Squads{program.multisig.threshold != null && program.multisig.members != null ? ` ${program.multisig.threshold} of ${program.multisig.members}` : ""}
         </Link>
       ) : program.authorityClass === "none" ? (
-        "frozen"
+        "immutable"
       ) : program.authority ? (
         <Link className="receipt-link" prefetch={false} href={builderHref(program.authority, program.network)}>
           {program.authorityClass?.replace("_", " ") ?? truncateAddress(program.authority)}

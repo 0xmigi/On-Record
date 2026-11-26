@@ -4,10 +4,16 @@ import Link from "next/link";
 import { Mark } from "@/components/Mark";
 import { SectionHeader } from "@/components/SectionHeader";
 import { FlowChart } from "@/components/FlowChart";
-import { BotExplainer } from "@/components/BotExplainer";
-import { ARCHIVE_FROM, categoryLabel, fetchFunnel, type Category, type Network, type RadarWindow } from "@/lib/api";
-import { groupNum, utcStamp } from "@/lib/format";
-import { buildRadarHref, STATS_FRAMEWORK_FACET, type RadarParams } from "@/lib/radar-url";
+import { WindowPicker } from "@/components/WindowPicker";
+import type { VersionNet, VersionRow } from "@/components/VersionCompare";
+import { CardFoot, CardHead, HasKey, MeterList, SplitRows, TallSplit, type MeterRow } from "@/components/StatBits";
+import { ToolchainView } from "@/components/ToolchainView";
+import { OpennessView } from "@/components/OpennessView";
+import { LifecycleView } from "@/components/LifecycleView";
+import { ARCHIVE_FROM, categoryLabel, fetchFunnel, fetchRadar, type ApiFunnel, type RadarWindow } from "@/lib/api";
+import { mergeFunnels, type StatsFunnel } from "@/lib/funnel-merge";
+import { groupNum, truncateAddress, utcStamp } from "@/lib/format";
+import { buildRadarHref, STATS_FRAMEWORK_FACET, type NetworkFilter, type RadarParams } from "@/lib/radar-url";
 
 const WINDOW_KEYS = ["24h", "48h", "7d", "30d", "90d", "1y", "all"] as const;
 type WindowKey = (typeof WINDOW_KEYS)[number];
@@ -45,70 +51,54 @@ export const metadata: Metadata = {
   description: "Stats on every program deployed to Solana, over a time window.",
 };
 
-const CATEGORY_ORDER: Category[] = [
-  "dex",
-  "staking",
-  "launchpad",
-  "lending",
-  "perps",
-  "bridge",
-  "oracle",
-  "nft",
-  "governance",
-  "airdrop",
-  "token",
-  "infra",
-  "defi",
-  "unknown",
-];
 
 function pct(part: number, whole: number): number {
   if (whole <= 0) return 0;
   return Math.round((part / whole) * 1000) / 10;
 }
 
-// each row is [label, count, optional hover definition, optional radar link]
-type BreakdownRow = [string, number, string?, string?];
-
-function Breakdown({
-  rows,
-  labelWidth = 116,
-}: {
-  rows: BreakdownRow[];
-  labelWidth?: number;
-}) {
-  const max = Math.max(1, ...rows.map(([, n]) => n));
+/** A labelled group of panels: one kind of measure. */
+function StatSection({ title, columns = 2, children }: { title: string; columns?: 2 | 3; children: React.ReactNode }) {
   return (
-    <div className="cat-breakdown">
-      {rows.map(([label, n, tip, href]) => {
-        const body = (
-          <>
-            <span
-              className={`cat-chip${tip ? " has-tip" : ""}`}
-              style={{ minWidth: labelWidth, textAlign: "left" }}
-            >
-              {label}
-              {tip ? <span className="tip-pop">{tip}</span> : null}
-            </span>
-            <div className="cat-bar-track">
-              <div className="cat-bar" style={{ width: `${pct(n, max)}%` }} />
-            </div>
-            <span className="cat-bar-num">{n}</span>
-          </>
-        );
-        return href ? (
-          <Link className="cat-bar-row is-link" href={href} key={label}>
-            {body}
-          </Link>
-        ) : (
-          <div className="cat-bar-row" key={label}>
-            {body}
-          </div>
-        );
-      })}
-    </div>
+    <section className="stats-section">
+      <h2 className="stats-section-title">{title}</h2>
+      <div className={`stat-grid${columns === 3 ? " stat-grid-3" : ""}`}>{children}</div>
+    </section>
   );
 }
+
+/** sBPF versions are ordered, so one hue from light (v0) to dark (v3). */
+const SBPF_SHADE: Record<string, string> = {
+  v0: "var(--viz-1)",
+  v1: "var(--viz-2)",
+  v2: "var(--viz-3)",
+  v3: "var(--viz-4)",
+};
+
+/** Ordered buckets as "within" rows: each the share of the whole that falls
+ *  at or under that edge. The last bucket (beyond every edge) gets no row. */
+function cumulative(buckets: number[], edges: string[]): MeterRow[] {
+  const n = buckets.reduce((a, b) => a + b, 0);
+  let run = 0;
+  return edges.map((label, i) => {
+    run += buckets[i] ?? 0;
+    return { label, value: `${pct(run, n)}%`, frac: n ? run / n : 0 };
+  });
+}
+
+/** seconds as the coarsest unit that reads well */
+function fmtDuration(s: number): string {
+  if (s < 3_600) return `${Math.max(1, Math.round(s / 60))} min`;
+  if (s < 86_400) {
+    const h = Math.round(s / 3_600);
+    return `${h} hour${h === 1 ? "" : "s"}`;
+  }
+  const d = Math.round(s / 86_400);
+  return `${d} day${d === 1 ? "" : "s"}`;
+}
+
+
+const sharePp = (x: number) => Math.round(x * 100);
 
 export default async function FunnelPage({
   searchParams,
@@ -119,37 +109,43 @@ export default async function FunnelPage({
   let win: WindowKey = (WINDOW_KEYS as readonly string[]).includes(sp.window ?? "")
     ? (sp.window as WindowKey)
     : "48h";
-  // Cluster is sticky the same way the radar's is: explicit ?network= wins, else
-  // the cookie the toggle persists, else mainnet. This page used to call
-  // fetchFunnel(win) with no network at all, so every panel — volume chart
-  // included — silently reported mainnet even with the app toggled to devnet.
-  const cookieNetwork = (await cookies()).get("network")?.value;
-  const network: Network =
-    sp.network === "devnet"
-      ? "devnet"
-      : sp.network === "mainnet"
-        ? "mainnet"
-        : cookieNetwork === "devnet"
-          ? "devnet"
-          : "mainnet";
+  // The page follows the site's network switch (the `cluster` cookie the
+  // toggle writes; an explicit ?network= wins), default all networks, like the
+  // radar. The API counts each network on its own, so "all" fetches both and
+  // adds them up (funnel-merge.ts).
+  const cookieNetwork = (await cookies()).get("cluster")?.value;
+  const pick = (v: string | undefined): NetworkFilter | null =>
+    v === "all" || v === "mainnet" || v === "devnet" ? v : null;
+  const network: NetworkFilter = pick(sp.network) ?? pick(cookieNetwork) ?? "all";
   const windows = network === "devnet" ? DEVNET_WINDOWS : WINDOW_KEYS;
   if (!windows.includes(win)) win = "all";
-  const fetched = await fetchFunnel(win, network);
-  const funnel = fetched && (!LONG_WINDOWS.includes(win) || fetched.statsFrom) ? fetched : null;
+  const usable = (f: ApiFunnel | null) => (f && (!LONG_WINDOWS.includes(win) || f.statsFrom) ? f : null);
+  let funnel: StatsFunnel | null;
+  // on all networks, each network's own funnel too, for the cards that compare
+  let pair: { mainnet: ApiFunnel; devnet: ApiFunnel } | null = null;
+  if (network === "all") {
+    // devnet has no 1y (no archive, so it is the same months as "all")
+    const [main, dev] = await Promise.all([
+      fetchFunnel(win, "mainnet"),
+      fetchFunnel(win === "1y" ? "all" : win, "devnet"),
+    ]);
+    const m = usable(main);
+    const d = usable(dev);
+    funnel = m && d ? mergeFunnels(m, d) : m;
+    if (m && d) pair = { mainnet: m, devnet: d };
+  } else {
+    funnel = usable(await fetchFunnel(win, network));
+  }
 
   const windowNav = (
-    <nav className="chart-windows" aria-label="Time window">
-      {windows.map((k) => (
-        <Link
-          key={k}
-          href={`/funnel?window=${k}${network === "devnet" ? "&network=devnet" : ""}`}
-          className={`chart-win-btn${win === k ? " active" : ""}`}
-          aria-current={win === k ? "page" : undefined}
-        >
-          {k}
-        </Link>
-      ))}
-    </nav>
+    <WindowPicker
+      key="window-picker"
+      active={win}
+      options={windows.map((k) => ({
+        key: k,
+        href: `/funnel?window=${k}${sp.network ? `&network=${network}` : ""}`,
+      }))}
+    />
   );
 
   if (!funnel) {
@@ -192,303 +188,258 @@ export default async function FunnelPage({
     category: null,
     framework: null,
     size: null,
+    sbpf: null,
   };
   const radar = (patch: Partial<RadarParams>): string | undefined =>
     RADAR_WINDOW[win] ? buildRadarHref({ ...radarBase, ...patch }) : undefined;
 
+  // the window's novel programs themselves: a handful of names says more than
+  // a bar. Only where the radar has the same window, so the list and the count
+  // describe the same programs.
+  const novelPage = RADAR_WINDOW[win]
+    ? await fetchRadar({ type: "deploy", window: RADAR_WINDOW[win], band: "novel", network, limit: 6, sort: "interest" })
+    : null;
+
+  // frameworks → one composition bar; each framework's v3 share rides along
+  const fwTrend = funnel.frameworkTrend?.filter((t) => t.current > 0) ?? [];
+  const fwTotal = fwTrend.reduce((a, t) => a + t.current, 0);
+  const fwV3 = new Map((funnel.sbpfByFramework ?? []).filter((f) => f.read > 0).map((f) => [f.framework, f]));
+
+  // sBPF: the share on v3, of the programs whose version was read
+  const v0Upgrades = funnel.sbpfUpgrades?.v0 ?? 0;
+  // Lifecycle figures for one funnel; on all networks each is a pair,
+  // mainnet's with devnet's line under it
+  const lifeOf = (f: ApiFunnel | StatsFunnel) => {
+    const lc = f.lifecycle;
+    return {
+      closedWithin:
+        lc && lc.lifespan.n > 0 ? cumulative(lc.lifespan.buckets, ["1 hour", "1 day", "1 week", "30 days"]) : null,
+      medianLife: lc?.lifespan.median != null ? fmtDuration(lc.lifespan.median) : null,
+      upgradeWithin:
+        lc && lc.upgradeGap.n > 0 ? cumulative(lc.upgradeGap.buckets, ["1 day", "1 week", "30 days", "90 days"]) : null,
+      medianGap: lc?.upgradeGap.median != null ? fmtDuration(lc.upgradeGap.median) : null,
+      clones: f.churn
+        ? [
+            {
+              label: "identical to known code",
+              value: `${pct(f.churn.redeploys, f.deploys)}% · ${groupNum(f.churn.redeploys)}`,
+              frac: f.deploys ? f.churn.redeploys / f.deploys : 0,
+              href: radar({ view: "recycled" }),
+            },
+            {
+              label: "Pump.fun clones",
+              value: `${pct(f.churn.pumpfun, f.deploys)}% · ${groupNum(f.churn.pumpfun)}`,
+              frac: f.deploys ? f.churn.pumpfun / f.deploys : 0,
+            },
+          ]
+        : null,
+    };
+  };
+  type Life = ReturnType<typeof lifeOf>;
+  /** rows for one figure: alone, or mainnet's with devnet's under each */
+  const pairUp = (of: typeof lifeOf, k: "closedWithin" | "upgradeWithin" | "clones"): MeterRow[] | null => {
+    if (!pair) return of(funnel)[k];
+    const m = of(pair.mainnet)[k];
+    const d = of(pair.devnet)[k];
+    if (!m && !d) return null;
+    const base = m ?? d!.map((r) => ({ ...r, value: "–", frac: 0 }));
+    return base.map((r, i) => ({ ...r, dev: d?.[i] ? { value: d[i]!.value, frac: d[i]!.frac } : { value: "–", frac: 0 } }));
+  };
+  const pairFig = (of: typeof lifeOf, k: "medianGap"): { main: string; dev: string | null } | null => {
+    if (!pair) {
+      const v = (of(funnel) as Life)[k];
+      return v ? { main: v, dev: null } : null;
+    }
+    const m = of(pair.mainnet)[k];
+    const d = of(pair.devnet)[k];
+    return m || d ? { main: m ?? "–", dev: d ?? "–" } : null;
+  };
+
+  // sBPF per version: on all networks a bar per network, else the one
+  const versionNet = (f: ApiFunnel, net: VersionNet["net"], version: string): VersionNet => {
+    const rows = f.sbpfTrend ?? [];
+    const read = rows.filter((t) => t.version !== "not read" && t.version !== "other").reduce((a, t) => a + t.current, 0);
+    const t = rows.find((r) => r.version === version);
+    return {
+      net,
+      n: t?.current ?? 0,
+      share: read ? ((t?.current ?? 0) / read) * 100 : 0,
+      early: t?.earlyShare != null && t.lateShare != null ? t.earlyShare * 100 : null,
+      late: t?.earlyShare != null && t.lateShare != null ? t.lateShare * 100 : null,
+    };
+  };
+  const sbpfVersions: VersionRow[] = ["v3", "v2", "v1", "v0"].map((version) => ({
+    version,
+    nets: pair
+      ? [versionNet(pair.mainnet, "mainnet", version), versionNet(pair.devnet, "devnet", version)]
+      : [versionNet(funnel as ApiFunnel, null, version)],
+  }));
+
   return (
-    <>
+    // devnet alone is hatched too: hatched always means devnet on this page
+    <div className={network === "devnet" ? "stats-devnet" : undefined}>
       <h1 className="funnel-title">Program Stats</h1>
 
-      {windowNav}
-
       <div className="stream-status">
-        <span className="stream-dot" aria-hidden="true" />
-        {/* every panel here is one cluster's data — say which, so the numbers
-            are never read as a mainnet+devnet total */}
-        <span className="stream-status-strong">{network}</span>
-        <span className="stream-sep">·</span>
-        <span className="stream-status-strong">{win === "all" ? "all" : `last ${win}`}</span>
-        {/* the window reaches back past the live record: say where the counts
-            actually start, so a 1y figure is never read as a year */}
-        {funnel.statsClipped && funnel.statsFrom ? (
+        {/* the whole page is the network chosen in the site's settings, so it
+            needs no label here. The totals live on the chart, as its series
+            switch; without a chart they stay here */}
+        {!funnel.volume?.length ? (
           <>
+            <span>{groupNum(raw)} programs</span>
             <span className="stream-sep">·</span>
-            <span className="stream-cap">since {dayLabel(funnel.statsFrom)}</span>
-            <span
-              className="info-dot"
-              data-tip={`On Record's ${network} record starts ${dayLabel(funnel.statsFrom)}. The counts here and every panel below the chart start there.${
-                funnel.archiveVolume?.length ? " The chart before it is the Old Faithful archive." : ""
-              }`}
-              tabIndex={0}
-              role="note"
-            >
-              i
+            <span>
+              {groupNum(funnel.deploys)} new · {groupNum(funnel.upgrades)} upgrades
             </span>
           </>
         ) : null}
-        <span className="stream-sep">·</span>
-        <span>{groupNum(raw)} programs</span>
-        <span className="stream-sep">·</span>
-        <span>
-          {groupNum(funnel.deploys)} new · {groupNum(funnel.upgrades)} upgrades
-        </span>
         {funnel.capped ? (
           <>
             <span className="stream-sep">·</span>
             <span className="stream-cap">stats capped at 48h · chart shows {win}</span>
           </>
         ) : null}
+        {/* time frames at the right end of the same line, above the chart */}
+        <span className="stream-status-end">{windowNav}</span>
       </div>
 
       {funnel.volume && funnel.volume.length > 0 ? (
         <section className="stat-card stat-card-wide">
           <SectionHeader
             title="Deploys over time"
-            info={`New deploys and upgrades, stacked, per time bucket. This chart is the one panel that shows both clusters — mainnet solid, devnet faded, on a shared scale — so their volumes are comparable; every other panel on this page is the selected cluster only. The window buttons above drive the whole page. Older buckets undercount — the loader only stores each program's last deploy slot. On 90d and longer: one bar per day or week, and on mainnet the bars before the record starts come from the Old Faithful archive, every deploy and upgrade instruction since ${ARCHIVE_FROM}.`}
+            info={`New deploys and upgrades, stacked, per time bucket. Like the rest of the page, it shows the network picked in settings; on all networks, mainnet is solid and devnet hatched, on one scale. The time frames drive the whole page. Older buckets undercount — the loader only stores each program's last deploy slot. On 90d and longer: one bar per day or week, and on mainnet the bars before the record starts come from the Old Faithful archive, every deploy and upgrade instruction since ${ARCHIVE_FROM}.`}
           />
-          {/* the comparison is mainnet-vs-devnet, so only pair them up while
-              viewing mainnet — in devnet mode devnet is already the main series */}
           <FlowChart
             volume={funnel.volume}
-            devnetVolume={network === "mainnet" ? funnel.volumeByNetwork?.devnet : undefined}
-            networkLabel={network}
+            networkLabel={network === "all" ? "mainnet" : network}
+            devnetVolume={network === "all" ? funnel.volumeByNetwork?.devnet : undefined}
+            devnetStartsAt={network === "all" ? funnel.recordStartsAtByNetwork?.devnet : undefined}
             recordStartsAt={funnel.recordStartsAt}
-            devnetStartsAt={network === "mainnet" ? funnel.recordStartsAtByNetwork?.devnet : undefined}
             archiveVolume={funnel.archiveVolume}
             windowSecs={windowSecs}
+            figures={{
+              programs: raw,
+              deploys: funnel.deploys,
+              upgrades: funnel.upgrades,
+              // the window reaches back past the live record: say where the
+              // counts actually start, so a 1y figure is never read as a year
+              since: funnel.statsClipped ? funnel.statsFrom : null,
+              sinceTip: `On Record's ${network === "all" ? "mainnet" : network} record starts ${funnel.statsFrom ? dayLabel(funnel.statsFrom) : ""}. These counts and every panel below the chart start there.${
+                funnel.archiveVolume?.length ? " The chart before it is the Old Faithful archive." : ""
+              }`,
+            }}
           />
         </section>
       ) : null}
 
-      <div className="stat-grid">
-        <section className="stat-card">
-          <SectionHeader
-            title="Frameworks"
-            info="Framework each program was built with. Anchor v2 is counted apart from earlier Anchor; Quasar is named from the program's source, since its binary reads as Pinocchio. Arrow = share change, first half vs second half of the window."
+      {/* Sections in order of what people look for: toolchain, then openness;
+          the rest at the bottom. Every panel follows the site's network switch. */}
+      <StatSection title="Toolchain">
+        {fwTrend.length > 0 ? (
+          <ToolchainView
+            frameworks={fwTrend.map((t) => ({
+              key: t.framework,
+              share: fwTotal ? (t.current / fwTotal) * 100 : 0,
+              n: t.current,
+              // combined networks carry no half-by-half shares
+              change:
+                funnel.combined || Math.abs(sharePp(t.delta)) <= 2
+                  ? undefined
+                  : `${t.delta > 0 ? "↑" : "↓"} ${Math.abs(sharePp(t.delta))}pp over the window`,
+            }))}
+            frameworksInfo="Framework of each new deploy, as a share of the new deploys in each period. Before the record starts the counts come from the Old Faithful archive (mainnet only), which names Anchor, native and Pinocchio but does not split out Anchor v2 or Quasar. From the record start, Anchor v2 is counted apart from earlier Anchor, and Quasar is named from the program's source, since its binary reads as Pinocchio. Click a band to narrow the section to it."
+            series={
+              (funnel.frameworkSeries?.points.length ?? 0) >= 2
+                ? {
+                    ...funnel.frameworkSeries!,
+                    archiveLabel: network === "all" ? "archive · mainnet only" : "archive",
+                  }
+                : null
+            }
+            integrations={sorted(funnel.byIntegration)}
+            sbpf={sbpfVersions}
+            sbpfInfo="The sBPF version each program's bytecode targets, read from its ELF header. New deploys and upgrades together, each program once at its current build, of the ones whose version was read. SIMD-0500 makes v3 the only version accepted for deploys and upgrades. Each figure is the share in the window's first half → its second half, left out when either half is under 90% read. On all networks, mainnet and devnet are shown apart (devnet hatched)."
+            machine={(funnel.buildSetup?.machine ?? []).map((r) => ({ key: r.version, total: r.total, verified: r.verified }))}
+            machineInfo="Machine that compiled each program, read from paths the compiler left in its bytes, and the share of those with a verified build. A Mac build can't byte-match the Linux/Docker rebuild a verification uses. Unknown: no machine paths left in the binary. New deploys and upgrades, each program once."
+            v0Upgrades={v0Upgrades}
+            v0Href={radar({ type: "upgrade", sbpf: "v0" })}
+            byFramework={funnel.toolchainByFramework}
+            machineDev={
+              pair
+                ? {
+                    mainnet: (pair.mainnet.buildSetup?.machine ?? []).map((r) => ({ key: r.version, total: r.total, verified: r.verified })),
+                    devnet: (pair.devnet.buildSetup?.machine ?? []).map((r) => ({ key: r.version, total: r.total, verified: r.verified })),
+                  }
+                : null
+            }
+            v0Dev={pair ? { mainnet: pair.mainnet.sbpfUpgrades?.v0 ?? 0, devnet: pair.devnet.sbpfUpgrades?.v0 ?? 0 } : null}
+            byFrameworkNet={
+              pair ? { mainnet: pair.mainnet.toolchainByFramework, devnet: pair.devnet.toolchainByFramework } : null
+            }
           />
-          {funnel.frameworkTrend && funnel.frameworkTrend.length > 0 ? (
-            <div className="trend-list">
-              {funnel.frameworkTrend.map((t) => {
-                const dir = t.delta > 0.02 ? "up" : t.delta < -0.02 ? "down" : "flat";
-                const arrow = dir === "up" ? "▲" : dir === "down" ? "▼" : "→";
-                const facet = STATS_FRAMEWORK_FACET[t.framework];
-                const cells = (
-                  <>
-                    <span className="trend-name">{t.framework}</span>
-                    <span className="trend-count">{t.current}</span>
-                    <span className="trend-share">
-                      {Math.round(t.earlyShare * 100)}% → {Math.round(t.lateShare * 100)}%
-                    </span>
-                    <span className={`trend-delta trend-${dir}`}>
-                      {arrow} {t.delta >= 0 ? "+" : ""}
-                      {Math.round(t.delta * 100)}pp
-                    </span>
-                  </>
-                );
-                const href = facet ? radar({ framework: facet }) : undefined;
-                return href ? (
-                  <Link className="trend-row is-link" href={href} key={t.framework}>
-                    {cells}
-                  </Link>
-                ) : (
-                  <div className="trend-row" key={t.framework}>
-                    {cells}
-                  </div>
-                );
-              })}
-            </div>
-          ) : null}
-        </section>
-
-        {funnel.disclosure && funnel.disclosure.total > 0 ? (
-          <section className="stat-card">
-            <SectionHeader
-              title="IDL, security.txt, verified"
-              info="Share of the window's deploys and upgrades that published each one, every program once as it stands now. IDL: found when the program was deployed (Anchor IDL account or Program Metadata). security.txt: in the binary or the Program Metadata account. Verified: the build matches public source (OtterSec)."
-            />
-            <div className="cat-breakdown">
-              {(
-                [
-                  ["IDL", funnel.disclosure.idl],
-                  ["security.txt", funnel.disclosure.securityTxt],
-                  ["verified build", funnel.disclosure.verified],
-                  ["all three", funnel.disclosure.allThree],
-                ] as const
-              ).map(([label, n]) => (
-                <div className="cat-bar-row" key={label}>
-                  <span className="cat-chip" style={{ minWidth: 116, textAlign: "left" }}>
-                    {label}
-                  </span>
-                  <div className="cat-bar-track">
-                    <div className="cat-bar" style={{ width: `${pct(n, funnel.disclosure!.total)}%` }} />
-                  </div>
-                  <span className="cat-bar-num">
-                    {pct(n, funnel.disclosure!.total)}%
-                  </span>
-                </div>
-              ))}
-            </div>
-          </section>
         ) : null}
 
-        <section className="stat-card">
-          <SectionHeader
-            title="Categories"
-            info="Category from the recovered name or IDL. 'unknown' = not enough to tag."
+      </StatSection>
+
+      <StatSection title="Openness">
+        {funnel.authority && funnel.disclosure && funnel.disclosure.total > 0 ? (
+          <OpennessView
+            authority={funnel.authority}
+            authorityInfo="Who can change the code, over the window's deploys and upgrades. Pick a kind to narrow Published and Verified builds to it. Immutable: no upgrade authority, the code can never change. Multisig: a Squads multisig holds it. Program: another program (a PDA, such as a governance program) holds it. Single key: one wallet can replace the code. Not read: no authority reading stored yet."
+            disclosure={funnel.disclosure}
+            byAuthority={funnel.disclosureByAuthority}
+            publishedInfo="Share of the window's deploys and upgrades that publish each one, every program once as it stands now. IDL: found when the program was deployed (Anchor IDL account or Program Metadata). security.txt: in the binary or the Program Metadata account. Source repo: a repository found in the binary or a verified build."
+            verifiedInfo="Verified build: the deployed bytes match a rebuild from public source (OtterSec). Same programs as Published. Lost verification: programs whose verified build an upgrade replaced inside the window, not verified again since."
+            lostVerification={funnel.lostVerification}
+            lostHref={radar({ verification: "lost" })}
+            byNet={
+              pair && pair.mainnet.authority && pair.devnet.authority && pair.mainnet.disclosure && pair.devnet.disclosure
+                ? {
+                    mainnet: {
+                      authority: pair.mainnet.authority,
+                      disclosure: pair.mainnet.disclosure,
+                      byAuthority: pair.mainnet.disclosureByAuthority,
+                      lostVerification: pair.mainnet.lostVerification,
+                    },
+                    devnet: {
+                      authority: pair.devnet.authority,
+                      disclosure: pair.devnet.disclosure,
+                      byAuthority: pair.devnet.disclosureByAuthority,
+                      lostVerification: pair.devnet.lostVerification,
+                    },
+                  }
+                : null
+            }
           />
-          <Breakdown
-            rows={CATEGORY_ORDER.map((c) => [
-              categoryLabel(c),
-              funnel.byCategory[c] ?? 0,
-              undefined,
-              c === "unknown" ? undefined : radar({ category: c }),
-            ])}
-            labelWidth={80}
-          />
-        </section>
-
-        {funnel.byIntegration && Object.keys(funnel.byIntegration).length > 0 ? (
-          <section className="stat-card">
-            <SectionHeader title="Integrations" info="Known programs referenced in the bytecode." />
-            <Breakdown rows={sorted(funnel.byIntegration).slice(0, 10)} labelWidth={132} />
-          </section>
         ) : null}
+      </StatSection>
 
-        {funnel.identity ? (
-          <section className="stat-card">
-            <SectionHeader title="Identity" info="Programs we could name or link to source, from the binary." />
-            <Breakdown
-              rows={[
-                ["named", funnel.identity.named, "A project name was recovered from the binary."],
-                ["has repo", funnel.identity.withRepo, "A source-code repo was found in the binary or a verified build.", radar({ repo: true })],
-                ["opaque", funnel.identity.opaque, "No name, repo, or security.txt — anonymous bytecode."],
-              ]}
+      {funnel.lifecycle ? (
+        <StatSection title="Lifecycle">
+          <section className="stat-card stat-span">
+            <LifecycleView
+              windowLabel={`${network === "all" ? "on mainnet " : ""}${win === "all" ? "since the record began" : `in the last ${win}`}`}
+              // closures are swept on mainnet only (closed.ts), so devnet has
+              // no live/closed split to show; on all networks it is mainnet's
+              showSplit={network !== "devnet"}
+              live={(pair ? pair.mainnet : funnel).lifecycle?.live ?? 0}
+              closed={(pair ? pair.mainnet : funnel).lifecycle?.closed ?? 0}
+              closedWithin={pair ? lifeOf(pair.mainnet).closedWithin : lifeOf(funnel).closedWithin}
+              medianLife={
+                (pair ? lifeOf(pair.mainnet) : lifeOf(funnel)).medianLife
+                  ? { main: (pair ? lifeOf(pair.mainnet) : lifeOf(funnel)).medianLife!, dev: null }
+                  : null
+              }
+              upgradeWithin={pairUp(lifeOf, "upgradeWithin")}
+              medianGap={pairFig(lifeOf, "medianGap")}
+              upgradeInfo={`Live programs upgraded in the window: how soon each upgrade came after the program's previous code change on record. ${groupNum(funnel.lifecycle.upgradeGap.noEarlier)} more had their previous change before On Record's record began, so there is no gap to measure.`}
+              clones={pairUp(lifeOf, "clones")}
             />
           </section>
-        ) : null}
-
-        {funnel.lineage ? (
-          <section className="stat-card">
-            <SectionHeader title="Lineage" info="Novel = no known relative. Fork = ≥60% code match to a known program." />
-            <Breakdown
-              rows={[
-                ["novel", funnel.lineage.novel, "No known code relative on record — genuinely new code.", radar({ view: "novel" })],
-                ["variant", funnel.lineage.variant, "Loosely similar to a known program, but not a direct copy.", radar({ view: "variant" })],
-                ["fork", funnel.lineage.fork, "≥60% code match to a known program — a fork or close derivative.", radar({ view: "recycled" })],
-              ]}
-            />
-          </section>
-        ) : null}
-
-        {funnel.control ? (
-          <section className="stat-card">
-            <SectionHeader title="Control" info="Upgrade authority. Verified = bytecode reproduces from public source." />
-            <Breakdown
-              rows={[
-                ["mutable", funnel.control.mutable, "Has an upgrade authority — the deployer can still replace the code (including to rug)."],
-                ["frozen", funnel.control.frozen, "Upgrade authority is null — the code can never be changed by anyone.", radar({ authority: "frozen" })],
-                ["verified build", funnel.control.verified, "The on-chain bytecode reproduces from public source code.", radar({ verification: "verified" })],
-              ]}
-            />
-          </section>
-        ) : null}
-
-        {funnel.buildMachine ? (
-          <section className="stat-card">
-            <SectionHeader
-              title="Build machine"
-              info="Machine that compiled each program, read from paths the compiler left in its bytes. A Mac build can't byte-match a Linux or Docker rebuild."
-            />
-            <Breakdown
-              rows={[
-                ["Mac", funnel.buildMachine.mac, "Built with the macOS platform-tools download, or on a Mac home folder."],
-                ["Linux", funnel.buildMachine.linux, "Built with the Linux download. Includes Docker builds."],
-                ["no clue", funnel.buildMachine.unknown, "No machine paths left in the binary: stripped or remapped at build time."],
-                ...(funnel.buildMachine.unread > 0
-                  ? ([["not read", funnel.buildMachine.unread, "No stored bytecode to read yet."]] as BreakdownRow[])
-                  : []),
-              ]}
-            />
-          </section>
-        ) : null}
-
-        {funnel.conviction ? (
-          <section className="stat-card">
-            <SectionHeader title="Funding" info="Where the deployer's SOL was traced to." />
-            <Breakdown
-              rows={[
-                ["known entity", funnel.conviction.knownEntity, "Deployer was funded from a labeled exchange or bridge."],
-                ["traced funder", funnel.conviction.funderTraced, "Funded from a specific wallet we could trace, but not a labeled entity."],
-                ["untraced", funnel.conviction.untraced, "Couldn't reach the funding origin."],
-              ]}
-            />
-          </section>
-        ) : null}
-
-        {funnel.sbpfTrend && funnel.sbpfTrend.some((t) => t.current > 0) ? (
-          <section className="stat-card">
-            <SectionHeader
-              title="sBPF version"
-              info="The sBPF version each program's bytecode targets, read from its ELF header. Counts new deploys and upgrades together, each program once at its current build. SIMD-0500 makes v3 the only version accepted for deploys and upgrades. 'not read' = recorded before the version was. Arrow = share change, first half vs second half of the window."
-            />
-            <div className="trend-list">
-              {funnel.sbpfTrend.map((t) => {
-                const dir = t.delta > 0.02 ? "up" : t.delta < -0.02 ? "down" : "flat";
-                const arrow = dir === "up" ? "▲" : dir === "down" ? "▼" : "→";
-                return (
-                  <div className="trend-row" key={t.version}>
-                    <span className="trend-name">{t.version}</span>
-                    <span className="trend-count">{t.current}</span>
-                    <span className="trend-share">
-                      {Math.round(t.earlyShare * 100)}% → {Math.round(t.lateShare * 100)}%
-                    </span>
-                    <span className={`trend-delta trend-${dir}`}>
-                      {arrow} {t.delta >= 0 ? "+" : ""}
-                      {Math.round(t.delta * 100)}pp
-                    </span>
-                  </div>
-                );
-              })}
-            </div>
-          </section>
-        ) : null}
-      </div>
-
-      {funnel.churn && funnel.churn.redeploys > 0 ? (
-        <section className="stat-card stat-card-wide">
-          <SectionHeader
-            title="Recycled — byte-clone redeploys"
-            info="New deploys whose bytecode is byte-identical to code already on record — the same program under a fresh id. Not novel, so the gate strips it before ranking. Byte-identical is a fact; whether it's a bot is graded below — only the Pump.fun subset is a confident sniper signature."
-          />
-          <div className="botshare">
-            <div className="botshare-fig">
-              <span className="botshare-pct">{pct(funnel.churn.redeploys, funnel.deploys)}%</span>
-              <span className="botshare-lbl">
-                of today&apos;s {groupNum(funnel.deploys)} new deploys are
-                byte-clone redeploys, not new code
-              </span>
-            </div>
-            <div className="botshare-bar">
-              <div
-                className="botshare-fill"
-                style={{ width: `${pct(funnel.churn.redeploys, funnel.deploys)}%` }}
-              />
-            </div>
-          </div>
-          <Breakdown
-            rows={[
-              ["redeploys", funnel.churn.redeploys, "New deploys that are byte-clones of known code — same program, fresh id. A fact, not a judgment."],
-              ["Pump.fun snipers", funnel.churn.pumpfun, "The confident bot subset: redeploys wired to Pump.fun — the launch-sniper signature."],
-              ["already closed", funnel.churn.closed, "Deploys whose ProgramData is already gone — rent reclaimed, likely a throwaway bot that moved on."],
-            ]}
-            labelWidth={132}
-          />
-          <BotExplainer />
-        </section>
+        </StatSection>
       ) : null}
 
       <p className="funnel-updated">last {win} · updated {utcStamp(funnel.updatedAt)}</p>
-    </>
+    </div>
   );
 }
