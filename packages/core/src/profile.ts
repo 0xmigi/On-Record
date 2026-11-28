@@ -22,8 +22,10 @@
 import { createHash } from "node:crypto";
 
 /** "quasar" is never read off the bytes — its builds look like Pinocchio. It
- *  is assigned from source only (apps/ingest/src/source-framework.ts). */
-export type Framework = "anchor" | "pinocchio" | "native" | "quasar" | "unknown";
+ *  is assigned from source only (apps/ingest/src/source-framework.ts).
+ *  "custom" = an ELF Solana's Rust/LLVM toolchain did not lay out: Lean 4 via
+ *  lean-svm, hand-written sBPF assembly. See builtOutsideLlvm(). */
+export type Framework = "anchor" | "pinocchio" | "native" | "quasar" | "custom" | "unknown";
 
 /**
  * Which line of Anchor built the binary — only as finely as the bytes prove it.
@@ -274,6 +276,40 @@ function readElf(elf: Buffer): Elf | null {
   } catch {
     return null;
   }
+}
+
+// Sections only Solana's Rust/LLVM toolchain (or a C build through the same
+// linker) writes. Any one of them means the image came out of lld.
+const LLVM_SECTIONS = new Set([".data.rel.ro", ".comment", ".symtab", ".strtab", ".gnu.hash", ".hash", ".eh_frame", ".bss", ".data"]);
+const RUST_PATH = /library\/(?:core|alloc|std)\/src\/|\.cargo\/registry\//;
+
+/**
+ * True when the ELF was laid out by something other than Solana's Rust/LLVM
+ * toolchain: toly's lean-svm (Lean 4 → sBPF), hand-written sBPF assemblers.
+ * Those writers put the entrypoint at the first byte of `.text`, straight
+ * after the program headers, and emit only the sections the loader needs.
+ *
+ * Calibrated 28 Nov 2026 over every mainnet ProgramData account (24,574
+ * ELFs): 442 have the entrypoint-first header, and ~390 of those are still
+ * lld output (Rust or C), told apart by an lld-only section or lld's order
+ * (`.dynamic` before `.dynsym`). What's left is ~50 programs, among them all
+ * five lean-svm builds behind percolator-lean (research/daily-scripts/
+ * elfshape*.mjs). Stripped images with no section table are never flagged:
+ * nothing in them says who wrote them.
+ */
+export function builtOutsideLlvm(elf: Buffer, parsed: Elf | null, hay: string): boolean {
+  if (!parsed || !parsed.sections.length || elf.length < 64) return false;
+  const names = parsed.sections.map((s) => s.name).filter(Boolean);
+  if (names.some((n) => LLVM_SECTIONS.has(n))) return false;
+  const dyn = names.indexOf(".dynamic"), dynsym = names.indexOf(".dynsym");
+  if (dyn !== -1 && dynsym !== -1 && dyn < dynsym) return false; // lld's order
+  if (RUST_PATH.test(hay)) return false;
+  const text = parsed.sections.find((s) => s.name === ".text");
+  if (!text || names[0] !== ".text") return false;
+  const phnum = elf.readUInt16LE(0x38);
+  if (text.off !== 64 + 56 * phnum) return false; // .text starts right after the program headers
+  if (elf.readUInt32LE(0x30) === 3) return phnum <= 2; // v3: fixed entry vaddr, one or two PT_LOADs
+  return Number(elf.readBigUInt64LE(0x18)) === text.addr; // entrypoint is the first instruction
 }
 
 function readDynStr(elf: Buffer, parsed: Elf): string[] | null {
@@ -640,6 +676,10 @@ export function profileProgram(
   let framework: Framework;
   if (anchor) {
     framework = "anchor";
+  } else if (builtOutsideLlvm(bytecode, parsed, hay)) {
+    // checked before the C-ABI rule: lean-svm calls sol_invoke_signed_c too,
+    // which is how percolator-lean read as Pinocchio
+    framework = "custom";
   } else if (syscalls.includes("sol_invoke_signed_c")) {
     framework = "pinocchio"; // C-ABI, no-std
   } else if (syscalls.length > 0) {

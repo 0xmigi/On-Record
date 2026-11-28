@@ -28,7 +28,8 @@ export type Category =
   | "unknown";
 export type AuthorityClass = "none" | "squads" | "program" | "hot_wallet" | null;
 /** "quasar" only ever comes from source — its binary reads as Pinocchio. */
-export type Framework = "anchor" | "pinocchio" | "native" | "quasar" | "unknown";
+/** "custom" = an ELF Solana's Rust/LLVM toolchain didn't lay out (lean-svm, sBPF assembly). */
+export type Framework = "anchor" | "pinocchio" | "native" | "quasar" | "custom" | "unknown";
 
 /** Which Anchor line built the binary — only as finely as the bytes prove it
  *  (packages/core/src/profile.ts). */

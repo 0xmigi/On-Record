@@ -42,6 +42,7 @@ export const DETECTION_RELIABLE: Record<Framework, boolean> = {
   pinocchio: false,
   native: false,
   quasar: false,
+  custom: false,
   unknown: false,
 };
 
@@ -70,6 +71,7 @@ export const ANCHOR_LINE: Record<AnchorLine, { label: string; note: string }> = 
 export function builtWith(framework: Framework | null, anchor: AnchorBuild | null): string | null {
   if (!framework || framework === "unknown") return null;
   if (framework === "anchor" && anchor?.line === "2.x") return "anchor v2";
+  if (framework === "custom") return "custom toolchain";
   return framework;
 }
 
@@ -152,6 +154,26 @@ export const FRAMEWORK_INFO: Record<Framework, FrameworkInfo> = {
       onChain:
         "Indistinguishable from Pinocchio in the binary: the same C-ABI calls, and PDAs hashed in-program (sol_sha256 + sol_curve_validate_point) the way Pinocchio's address crate also does. Its short, developer-chosen discriminators don't prove anything either. That's why the label has to come from the source.",
       docsUrl: "https://quasar-lang.com",
+    },
+  },
+  custom: {
+    key: "custom",
+    label: "Custom toolchain",
+    positioning: "not Rust · experimental",
+    read: "The binary wasn't laid out by Solana's Rust/LLVM toolchain. The entrypoint is the first instruction, and the file holds only the sections the loader needs.",
+    tradeoff:
+      "Whoever wrote the compiler or assembler decides everything the Rust toolchain normally would. That can mean very small, cheap code, and it means none of the usual tooling or fingerprints apply.",
+    detection:
+      "Inferred from the ELF layout: .text straight after the program headers, the entrypoint at its first byte, and none of the sections or section order LLVM's linker always writes. Lean 4 programs built with lean-svm and hand-written sBPF assembly both look like this, so the binary alone can't say which one built it.",
+    explainer: {
+      author: "Any toolchain other than Solana's platform-tools (Rust/LLVM).",
+      whatIs:
+        "Most Solana programs are Rust compiled through LLVM. A few are written another way: in sBPF assembly by hand, or in Lean 4 and compiled straight to sBPF by lean-svm, toly's compiler from November 2026, which lets the same Lean code carry machine-checked proofs.",
+      whenToPick:
+        "Squeezing out the last compute unit, or proving properties of the exact code that runs. Both are research territory, and neither comes with an audit.",
+      onChain:
+        "No Rust panic paths, so no source tree can be recovered; a Lean v3 build carries no readable text at all. What gives the toolchain away is the shape of the file, not anything written in it.",
+      docsUrl: "https://github.com/aeyakovenko/lean-svm",
     },
   },
   unknown: {

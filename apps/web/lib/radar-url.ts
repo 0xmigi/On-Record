@@ -71,6 +71,7 @@ export const FRAMEWORK_LABEL: Record<FrameworkFacet, string> = {
   pinocchio: "Pinocchio",
   native: "Native",
   quasar: "Quasar",
+  custom: "Custom toolchain",
 };
 
 /** The stats page's framework keys (funnel.ts frameworkKey) → the radar facet

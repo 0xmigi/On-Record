@@ -322,7 +322,9 @@ export async function buildDossier(programId: string, opts: DossierOptions = {})
     ? `${fromSource.framework} (from source)`
     : profile?.framework === "anchor" && profile.anchor
       ? `anchor ${profile.anchor.line}`
-      : (profile?.framework ?? "framework unknown");
+      : profile?.framework === "custom"
+        ? "custom toolchain (not Rust/LLVM)"
+        : (profile?.framework ?? "framework unknown");
 
   // --- header ---------------------------------------------------------------
   out.push(`# ${row.name ?? "(unnamed)"} — \`${row.id}\``);

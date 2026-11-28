@@ -185,11 +185,11 @@ export function computeInterest(row: SubjectRow, family: Family = { size: 1, clo
   // size prior (measured 2026-07-13, ROADMAP §4): confident bots cluster hard
   // under 50KB (77%, template spike at 32,377 bytes) while named programs
   // almost never live there (2%). A discount — never a gate — on small
-  // ANONYMOUS code only; a recovered name clears it, and Pinocchio/native are
-  // exempt because tiny is idiomatic there (the 22–71KB real programs).
+  // ANONYMOUS code only; a recovered name clears it, and Pinocchio/native/custom
+  // are exempt because tiny is idiomatic there (the 22–71KB real programs).
   const fw = row.profile?.framework;
   let sizePrior = 1;
-  if (!row.name && row.sizeBytes != null && fw !== "pinocchio" && fw !== "native") {
+  if (!row.name && row.sizeBytes != null && fw !== "pinocchio" && fw !== "native" && fw !== "custom") {
     if (row.sizeBytes < 25_600) sizePrior = 0.55;
     else if (row.sizeBytes < 51_200) sizePrior = 0.7;
     else if (row.sizeBytes < 102_400) sizePrior = 0.85;

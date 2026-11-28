@@ -177,6 +177,7 @@ const FRAMEWORK_HINT: Record<FrameworkFacet, string> = {
   pinocchio: "Pinocchio — inferred from binary shape",
   quasar: "Quasar — named from the program's source; its binary reads as Pinocchio",
   native: "Native — inferred from binary shape",
+  custom: "Not built by the Rust/LLVM toolchain (Lean via lean-svm, sBPF assembly) — inferred from ELF layout",
 };
 
 export function RadarFilters({ params }: { params: RadarParams }) {
